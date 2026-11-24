@@ -4,17 +4,31 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import 'attachment_store.dart';
+
 part 'app_db.g.dart';
 
 class Notebooks extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
+  IntColumn get color => integer().withDefault(const Constant(0xFF2E7D5B))();
   IntColumn get createAt => integer()();
   IntColumn get updateAt => integer()();
 
   @override
   Set<Column> get primaryKey => {id};
 }
+
+const notebookPalette = [
+  0xFF2E7D5B,
+  0xFF0E7490,
+  0xFF2563EB,
+  0xFF7C3AED,
+  0xFFDB2777,
+  0xFFD97706,
+  0xFFDC2626,
+  0xFF64748B,
+];
 
 class Notes extends Table {
   TextColumn get id => text()();
@@ -82,21 +96,40 @@ class AppDb extends _$AppDb {
       );
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
         },
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(notebooks, notebooks.color);
+            final rows = await (select(notebooks)
+                  ..orderBy([(t) => OrderingTerm.asc(t.createAt)]))
+                .get();
+            for (var i = 0; i < rows.length; i++) {
+              await (update(notebooks)..where((t) => t.id.equals(rows[i].id)))
+                  .write(NotebooksCompanion(
+                      color: Value(notebookPalette[i % notebookPalette.length])));
+            }
+          }
+        },
       );
 
   Future<Notebook> createNotebook(String name) async {
     final now = clock();
     final id = _uuid.v4();
+    final existing = await listNotebooks();
+    final color = notebookPalette[existing.length % notebookPalette.length];
     await into(notebooks).insert(NotebooksCompanion.insert(
-        id: id, name: name, createAt: now, updateAt: now));
-    developer.log('done, 笔记本已创建, notebookId: $id, name: $name');
+        id: id,
+        name: name,
+        color: Value(color),
+        createAt: now,
+        updateAt: now));
+    developer.log('done, 笔记本已创建, notebookId: $id, name: $name, color: $color');
     return (select(notebooks)..where((t) => t.id.equals(id))).getSingle();
   }
 
@@ -223,6 +256,17 @@ class AppDb extends _$AppDb {
         .toList()
       ..sort((a, b) => b.updateAt.compareTo(a.updateAt));
     return hits;
+  }
+
+  Future<Set<String>> allAttachmentRefs() async {
+    final refs = <String>{};
+    for (final note in await select(notes).get()) {
+      refs.addAll(AttachmentStore.referencedIds(note.content));
+    }
+    for (final version in await select(noteVersions).get()) {
+      refs.addAll(AttachmentStore.referencedIds(version.content));
+    }
+    return refs;
   }
 
   Future<List<NoteVersion>> listVersions(String noteId) =>

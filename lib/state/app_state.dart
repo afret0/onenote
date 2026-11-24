@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 
 import '../data/app_db.dart';
+import '../data/attachment_store.dart';
 
 enum NoteScopeKind { all, notebook, trash }
 
@@ -24,6 +25,8 @@ class AppState extends ChangeNotifier {
 
   final AppDb db;
 
+  AttachmentStore? attachments;
+
   List<Notebook> notebooks = [];
   NoteScope scope = const NoteScope.all();
   List<Note> notes = [];
@@ -31,6 +34,12 @@ class AppState extends ChangeNotifier {
   Set<String> searchScope = {};
 
   Future<void> init() async {
+    if (!kIsWeb) {
+      attachments = await AttachmentStore.open();
+      await purgeAttachments();
+    } else {
+      developer.log('skip, web 端附件存储未启用, 原因: 附件随同步阶段支持 web');
+    }
     notebooks = await db.listNotebooks();
     final saved = await db.getSetting(AppDb.searchScopeKey);
     if (saved != null && saved.isNotEmpty) {
@@ -126,6 +135,14 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
+  Future<void> purgeAttachments() async {
+    final store = attachments;
+    if (store == null) {
+      return;
+    }
+    await store.purgeUnreferenced(await db.allAttachmentRefs());
+  }
+
   Future<List<Note>> search(String query) => db.searchNotes(query, searchScope);
 
   Future<void> setSearchScope(Set<String> ids) async {
@@ -134,9 +151,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  String notebookName(String notebookId) => notebooks
-      .firstWhere((n) => n.id == notebookId,
-          orElse: () => Notebook(
-              id: notebookId, name: '?', createAt: 0, updateAt: 0))
-      .name;
+  Notebook? _notebook(String notebookId) =>
+      notebooks.where((n) => n.id == notebookId).firstOrNull;
+
+  String notebookName(String notebookId) =>
+      _notebook(notebookId)?.name ?? '?';
+
+  int notebookColor(String notebookId) =>
+      _notebook(notebookId)?.color ?? notebookPalette.first;
 }

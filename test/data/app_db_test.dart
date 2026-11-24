@@ -133,4 +133,28 @@ void main() {
     expect(again, isFalse);
     expect(await db.listVersions(note.id), hasLength(3));
   });
+
+  test('notebook colors cycle through the palette in creation order', () async {
+    final colors = <int>[];
+    for (var i = 0; i < notebookPalette.length + 2; i++) {
+      colors.add((await db.createNotebook('nb$i')).color);
+    }
+    for (var i = 0; i < colors.length; i++) {
+      expect(colors[i], notebookPalette[i % notebookPalette.length]);
+    }
+  });
+
+  test('attachment refs cover live notes, trash and history versions', () async {
+    final idA = 'a' * 64;
+    final idB = 'b' * 64;
+    final idC = 'c' * 64;
+    final (notebook, note) =
+        await seedNote(content: '![img](onenote-asset://$idA)');
+    await db.saveNote(note.id, 'first', '![img](onenote-asset://$idB)');
+    final other =
+        await db.createNote(notebook.id, title: 't', content: '[f](onenote-asset://$idC)');
+    await db.softDeleteNote(other.id);
+    final refs = await db.allAttachmentRefs();
+    expect(refs, {idA, idB, idC});
+  });
 }

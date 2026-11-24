@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../data/attachment_store.dart';
+import 'attachment_image.dart';
 import 'theme.dart';
 
 class MarkdownView extends StatelessWidget {
-  const MarkdownView({super.key, required this.content});
+  const MarkdownView({
+    super.key,
+    required this.content,
+    this.attachments,
+    this.onAttachmentLink,
+  });
 
   final String content;
+  final AttachmentStore? attachments;
+  final void Function(String id)? onAttachmentLink;
 
   @override
   Widget build(BuildContext context) {
@@ -28,8 +37,8 @@ class MarkdownView extends StatelessWidget {
     final body = TextStyle(
       fontFamily: sansFamily,
       fontFamilyFallback: cjkSansFallback,
-      fontSize: 15.5,
-      height: 1.75,
+      fontSize: 16,
+      height: 1.8,
       color: t.ink,
     );
     final mono = TextStyle(
@@ -39,9 +48,13 @@ class MarkdownView extends StatelessWidget {
       height: 1.6,
       color: t.ink,
     );
+    final store = attachments;
     return MarkdownBody(
       data: content,
       selectable: true,
+      builders: store == null
+          ? const {}
+          : {'img': AttachmentImageBuilder(store)},
       styleSheet: MarkdownStyleSheet(
         p: body,
         h1: headingSerif.copyWith(fontSize: 30, height: 1.3),
@@ -86,6 +99,11 @@ class MarkdownView extends StatelessWidget {
       ),
       onTapLink: (text, href, title) {
         if (href == null) {
+          return;
+        }
+        final match = AttachmentStore.refPattern.firstMatch(href);
+        if (match != null) {
+          onAttachmentLink?.call(match.group(1)!);
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));

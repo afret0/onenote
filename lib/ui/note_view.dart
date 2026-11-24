@@ -1,8 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:mime/mime.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import '../data/app_db.dart';
+import '../data/attachment_store.dart';
 import '../state/app_state.dart';
 import 'dialogs.dart';
 import 'markdown_view.dart';
@@ -119,6 +127,163 @@ class _NoteViewState extends State<NoteView> {
     setState(() => _editing = false);
   }
 
+  void _snack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _insertText(String text) {
+    final value = _contentController.value;
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : value.text.length;
+    _contentController.value = TextEditingValue(
+      text: value.text.replaceRange(start, end, text),
+      selection: TextSelection.collapsed(offset: start + text.length),
+    );
+    _changed();
+  }
+
+  Future<void> _saveAttachment(Uint8List bytes, String name,
+      {required bool asImage}) async {
+    final store = state.attachments;
+    if (store == null) {
+      _snack('Web 端附件将随同步阶段支持');
+      return;
+    }
+    try {
+      final id = await store.save(bytes, name);
+      if (!mounted) {
+        return;
+      }
+      _insertText(asImage
+          ? AttachmentStore.imageMarkdown(id, name)
+          : AttachmentStore.fileMarkdown(id, name));
+    } on AttachmentTooLargeException {
+      _snack('文件超过 20MB 上限');
+    }
+  }
+
+  Future<void> _pickFiles({required bool image}) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: image ? FileType.image : FileType.any,
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null) {
+      return;
+    }
+    for (final file in result.files) {
+      final bytes = file.bytes ??
+          (file.path != null ? await File(file.path!).readAsBytes() : null);
+      if (bytes == null) {
+        continue;
+      }
+      final isImage =
+          image || (lookupMimeType(file.name) ?? '').startsWith('image/');
+      await _saveAttachment(bytes, file.name, asImage: isImage);
+    }
+  }
+
+  Future<void> _handlePaste() async {
+    final store = state.attachments;
+    if (store != null) {
+      final bytes = await Pasteboard.image;
+      if (bytes != null && bytes.isNotEmpty) {
+        await _saveAttachment(
+            bytes, 'pasted_${DateTime.now().millisecondsSinceEpoch}.png',
+            asImage: true);
+        return;
+      }
+    }
+    final text = await Pasteboard.text;
+    if (text != null && text.isNotEmpty) {
+      _insertText(text);
+    }
+  }
+
+  Future<void> _onDrop(DropDetails details) async {
+    for (final item in details.items) {
+      if (item is DropFileItem) {
+        final bytes = await item.file.readAsBytes();
+        await _saveAttachment(bytes, item.name,
+            asImage: (item.mimeType ?? '').startsWith('image/'));
+      }
+    }
+  }
+
+  Future<void> _openAttachment(String id) async {
+    final store = state.attachments;
+    if (store == null) {
+      return;
+    }
+    final bytes = await store.read(id);
+    if (bytes == null) {
+      _snack('附件文件不存在');
+      return;
+    }
+    final name = (await store.nameOf(id) ?? id).replaceAll(RegExp(r'[/\\]'), '_');
+    final dir = await Directory.systemTemp.createTemp('onenote_open');
+    final file = File('${dir.path}/$name');
+    await file.writeAsBytes(bytes);
+    if (Platform.isMacOS) {
+      await Process.run('open', [file.path]);
+    } else if (Platform.isLinux) {
+      await Process.run('xdg-open', [file.path]);
+    } else if (Platform.isWindows) {
+      await Process.run('cmd', ['/c', 'start', '', file.path]);
+    }
+  }
+
+  Widget _editorArea() {
+    final t = inkOf(context);
+    final editor = Container(
+      color: t.paper,
+      padding: const EdgeInsets.symmetric(horizontal: spaceSm),
+      child: TextField(
+        controller: _contentController,
+        onChanged: (_) => _changed(),
+        autofocus: true,
+        maxLines: null,
+        expands: true,
+        textAlignVertical: TextAlignVertical.top,
+        keyboardType: TextInputType.multiline,
+        style: TextStyle(
+          fontFamily: monoFamily,
+          fontFamilyFallback: cjkMonoFallback,
+          fontSize: 15,
+          height: 1.75,
+          color: t.ink,
+        ),
+        decoration: const InputDecoration(
+          hintText: '用 Markdown 书写…',
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: EdgeInsets.all(spaceMd),
+        ),
+      ),
+    );
+    if (kIsWeb) {
+      return editor;
+    }
+    return DropTarget(
+      onDrop: _onDrop,
+      acceptedKinds: const {DropItemKind.file},
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyV, meta: true): () {
+            _handlePaste();
+          },
+          const SingleActivator(LogicalKeyboardKey.keyV, control: true): () {
+            _handlePaste();
+          },
+        },
+        child: editor,
+      ),
+    );
+  }
+
   Future<void> _showHistory() async {
     final note = _note;
     if (note == null) {
@@ -219,6 +384,18 @@ class _NoteViewState extends State<NoteView> {
                   child: Text(_saveStatus,
                       style: Theme.of(context).textTheme.labelSmall),
                 ),
+              if (_editing) ...[
+                IconButton(
+                  tooltip: '插入图片',
+                  onPressed: () => _pickFiles(image: true),
+                  icon: const Icon(Icons.image_outlined),
+                ),
+                IconButton(
+                  tooltip: '插入文件',
+                  onPressed: () => _pickFiles(image: false),
+                  icon: const Icon(Icons.attach_file),
+                ),
+              ],
               IconButton(
                 tooltip: '版本历史',
                 onPressed: _showHistory,
@@ -247,34 +424,7 @@ class _NoteViewState extends State<NoteView> {
         ),
         Expanded(
           child: _editing
-              ? Container(
-                  color: t.paper,
-                  padding: const EdgeInsets.symmetric(horizontal: spaceSm),
-                  child: TextField(
-                    controller: _contentController,
-                    onChanged: (_) => _changed(),
-                    autofocus: true,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    keyboardType: TextInputType.multiline,
-                    style: TextStyle(
-                      fontFamily: monoFamily,
-                      fontFamilyFallback: cjkMonoFallback,
-                      fontSize: 14,
-                      height: 1.7,
-                      color: t.ink,
-                    ),
-                    decoration: const InputDecoration(
-                      hintText: '用 Markdown 书写…',
-                      filled: false,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: EdgeInsets.all(spaceMd),
-                    ),
-                  ),
-                )
+              ? _editorArea()
               : SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(
                       spaceLg, spaceLg, spaceLg, spaceXxl),
@@ -288,9 +438,15 @@ class _NoteViewState extends State<NoteView> {
                             padding: const EdgeInsets.only(bottom: spaceLg),
                             child: Row(
                               children: [
-                                Icon(Icons.book_outlined,
-                                    size: 13, color: t.inkFaint),
-                                const SizedBox(width: spaceXs),
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                      color: Color(state
+                                          .notebookColor(note.notebookId)),
+                                      shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 6),
                                 Text(state.notebookName(note.notebookId),
                                     style:
                                         Theme.of(context).textTheme.labelSmall),
@@ -301,7 +457,11 @@ class _NoteViewState extends State<NoteView> {
                               ],
                             ),
                           ),
-                          MarkdownView(content: note.content),
+                          MarkdownView(
+                            content: note.content,
+                            attachments: state.attachments,
+                            onAttachmentLink: _openAttachment,
+                          ),
                         ],
                       ),
                     ),

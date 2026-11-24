@@ -39,10 +39,10 @@ class InkTokens extends ThemeExtension<InkTokens> {
     inkMuted: Color(0xFF57534E),
     inkFaint: Color(0xFF8A857E),
     hairline: Color(0xFFE7E0CF),
-    accent: Color(0xFFD97706),
-    accentText: Color(0xFF92400E),
-    accentSoft: Color(0xFFF5E9D2),
-    onAccent: Color(0xFF1C1917),
+    accent: Color(0xFF2E7D5B),
+    accentText: Color(0xFF1E6B4A),
+    accentSoft: Color(0xFFE4EFE7),
+    onAccent: Color(0xFFFFFFFF),
     danger: Color(0xFFDC2626),
     navy: Color(0xFF101A3A),
   );
@@ -55,9 +55,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
     inkMuted: Color(0xFFB8B2A7),
     inkFaint: Color(0xFF8A857E),
     hairline: Color(0xFF37312B),
-    accent: Color(0xFFD97706),
-    accentText: Color(0xFFFBBF24),
-    accentSoft: Color(0xFF3A2C15),
+    accent: Color(0xFF4CAF82),
+    accentText: Color(0xFF86D7AC),
+    accentSoft: Color(0xFF24382E),
     onAccent: Color(0xFF1C1917),
     danger: Color(0xFFF87171),
     navy: Color(0xFF101A3A),
@@ -189,9 +189,10 @@ ThemeData buildInkTheme(Brightness brightness) {
             fontWeight: FontWeight.w700, letterSpacing: -0.2),
         titleMedium: base.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w600),
-        bodyMedium: base.textTheme.bodyMedium?.copyWith(height: 1.55),
+        bodyMedium: base.textTheme.bodyMedium
+            ?.copyWith(fontSize: 16, height: 1.7),
         bodySmall: base.textTheme.bodySmall?.copyWith(
-            color: tokens.inkMuted, height: 1.45),
+            fontSize: 13, color: tokens.inkMuted, height: 1.5),
         labelSmall: base.textTheme.labelSmall?.copyWith(
             color: tokens.inkFaint, letterSpacing: 0.3),
       );

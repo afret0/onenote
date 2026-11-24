@@ -211,7 +211,7 @@ class _HomePageState extends State<HomePage> {
               ),
               for (final notebook in state.notebooks)
                 ScopeTile(
-                  icon: Icons.book_outlined,
+                  dotColor: Color(notebook.color),
                   label: notebook.name,
                   selected: scope.kind == NoteScopeKind.notebook &&
                       scope.notebookId == notebook.id,
@@ -333,6 +333,7 @@ class _HomePageState extends State<HomePage> {
                     return NoteCard(
                       note: note,
                       notebookName: state.notebookName(note.notebookId),
+                      notebookColor: Color(state.notebookColor(note.notebookId)),
                       highlight: searching ? _searchController.text.trim() : null,
                       onTap: () => searching ? _openHit(note) : state.openNote(note.id),
                     );

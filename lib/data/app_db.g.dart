@@ -27,6 +27,16 @@ class $NotebooksTable extends Notebooks
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<int> color = GeneratedColumn<int>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0xFF2E7D5B),
+  );
   static const VerificationMeta _createAtMeta = const VerificationMeta(
     'createAt',
   );
@@ -50,7 +60,7 @@ class $NotebooksTable extends Notebooks
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, name, createAt, updateAt];
+  List<GeneratedColumn> get $columns => [id, name, color, createAt, updateAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -75,6 +85,12 @@ class $NotebooksTable extends Notebooks
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
     }
     if (data.containsKey('create_at')) {
       context.handle(
@@ -109,6 +125,10 @@ class $NotebooksTable extends Notebooks
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color'],
+      )!,
       createAt: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}create_at'],
@@ -129,11 +149,13 @@ class $NotebooksTable extends Notebooks
 class Notebook extends DataClass implements Insertable<Notebook> {
   final String id;
   final String name;
+  final int color;
   final int createAt;
   final int updateAt;
   const Notebook({
     required this.id,
     required this.name,
+    required this.color,
     required this.createAt,
     required this.updateAt,
   });
@@ -142,6 +164,7 @@ class Notebook extends DataClass implements Insertable<Notebook> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    map['color'] = Variable<int>(color);
     map['create_at'] = Variable<int>(createAt);
     map['update_at'] = Variable<int>(updateAt);
     return map;
@@ -151,6 +174,7 @@ class Notebook extends DataClass implements Insertable<Notebook> {
     return NotebooksCompanion(
       id: Value(id),
       name: Value(name),
+      color: Value(color),
       createAt: Value(createAt),
       updateAt: Value(updateAt),
     );
@@ -164,6 +188,7 @@ class Notebook extends DataClass implements Insertable<Notebook> {
     return Notebook(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      color: serializer.fromJson<int>(json['color']),
       createAt: serializer.fromJson<int>(json['createAt']),
       updateAt: serializer.fromJson<int>(json['updateAt']),
     );
@@ -174,22 +199,30 @@ class Notebook extends DataClass implements Insertable<Notebook> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'color': serializer.toJson<int>(color),
       'createAt': serializer.toJson<int>(createAt),
       'updateAt': serializer.toJson<int>(updateAt),
     };
   }
 
-  Notebook copyWith({String? id, String? name, int? createAt, int? updateAt}) =>
-      Notebook(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        createAt: createAt ?? this.createAt,
-        updateAt: updateAt ?? this.updateAt,
-      );
+  Notebook copyWith({
+    String? id,
+    String? name,
+    int? color,
+    int? createAt,
+    int? updateAt,
+  }) => Notebook(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    color: color ?? this.color,
+    createAt: createAt ?? this.createAt,
+    updateAt: updateAt ?? this.updateAt,
+  );
   Notebook copyWithCompanion(NotebooksCompanion data) {
     return Notebook(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      color: data.color.present ? data.color.value : this.color,
       createAt: data.createAt.present ? data.createAt.value : this.createAt,
       updateAt: data.updateAt.present ? data.updateAt.value : this.updateAt,
     );
@@ -200,6 +233,7 @@ class Notebook extends DataClass implements Insertable<Notebook> {
     return (StringBuffer('Notebook(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('color: $color, ')
           ..write('createAt: $createAt, ')
           ..write('updateAt: $updateAt')
           ..write(')'))
@@ -207,13 +241,14 @@ class Notebook extends DataClass implements Insertable<Notebook> {
   }
 
   @override
-  int get hashCode => Object.hash(id, name, createAt, updateAt);
+  int get hashCode => Object.hash(id, name, color, createAt, updateAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Notebook &&
           other.id == this.id &&
           other.name == this.name &&
+          other.color == this.color &&
           other.createAt == this.createAt &&
           other.updateAt == this.updateAt);
 }
@@ -221,12 +256,14 @@ class Notebook extends DataClass implements Insertable<Notebook> {
 class NotebooksCompanion extends UpdateCompanion<Notebook> {
   final Value<String> id;
   final Value<String> name;
+  final Value<int> color;
   final Value<int> createAt;
   final Value<int> updateAt;
   final Value<int> rowid;
   const NotebooksCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.color = const Value.absent(),
     this.createAt = const Value.absent(),
     this.updateAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -234,6 +271,7 @@ class NotebooksCompanion extends UpdateCompanion<Notebook> {
   NotebooksCompanion.insert({
     required String id,
     required String name,
+    this.color = const Value.absent(),
     required int createAt,
     required int updateAt,
     this.rowid = const Value.absent(),
@@ -244,6 +282,7 @@ class NotebooksCompanion extends UpdateCompanion<Notebook> {
   static Insertable<Notebook> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<int>? color,
     Expression<int>? createAt,
     Expression<int>? updateAt,
     Expression<int>? rowid,
@@ -251,6 +290,7 @@ class NotebooksCompanion extends UpdateCompanion<Notebook> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (color != null) 'color': color,
       if (createAt != null) 'create_at': createAt,
       if (updateAt != null) 'update_at': updateAt,
       if (rowid != null) 'rowid': rowid,
@@ -260,6 +300,7 @@ class NotebooksCompanion extends UpdateCompanion<Notebook> {
   NotebooksCompanion copyWith({
     Value<String>? id,
     Value<String>? name,
+    Value<int>? color,
     Value<int>? createAt,
     Value<int>? updateAt,
     Value<int>? rowid,
@@ -267,6 +308,7 @@ class NotebooksCompanion extends UpdateCompanion<Notebook> {
     return NotebooksCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      color: color ?? this.color,
       createAt: createAt ?? this.createAt,
       updateAt: updateAt ?? this.updateAt,
       rowid: rowid ?? this.rowid,
@@ -281,6 +323,9 @@ class NotebooksCompanion extends UpdateCompanion<Notebook> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<int>(color.value);
     }
     if (createAt.present) {
       map['create_at'] = Variable<int>(createAt.value);
@@ -299,6 +344,7 @@ class NotebooksCompanion extends UpdateCompanion<Notebook> {
     return (StringBuffer('NotebooksCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('color: $color, ')
           ..write('createAt: $createAt, ')
           ..write('updateAt: $updateAt, ')
           ..write('rowid: $rowid')
@@ -1356,6 +1402,7 @@ abstract class _$AppDb extends GeneratedDatabase {
 typedef $$NotebooksTableCreateCompanionBuilder = NotebooksCompanion Function({
   required String id,
   required String name,
+  Value<int> color,
   required int createAt,
   required int updateAt,
   Value<int> rowid,
@@ -1363,6 +1410,7 @@ typedef $$NotebooksTableCreateCompanionBuilder = NotebooksCompanion Function({
 typedef $$NotebooksTableUpdateCompanionBuilder = NotebooksCompanion Function({
   Value<String> id,
   Value<String> name,
+  Value<int> color,
   Value<int> createAt,
   Value<int> updateAt,
   Value<int> rowid,
@@ -1408,6 +1456,11 @@ class $$NotebooksTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get color => $composableBuilder(
+    column: $table.color,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1466,6 +1519,11 @@ class $$NotebooksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get createAt => $composableBuilder(
     column: $table.createAt,
     builder: (column) => ColumnOrderings(column),
@@ -1491,6 +1549,9 @@ class $$NotebooksTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
 
   GeneratedColumn<int> get createAt =>
       $composableBuilder(column: $table.createAt, builder: (column) => column);
@@ -1554,12 +1615,14 @@ class $$NotebooksTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<int> color = const Value.absent(),
                 Value<int> createAt = const Value.absent(),
                 Value<int> updateAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => NotebooksCompanion(
                 id: id,
                 name: name,
+                color: color,
                 createAt: createAt,
                 updateAt: updateAt,
                 rowid: rowid,
@@ -1568,12 +1631,14 @@ class $$NotebooksTableTableManager
               ({
                 required String id,
                 required String name,
+                Value<int> color = const Value.absent(),
                 required int createAt,
                 required int updateAt,
                 Value<int> rowid = const Value.absent(),
               }) => NotebooksCompanion.insert(
                 id: id,
                 name: name,
+                color: color,
                 createAt: createAt,
                 updateAt: updateAt,
                 rowid: rowid,

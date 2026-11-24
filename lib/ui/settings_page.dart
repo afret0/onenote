@@ -123,8 +123,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (checked) => _toggleScope(
                             state.notebooks[i].id, checked ?? false),
                         title: Text(state.notebooks[i].name),
-                        secondary: Icon(Icons.book_outlined,
-                            size: 18, color: t.inkMuted),
+                        secondary: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                              color: Color(state.notebooks[i].color),
+                              shape: BoxShape.circle),
+                        ),
                         controlAffinity: ListTileControlAffinity.trailing,
                       ),
                     ],

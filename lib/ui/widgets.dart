@@ -53,14 +53,16 @@ class BrandMark extends StatelessWidget {
 class ScopeTile extends StatelessWidget {
   const ScopeTile({
     super.key,
-    required this.icon,
+    this.icon,
+    this.dotColor,
     required this.label,
     required this.selected,
     required this.onTap,
     this.trailing,
   });
 
-  final IconData icon;
+  final IconData? icon;
+  final Color? dotColor;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -86,9 +88,18 @@ class ScopeTile extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
             child: Row(
               children: [
-                Icon(icon,
-                    size: 18,
-                    color: selected ? t.accent : t.inkMuted),
+                if (dotColor != null)
+                  Container(
+                    width: 10,
+                    height: 10,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                        color: dotColor, shape: BoxShape.circle),
+                  )
+                else
+                  Icon(icon,
+                      size: 18,
+                      color: selected ? t.accent : t.inkMuted),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -117,12 +128,14 @@ class NoteCard extends StatelessWidget {
     super.key,
     required this.note,
     required this.notebookName,
+    required this.notebookColor,
     required this.onTap,
     this.highlight,
   });
 
   final Note note;
   final String notebookName;
+  final Color notebookColor;
   final VoidCallback onTap;
   final String? highlight;
 
@@ -170,8 +183,13 @@ class NoteCard extends StatelessWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Icon(Icons.book_outlined, size: 12, color: t.inkFaint),
-                  const SizedBox(width: spaceXs),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                        color: notebookColor, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
                   Flexible(
                     child: Text(notebookName,
                         maxLines: 1,
