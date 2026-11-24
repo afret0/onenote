@@ -1,0 +1,291 @@
+import 'package:flutter/material.dart';
+
+class InkTokens extends ThemeExtension<InkTokens> {
+  const InkTokens({
+    required this.paper,
+    required this.surface,
+    required this.surfaceAlt,
+    required this.ink,
+    required this.inkMuted,
+    required this.inkFaint,
+    required this.hairline,
+    required this.accent,
+    required this.accentText,
+    required this.accentSoft,
+    required this.onAccent,
+    required this.danger,
+    required this.navy,
+  });
+
+  final Color paper;
+  final Color surface;
+  final Color surfaceAlt;
+  final Color ink;
+  final Color inkMuted;
+  final Color inkFaint;
+  final Color hairline;
+  final Color accent;
+  final Color accentText;
+  final Color accentSoft;
+  final Color onAccent;
+  final Color danger;
+  final Color navy;
+
+  static const light = InkTokens(
+    paper: Color(0xFFF8F4E9),
+    surface: Color(0xFFFFFDF7),
+    surfaceAlt: Color(0xFFF1EBDC),
+    ink: Color(0xFF1C1917),
+    inkMuted: Color(0xFF57534E),
+    inkFaint: Color(0xFF8A857E),
+    hairline: Color(0xFFE7E0CF),
+    accent: Color(0xFFD97706),
+    accentText: Color(0xFF92400E),
+    accentSoft: Color(0xFFF5E9D2),
+    onAccent: Color(0xFF1C1917),
+    danger: Color(0xFFDC2626),
+    navy: Color(0xFF101A3A),
+  );
+
+  static const dark = InkTokens(
+    paper: Color(0xFF171412),
+    surface: Color(0xFF211D1A),
+    surfaceAlt: Color(0xFF2A2521),
+    ink: Color(0xFFF2EEE6),
+    inkMuted: Color(0xFFB8B2A7),
+    inkFaint: Color(0xFF8A857E),
+    hairline: Color(0xFF37312B),
+    accent: Color(0xFFD97706),
+    accentText: Color(0xFFFBBF24),
+    accentSoft: Color(0xFF3A2C15),
+    onAccent: Color(0xFF1C1917),
+    danger: Color(0xFFF87171),
+    navy: Color(0xFF101A3A),
+  );
+
+  @override
+  InkTokens copyWith({
+    Color? paper,
+    Color? surface,
+    Color? surfaceAlt,
+    Color? ink,
+    Color? inkMuted,
+    Color? inkFaint,
+    Color? hairline,
+    Color? accent,
+    Color? accentText,
+    Color? accentSoft,
+    Color? onAccent,
+    Color? danger,
+    Color? navy,
+  }) =>
+      InkTokens(
+        paper: paper ?? this.paper,
+        surface: surface ?? this.surface,
+        surfaceAlt: surfaceAlt ?? this.surfaceAlt,
+        ink: ink ?? this.ink,
+        inkMuted: inkMuted ?? this.inkMuted,
+        inkFaint: inkFaint ?? this.inkFaint,
+        hairline: hairline ?? this.hairline,
+        accent: accent ?? this.accent,
+        accentText: accentText ?? this.accentText,
+        accentSoft: accentSoft ?? this.accentSoft,
+        onAccent: onAccent ?? this.onAccent,
+        danger: danger ?? this.danger,
+        navy: navy ?? this.navy,
+      );
+
+  @override
+  InkTokens lerp(ThemeExtension<InkTokens>? other, double t) {
+    if (other is! InkTokens) {
+      return this;
+    }
+    return InkTokens(
+      paper: Color.lerp(paper, other.paper, t)!,
+      surface: Color.lerp(surface, other.surface, t)!,
+      surfaceAlt: Color.lerp(surfaceAlt, other.surfaceAlt, t)!,
+      ink: Color.lerp(ink, other.ink, t)!,
+      inkMuted: Color.lerp(inkMuted, other.inkMuted, t)!,
+      inkFaint: Color.lerp(inkFaint, other.inkFaint, t)!,
+      hairline: Color.lerp(hairline, other.hairline, t)!,
+      accent: Color.lerp(accent, other.accent, t)!,
+      accentText: Color.lerp(accentText, other.accentText, t)!,
+      accentSoft: Color.lerp(accentSoft, other.accentSoft, t)!,
+      onAccent: Color.lerp(onAccent, other.onAccent, t)!,
+      danger: Color.lerp(danger, other.danger, t)!,
+      navy: Color.lerp(navy, other.navy, t)!,
+    );
+  }
+}
+
+InkTokens inkOf(BuildContext context) =>
+    Theme.of(context).extension<InkTokens>()!;
+
+const sansFamily = 'Inter';
+const monoFamily = 'JetBrainsMono';
+const serifFamily = 'Georgia';
+
+const cjkSansFallback = [
+  'PingFang SC',
+  'Hiragino Sans GB',
+  'Microsoft YaHei',
+  'Noto Sans CJK SC',
+  'Source Han Sans SC',
+  'sans-serif',
+];
+
+const cjkSerifFallback = [
+  'Songti SC',
+  'STSong',
+  'SimSun',
+  'Noto Serif CJK SC',
+  'serif',
+];
+
+const cjkMonoFallback = [
+  'Menlo',
+  'Consolas',
+  'PingFang SC',
+  'Microsoft YaHei',
+  'Noto Sans Mono CJK SC',
+  'monospace',
+];
+
+const motionFast = Duration(milliseconds: 150);
+const motionBase = Duration(milliseconds: 220);
+const motionCurve = Curves.easeOutCubic;
+
+const spaceXs = 4.0;
+const spaceSm = 8.0;
+const spaceMd = 16.0;
+const spaceLg = 24.0;
+const spaceXl = 32.0;
+const spaceXxl = 48.0;
+
+const radiusSm = 8.0;
+const radiusMd = 12.0;
+const radiusLg = 16.0;
+
+ThemeData buildInkTheme(Brightness brightness) {
+  final tokens = brightness == Brightness.light ? InkTokens.light : InkTokens.dark;
+  final base = ThemeData(brightness: brightness, useMaterial3: true);
+  final scheme = base.colorScheme.copyWith(
+    primary: tokens.accent,
+    onPrimary: tokens.onAccent,
+    surface: tokens.surface,
+    onSurface: tokens.ink,
+    error: tokens.danger,
+    outline: tokens.hairline,
+  );
+  final textTheme = base.textTheme
+      .apply(
+        fontFamily: sansFamily,
+        fontFamilyFallback: cjkSansFallback,
+        bodyColor: tokens.ink,
+        displayColor: tokens.ink,
+      )
+      .copyWith(
+        titleLarge: base.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700, letterSpacing: -0.2),
+        titleMedium: base.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600),
+        bodyMedium: base.textTheme.bodyMedium?.copyWith(height: 1.55),
+        bodySmall: base.textTheme.bodySmall?.copyWith(
+            color: tokens.inkMuted, height: 1.45),
+        labelSmall: base.textTheme.labelSmall?.copyWith(
+            color: tokens.inkFaint, letterSpacing: 0.3),
+      );
+  return base.copyWith(
+    colorScheme: scheme,
+    scaffoldBackgroundColor: tokens.paper,
+    textTheme: textTheme,
+    extensions: [tokens],
+    splashFactory: InkSparkle.splashFactory,
+    dividerTheme: DividerThemeData(color: tokens.hairline, thickness: 1, space: 1),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: tokens.navy,
+        borderRadius: BorderRadius.circular(radiusSm),
+      ),
+      textStyle: const TextStyle(color: Color(0xFFF2EEE6), fontSize: 12),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: tokens.surface,
+      hintStyle: TextStyle(color: tokens.inkFaint),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: spaceMd, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: BorderSide(color: tokens.hairline),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: BorderSide(color: tokens.hairline),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(radiusMd),
+        borderSide: BorderSide(color: tokens.accent, width: 1.5),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: tokens.accent,
+        foregroundColor: tokens.onAccent,
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: spaceLg),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radiusMd)),
+        textStyle: const TextStyle(
+            fontFamily: sansFamily,
+            fontFamilyFallback: cjkSansFallback,
+            fontWeight: FontWeight.w600),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: tokens.accent,
+        minimumSize: const Size(0, 44),
+        textStyle: const TextStyle(
+            fontFamily: sansFamily,
+            fontFamilyFallback: cjkSansFallback,
+            fontWeight: FontWeight.w600),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: tokens.inkMuted,
+        minimumSize: const Size(44, 44),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: tokens.surface,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusLg)),
+      titleTextStyle: textTheme.titleMedium,
+      contentTextStyle: textTheme.bodyMedium,
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: tokens.navy,
+      contentTextStyle: const TextStyle(
+          fontFamily: sansFamily,
+          fontFamilyFallback: cjkSansFallback,
+          color: Color(0xFFF2EEE6)),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd)),
+    ),
+    listTileTheme: ListTileThemeData(
+      iconColor: tokens.inkMuted,
+      textColor: tokens.ink,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusMd)),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? tokens.accent : null),
+      checkColor: WidgetStatePropertyAll(tokens.onAccent),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    ),
+  );
+}

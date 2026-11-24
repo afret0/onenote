@@ -1,0 +1,325 @@
+import 'package:flutter/material.dart';
+
+import '../data/app_db.dart';
+import '../state/app_state.dart';
+import 'dialogs.dart';
+import 'theme.dart';
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  int _trashDays = AppDb.defaultRetentionDays;
+  int _versionDays = AppDb.defaultRetentionDays;
+
+  AppState get state => widget.state;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRetention();
+  }
+
+  Future<void> _loadRetention() async {
+    final trash = await state.db.retentionDays(AppDb.trashRetentionKey);
+    final version = await state.db.retentionDays(AppDb.versionRetentionKey);
+    if (mounted) {
+      setState(() {
+        _trashDays = trash;
+        _versionDays = version;
+      });
+    }
+  }
+
+  Future<void> _editDays(String key, int current, String label) async {
+    final input = await promptText(context,
+        title: label, label: '保留天数', initial: '$current', hint: '默认 90');
+    if (input == null) {
+      return;
+    }
+    final days = int.tryParse(input);
+    if (days == null || days <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('请输入正整数天数')));
+      }
+      return;
+    }
+    await state.db.setSetting(key, '$days');
+    await _loadRetention();
+  }
+
+  Future<void> _toggleScope(String notebookId, bool checked) async {
+    final next = {...state.searchScope};
+    if (checked) {
+      next.add(notebookId);
+    } else {
+      next.remove(notebookId);
+    }
+    await state.setSearchScope(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: t.paper,
+          title: const Text('设置'),
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: ListView(
+              padding: const EdgeInsets.all(spaceLg),
+              children: [
+                _SectionTitle('数据保留'),
+                _SettingCard(children: [
+                  _SettingRow(
+                    icon: Icons.delete_outline,
+                    title: '回收站保留',
+                    subtitle: '删除的笔记保留 $_trashDays 天后自动清除',
+                    action: '$_trashDays 天',
+                    onTap: () => _editDays(
+                        AppDb.trashRetentionKey, _trashDays, '回收站保留天数'),
+                  ),
+                  Divider(height: 1, color: t.hairline),
+                  _SettingRow(
+                    icon: Icons.history,
+                    title: '版本历史保留',
+                    subtitle: '每次保存自动记录版本（内容不变不记录），保留 $_versionDays 天',
+                    action: '$_versionDays 天',
+                    onTap: () => _editDays(
+                        AppDb.versionRetentionKey, _versionDays, '版本历史保留天数'),
+                  ),
+                ]),
+                const SizedBox(height: spaceLg),
+                _SectionTitle('搜索范围'),
+                Text(
+                  state.searchScope.isEmpty
+                      ? '当前搜索全部笔记本。勾选后只搜索所选笔记本。'
+                      : '当前只搜索勾选的 ${state.searchScope.length} 个笔记本。',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.inkMuted),
+                ),
+                const SizedBox(height: spaceSm),
+                _SettingCard(
+                  children: [
+                    for (var i = 0; i < state.notebooks.length; i++) ...[
+                      if (i > 0) Divider(height: 1, color: t.hairline),
+                      CheckboxListTile(
+                        value: state.searchScope
+                            .contains(state.notebooks[i].id),
+                        onChanged: (checked) => _toggleScope(
+                            state.notebooks[i].id, checked ?? false),
+                        title: Text(state.notebooks[i].name),
+                        secondary: Icon(Icons.book_outlined,
+                            size: 18, color: t.inkMuted),
+                        controlAffinity: ListTileControlAffinity.trailing,
+                      ),
+                    ],
+                    if (state.notebooks.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(spaceMd),
+                        child: Text('还没有笔记本',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: t.inkFaint)),
+                      ),
+                  ],
+                ),
+                if (state.searchScope.isNotEmpty) ...[
+                  const SizedBox(height: spaceSm),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => state.setSearchScope({}),
+                      icon: const Icon(Icons.select_all, size: 18),
+                      label: const Text('恢复为搜索全部'),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: spaceLg),
+                _SectionTitle('即将上线'),
+                _SettingCard(children: [
+                  _DisabledRow(
+                      icon: Icons.sync,
+                      title: '同步',
+                      subtitle: 'WebDAV / OSS 增量同步 · 启动 + 手动 + 定时轮询'),
+                  Divider(height: 1, color: t.hairline),
+                  _DisabledRow(
+                      icon: Icons.lock_outline,
+                      title: '加密与锁定',
+                      subtitle: '端到端加密 · 密码 / 生物识别 · 笔记本单独锁定'),
+                  Divider(height: 1, color: t.hairline),
+                  _DisabledRow(
+                      icon: Icons.extension_outlined,
+                      title: '网页剪藏',
+                      subtitle: 'Chrome 插件 · 本地桥接直入应用'),
+                ]),
+                const SizedBox(height: spaceXxl),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: spaceSm),
+      child: Text(label,
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(letterSpacing: -0.1)),
+    );
+  }
+}
+
+class _SettingCard extends StatelessWidget {
+  const _SettingCard({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(radiusLg),
+        border: Border.all(color: t.hairline),
+      ),
+      child: Column(children: children),
+    );
+  }
+}
+
+class _SettingRow extends StatelessWidget {
+  const _SettingRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.action,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String action;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(radiusLg),
+      child: Padding(
+        padding: const EdgeInsets.all(spaceMd),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: t.inkMuted),
+            const SizedBox(width: spaceMd),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: t.inkMuted)),
+                ],
+              ),
+            ),
+            const SizedBox(width: spaceSm),
+            Text(action,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(
+                        color: t.accentText, fontWeight: FontWeight.w600)),
+            Icon(Icons.chevron_right, size: 18, color: t.inkFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DisabledRow extends StatelessWidget {
+  const _DisabledRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return Opacity(
+      opacity: 0.55,
+      child: Padding(
+        padding: const EdgeInsets.all(spaceMd),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: t.inkMuted),
+            const SizedBox(width: spaceMd),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: t.inkMuted)),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: spaceSm, vertical: 3),
+              decoration: BoxDecoration(
+                color: t.surfaceAlt,
+                borderRadius: BorderRadius.circular(radiusSm),
+              ),
+              child: Text('开发中',
+                  style: Theme.of(context).textTheme.labelSmall),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
