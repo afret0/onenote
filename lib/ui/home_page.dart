@@ -413,22 +413,32 @@ class _HomePageState extends State<HomePage> {
                   icon: const Icon(Icons.menu),
                 ),
               Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _searchChanged,
-                  decoration: InputDecoration(
-                    hintText: '搜索标题与正文',
-                    prefixIcon: Icon(Icons.search, color: t.inkFaint, size: 20),
-                    suffixIcon: searching
-                        ? IconButton(
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchHits = null);
-                            },
-                            icon: const Icon(Icons.close, size: 18),
-                          )
-                        : null,
-                  ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    TextField(
+                      controller: _searchController,
+                      onChanged: _searchChanged,
+                      decoration: InputDecoration(
+                        prefixIcon: searching
+                            ? Icon(Icons.search, color: t.inkFaint, size: 20)
+                            : null,
+                        suffixIcon: searching
+                            ? IconButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchHits = null);
+                                },
+                                icon: const Icon(Icons.close, size: 18),
+                              )
+                            : null,
+                      ),
+                    ),
+                    if (!searching)
+                      IgnorePointer(
+                        child: Icon(Icons.search, color: t.inkFaint, size: 20),
+                      ),
+                  ],
                 ),
               ),
             ],

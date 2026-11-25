@@ -112,6 +112,44 @@ void main() {
     expect(find.widgetWithText(NoteCard, 'miss'), findsNothing);
   });
 
+  testWidgets('empty search box has no chinese hint and centers the magnifier',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_search_box');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      final nb = await db.createNotebook('甲');
+      now += 1000;
+      await db.createNote(nb.id, title: 't', content: 'x');
+      now += 1000;
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('搜索标题与正文'), findsNothing);
+    final field = tester.getRect(find.byType(TextField).first);
+    final icon = tester.getRect(find.byIcon(Icons.search));
+    expect((icon.center.dx - field.center.dx).abs() < 1, isTrue);
+    expect((icon.center.dy - field.center.dy).abs() < 1, isTrue);
+  });
+
   testWidgets('opened search hit shows match nav and jumps between matches',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1400, 900);
