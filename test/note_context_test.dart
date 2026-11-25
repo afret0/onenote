@@ -39,7 +39,7 @@ void main() {
       now += 1000;
       first = await db.createNote(work.id,
           title: '锅先生游记', content: 'old content');
-      now += 1000;
+      now += AppDb.versionCoalesceWindowMs;
       await db.saveNote(first.id, '锅先生游记', 'new content');
       await state.init();
     });

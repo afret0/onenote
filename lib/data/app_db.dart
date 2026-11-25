@@ -112,6 +112,7 @@ class AppDb extends _$AppDb {
   static const lastViewNoteKey = 'lastViewNote';
   static const narrowStartupKey = 'narrowStartup';
   static const msPerDay = 86400000;
+  static const versionCoalesceWindowMs = 10 * 60 * 1000;
 
   static QueryExecutor openExecutor() => driftDatabase(
         name: 'onenote',
@@ -290,7 +291,8 @@ class AppDb extends _$AppDb {
   Future<Note> getNote(String id) =>
       (select(notes)..where((t) => t.id.equals(id))).getSingle();
 
-  Future<bool> saveNote(String id, String title, String content) async {
+  Future<bool> saveNote(String id, String title, String content,
+      {bool coalesce = true}) async {
     final current = await getNote(id);
     if (current.title == title && current.content == content) {
       developer.log('skip, 内容未变更不记版本, noteId: $id');
@@ -299,8 +301,25 @@ class AppDb extends _$AppDb {
     final now = clock();
     await (update(notes)..where((t) => t.id.equals(id))).write(NotesCompanion(
         title: Value(title), content: Value(content), updateAt: Value(now)));
+    final latest = await (select(noteVersions)
+          ..where((t) => t.noteId.equals(id))
+          ..orderBy([(t) => OrderingTerm.desc(t.createAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    final latestAge = latest == null ? null : now - latest.createAt;
+    if (coalesce &&
+        latest != null &&
+        now - latest.createAt < versionCoalesceWindowMs) {
+      await (update(noteVersions)..where((t) => t.id.equals(latest.id)))
+          .write(NoteVersionsCompanion(
+              title: Value(title), content: Value(content)));
+      developer.log(
+          'hit, 窗口内改动并入上一版不新增, noteId: $id, versionId: ${latest.id}, 距上一版ms: $latestAge, 窗口ms: $versionCoalesceWindowMs');
+      return true;
+    }
     final versionId = await _insertVersion(id, title, content, now);
-    developer.log('done, 笔记已保存并记版本, noteId: $id, versionId: $versionId');
+    developer.log(
+        'done, 笔记已保存并记新版, noteId: $id, versionId: $versionId, coalesce: $coalesce, 距上一版ms: $latestAge, 窗口ms: $versionCoalesceWindowMs');
     return true;
   }
 
@@ -440,7 +459,7 @@ class AppDb extends _$AppDb {
     final version = await getVersion(versionId);
     developer.log(
         'hit, 恢复历史版本, noteId: $noteId, versionId: $versionId, versionCreateAt: ${version.createAt}');
-    return saveNote(noteId, version.title, version.content);
+    return saveNote(noteId, version.title, version.content, coalesce: false);
   }
 
   Future<String?> getSetting(String key) async =>

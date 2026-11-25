@@ -29,20 +29,36 @@ void main() {
     expect(await db.listVersions(note.id), hasLength(1));
   });
 
-  test('save with changed content records a version and bumps updateAt',
+  test('save within window coalesces into latest version, keeps createAt',
       () async {
     final (_, note) = await seedNote();
+    final createdAt = now;
     now += 1000;
     final changed = await db.saveNote(note.id, 'first', 'hello again');
     expect(changed, isTrue);
     final versions = await db.listVersions(note.id);
-    expect(versions, hasLength(2));
-    expect(versions.first.content, 'hello again');
+    expect(versions, hasLength(1));
+    expect(versions.single.content, 'hello again');
+    expect(versions.single.createAt, createdAt);
     expect((await db.getNote(note.id)).updateAt, now);
+  });
+
+  test('save at or beyond window cuts a new version', () async {
+    final (_, note) = await seedNote();
+    now += AppDb.versionCoalesceWindowMs - 1;
+    await db.saveNote(note.id, 'first', 'edge inside');
+    expect(await db.listVersions(note.id), hasLength(1));
+    now += 1;
+    await db.saveNote(note.id, 'first', 'edge exact');
+    final versions = await db.listVersions(note.id);
+    expect(versions, hasLength(2));
+    expect(versions.first.content, 'edge exact');
+    expect(versions.first.createAt, now);
   });
 
   test('title-only change also records a version', () async {
     final (_, note) = await seedNote();
+    now += AppDb.versionCoalesceWindowMs;
     final changed = await db.saveNote(note.id, 'renamed', 'hello world');
     expect(changed, isTrue);
     expect(await db.listVersions(note.id), hasLength(2));
@@ -120,9 +136,11 @@ void main() {
     expect(await db.listTrash(), isEmpty);
   });
 
-  test('restoreVersion reverts content and keeps history linear', () async {
+  test('restoreVersion reverts content and always cuts a new version',
+      () async {
     final (_, note) = await seedNote();
     final original = (await db.listVersions(note.id)).single;
+    now += AppDb.versionCoalesceWindowMs;
     await db.saveNote(note.id, 'first', 'changed');
     now += 5000;
     final reverted = await db.restoreVersion(note.id, original.id);
@@ -193,6 +211,7 @@ void main() {
     final idC = 'c' * 64;
     final (notebook, note) =
         await seedNote(content: '![img](onenote-asset://$idA)');
+    now += AppDb.versionCoalesceWindowMs;
     await db.saveNote(note.id, 'first', '![img](onenote-asset://$idB)');
     final other =
         await db.createNote(notebook.id, title: 't', content: '[f](onenote-asset://$idC)');

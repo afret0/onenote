@@ -23,7 +23,7 @@
 - 层级两级：笔记本 → 笔记；**非空笔记本禁止删除**（回收站里的笔记也算非空）。
 - 笔记默认渲染（flutter_markdown_plus），点「编辑」才进源码编辑；**进入编辑前先同步一次**（同步引擎未落地，失败时放行离线编辑）。无 vim。
 - **todo 清单（2026-11-25 用户拍板）**：`- [ ]`/`- [x]` 渲染为复选框而非圆点；渲染态点复选框切换 `[ ]`↔`[x]` 写回源码，走既有 800ms 防抖自动保存（内容变化按 saveNote 语义记版本）；点击热区仅复选框本身，正文保持可选中。序号 = li 后序遍历（嵌套列表子先父后），与 checkboxBuilder 调用序一致；源码行定位用「逐候选行翻转重解析、比对哪个序号状态变化」的 oracle 法，天然跳过代码块里的似任务行。
-- 保存自动落库（800ms 防抖 + 完成/返回时保存）；`AppDb.saveNote` 先比对 title+content，**内容不变绝不记版本**。
+- 保存自动落库（800ms 防抖 + 完成/返回时保存）；`AppDb.saveNote` 先比对 title+content，**内容不变绝不记版本**。**10 分钟窗口合并（2026-11-25 用户拍板）**：距最近一版 createAt 不足 `versionCoalesceWindowMs`（10 分钟）的改动**原地并入该版**（更新 title/content，createAt 锚定该版首次记录时刻），满窗才切新版；**恢复历史版本走 `coalesce: false` 总是单独记新版**（方便反悔）。
 - 版本历史仅存本地（省同步流量），保留 90 天；回收站软删除保留 90 天。两者天数可在设置页改（settings 表 `versionRetentionDays` / `trashRetentionDays`，缺省 90）。清理在启动 + 轮询时顺带跑（`AppDb.purgeExpired`）。
 - 搜索默认全部笔记本，可多选范围（settings 表 `searchScope`，逗号分隔 id，**空 = 全部**）；回收站笔记不进搜索结果。
 - **三栏布局与打开记忆（2026-11-25 用户拍板）**：宽屏（≥900）三栏 = 笔记本侧栏 268 + 笔记列表 320 + 内容区；**每本笔记本记住上次打开的笔记**（settings 表 `lastOpenNote:<notebookId>`，「全部」用伪 key `lastOpenNote:all`），**只记用户手动打开**（openNote），自动打开不写记忆。**自动打开只属于宽屏 UI**：HomePage build 里宽屏、无打开笔记、非搜索、非回收站且列表非空时 post-frame 调 `state.autoOpenCurrentScope()`；init/selectScope/trashNote 本身不做自动打开（openNoteId 置 null），记忆笔记须仍在当前列表否则回退第一篇，覆盖启动/切本/窄转宽三种时机。回收站永不自动打开。**窄屏（<900）使用中不自动打开、先看列表**（用户 2026-11-25 追问拍板），Drawer + 列表↔内容切换不变；宽屏把打开中的笔记移入回收站后由自动打开回退到第一篇，窄屏则返回列表。删除笔记本清对应记忆 key。内容区滚动位置只做会话内记忆（PageStorageKey `noteScroll:<noteId>`），不持久化。
