@@ -519,55 +519,44 @@ class _NoteViewState extends State<NoteView> {
                   icon: const Icon(Icons.attach_file),
                 ),
               ],
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_horiz),
-                onSelected: (value) {
-                  if (value == 'history') {
-                    _showHistory();
-                  } else if (value == 'trash') {
-                    _trash();
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'history', child: Text('版本历史')),
-                  if (!_editing)
-                    const PopupMenuItem(
-                        value: 'trash', child: Text('移入回收站')),
-                ],
-              ),
-              const SizedBox(width: spaceXs),
-              _editing
-                  ? FilledButton.icon(
-                      onPressed: _exitEdit,
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('完成'),
-                    )
-                  : SizedBox(
-                      height: 40,
-                      width: 40,
-                      child: OutlinedButton(
-                        onPressed: _enterEdit,
-                        style: ButtonStyle(
-                          padding:
-                              const WidgetStatePropertyAll(EdgeInsets.zero),
-                          mouseCursor: const WidgetStatePropertyAll(
-                            SystemMouseCursors.click,
-                          ),
-                          foregroundColor:
-                              WidgetStatePropertyAll(t.accentText),
-                          overlayColor: WidgetStatePropertyAll(t.accentSoft),
-                          side: WidgetStatePropertyAll(
-                            BorderSide(color: t.hairline),
-                          ),
-                          shape: WidgetStatePropertyAll(
-                            RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(radiusMd),
-                            ),
+              if (_editing) ...[
+                _moreMenu(withTrash: false),
+                const SizedBox(width: spaceXs),
+                FilledButton.icon(
+                  onPressed: _exitEdit,
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('完成'),
+                ),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(right: spaceXs),
+                  child: SizedBox(
+                    height: 40,
+                    width: 48,
+                    child: OutlinedButton(
+                      onPressed: _enterEdit,
+                      style: ButtonStyle(
+                        padding:
+                            const WidgetStatePropertyAll(EdgeInsets.zero),
+                        mouseCursor: const WidgetStatePropertyAll(
+                          SystemMouseCursors.click,
+                        ),
+                        foregroundColor:
+                            WidgetStatePropertyAll(t.accentText),
+                        overlayColor: WidgetStatePropertyAll(t.accentSoft),
+                        side: WidgetStatePropertyAll(
+                          BorderSide(color: t.hairline),
+                        ),
+                        shape: WidgetStatePropertyAll(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(radiusMd),
                           ),
                         ),
-                        child: const Icon(Icons.edit_outlined, size: 18),
                       ),
+                      child: const Icon(Icons.edit_outlined, size: 18),
                     ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -613,6 +602,8 @@ class _NoteViewState extends State<NoteView> {
                                         style: Theme.of(context)
                                             .textTheme
                                             .labelSmall),
+                                    const Spacer(),
+                                    _moreMenu(compact: true),
                                   ],
                                 ),
                               ),
@@ -644,6 +635,30 @@ class _NoteViewState extends State<NoteView> {
                   ],
                 ),
         ),
+      ],
+    );
+  }
+
+  Widget _moreMenu({bool compact = false, bool withTrash = true}) {
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_horiz, size: compact ? 18 : 24),
+      iconSize: compact ? 18 : 24,
+      padding: compact ? EdgeInsets.zero : const EdgeInsets.all(8),
+      constraints: compact
+          ? const BoxConstraints.tightFor(width: 28, height: 28)
+          : null,
+      splashRadius: compact ? 14 : null,
+      onSelected: (value) {
+        if (value == 'history') {
+          _showHistory();
+        } else if (value == 'trash') {
+          _trash();
+        }
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(value: 'history', child: Text('版本历史')),
+        if (withTrash)
+          const PopupMenuItem(value: 'trash', child: Text('移入回收站')),
       ],
     );
   }
