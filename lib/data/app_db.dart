@@ -87,6 +87,9 @@ class AppDb extends _$AppDb {
   static const searchScopeKey = 'searchScope';
   static const paneWidthSidebarKey = 'paneWidth:sidebar';
   static const paneWidthListKey = 'paneWidth:list';
+  static const uiFontKey = 'uiFont';
+  static const uiFontScaleKey = 'uiFontScale';
+  static const noteFontSizeKey = 'noteFontSize';
   static const lastOpenNotePrefix = 'lastOpenNote:';
   static const allNotesScopeKey = 'all';
   static const msPerDay = 86400000;

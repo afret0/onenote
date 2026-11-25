@@ -269,7 +269,7 @@ class _NoteViewState extends State<NoteView> {
         style: TextStyle(
           fontFamily: monoFamily,
           fontFamilyFallback: cjkMonoFallback,
-          fontSize: 15,
+          fontSize: t.noteFontSize * t.fontScale,
           height: 1.75,
           color: t.ink,
         ),
@@ -497,7 +497,7 @@ class _NoteViewState extends State<NoteView> {
       Theme.of(context).textTheme.titleLarge?.copyWith(
             fontFamily: serifFamily,
             fontFamilyFallback: cjkSerifFallback,
-            fontSize: 22,
+            fontSize: 22 * inkOf(context).fontScale,
           );
 }
 

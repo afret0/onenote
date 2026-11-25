@@ -48,12 +48,25 @@ class _OneNoteAppState extends State<OneNoteApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'onenote',
-      theme: buildInkTheme(Brightness.light),
-      darkTheme: buildInkTheme(Brightness.dark),
-      themeMode: ThemeMode.dark,
-      home: HomePage(state: state),
+    return ListenableBuilder(
+      listenable: state,
+      builder: (context, _) {
+        final sans =
+            state.uiFont == AppState.uiFontInter ? interFamily : miSansFamily;
+        return MaterialApp(
+          title: 'onenote',
+          theme: buildInkTheme(Brightness.light,
+              sans: sans,
+              fontScale: state.fontScale,
+              noteFontSize: state.noteFontSize),
+          darkTheme: buildInkTheme(Brightness.dark,
+              sans: sans,
+              fontScale: state.fontScale,
+              noteFontSize: state.noteFontSize),
+          themeMode: ThemeMode.dark,
+          home: HomePage(state: state),
+        );
+      },
     );
   }
 }

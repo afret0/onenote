@@ -199,4 +199,47 @@ void main() {
     expect(state.sidebarWidth, AppState.sidebarDefaultWidth);
     expect(state.listWidth, AppState.listMinWidth);
   });
+
+  test('typography defaults to MiSans 100% and 18px', () async {
+    await state.init();
+    expect(state.uiFont, AppState.uiFontMiSans);
+    expect(state.fontScale, AppState.fontScaleDefault);
+    expect(state.noteFontSize, AppState.noteFontSizeDefault);
+  });
+
+  test('typography settings persist across restart and clamp updates',
+      () async {
+    await state.init();
+    await state.setUiFont(AppState.uiFontInter);
+    state.updateFontScale(1.2);
+    state.updateNoteFontSize(20.4);
+    expect(state.noteFontSize, 20);
+    state.updateFontScale(9);
+    expect(state.fontScale, AppState.fontScaleMax);
+    state.updateNoteFontSize(1);
+    expect(state.noteFontSize, AppState.noteFontSizeMin);
+    await state.persistFontSizes();
+
+    final restarted = await restartedState();
+    expect(restarted.uiFont, AppState.uiFontInter);
+    expect(restarted.fontScale, AppState.fontScaleMax);
+    expect(restarted.noteFontSize, AppState.noteFontSizeMin);
+  });
+
+  test('invalid persisted typography falls back or clamps', () async {
+    await db.setSetting(AppDb.uiFontKey, 'comic-sans');
+    await db.setSetting(AppDb.uiFontScaleKey, 'oops');
+    await db.setSetting(AppDb.noteFontSizeKey, '99');
+    await state.init();
+    expect(state.uiFont, AppState.uiFontMiSans);
+    expect(state.fontScale, AppState.fontScaleDefault);
+    expect(state.noteFontSize, AppState.noteFontSizeMax);
+  });
+
+  test('setUiFont rejects unknown ids without touching state', () async {
+    await state.init();
+    await state.setUiFont('bogus');
+    expect(state.uiFont, AppState.uiFontMiSans);
+    expect(await db.getSetting(AppDb.uiFontKey), isNull);
+  });
 }

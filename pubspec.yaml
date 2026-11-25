@@ -103,3 +103,13 @@ flutter:
           weight: 500
         - asset: assets/fonts/JetBrainsMono-700.ttf
           weight: 700
+    - family: MiSans
+      fonts:
+        - asset: assets/fonts/MiSans-400.ttf
+          weight: 400
+        - asset: assets/fonts/MiSans-500.ttf
+          weight: 500
+        - asset: assets/fonts/MiSans-600.ttf
+          weight: 600
+        - asset: assets/fonts/MiSans-700.ttf
+          weight: 700

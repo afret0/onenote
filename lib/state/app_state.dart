@@ -30,6 +30,14 @@ class AppState extends ChangeNotifier {
   static const listMaxWidth = 480.0;
   static const listDefaultWidth = 320.0;
   static const contentMinWidth = 360.0;
+  static const uiFontInter = 'inter';
+  static const uiFontMiSans = 'misans';
+  static const fontScaleMin = 0.85;
+  static const fontScaleMax = 1.4;
+  static const fontScaleDefault = 1.0;
+  static const noteFontSizeMin = 14.0;
+  static const noteFontSizeMax = 24.0;
+  static const noteFontSizeDefault = 18.0;
 
   final AppDb db;
 
@@ -43,6 +51,9 @@ class AppState extends ChangeNotifier {
   Map<String, String> lastOpenNote = {};
   double sidebarWidth = sidebarDefaultWidth;
   double listWidth = listDefaultWidth;
+  String uiFont = uiFontMiSans;
+  double fontScale = fontScaleDefault;
+  double noteFontSize = noteFontSizeDefault;
 
   Future<void> init() async {
     if (!kIsWeb) {
@@ -52,10 +63,20 @@ class AppState extends ChangeNotifier {
       developer.log('skip, web 端附件存储未启用, 原因: 附件随同步阶段支持 web');
     }
     notebooks = await db.listNotebooks();
-    sidebarWidth = _loadedWidth(await db.getSetting(AppDb.paneWidthSidebarKey),
+    sidebarWidth = _loadedDouble(await db.getSetting(AppDb.paneWidthSidebarKey),
         sidebarDefaultWidth, sidebarMinWidth, sidebarMaxWidth);
-    listWidth = _loadedWidth(await db.getSetting(AppDb.paneWidthListKey),
+    listWidth = _loadedDouble(await db.getSetting(AppDb.paneWidthListKey),
         listDefaultWidth, listMinWidth, listMaxWidth);
+    final savedFont = await db.getSetting(AppDb.uiFontKey);
+    if (savedFont == uiFontInter || savedFont == uiFontMiSans) {
+      uiFont = savedFont!;
+    } else if (savedFont != null) {
+      developer.log('skip, 字体设置非法回退默认, raw: $savedFont, fallback: $uiFont');
+    }
+    fontScale = _loadedDouble(await db.getSetting(AppDb.uiFontScaleKey),
+        fontScaleDefault, fontScaleMin, fontScaleMax);
+    noteFontSize = _loadedDouble(await db.getSetting(AppDb.noteFontSizeKey),
+        noteFontSizeDefault, noteFontSizeMin, noteFontSizeMax);
     final saved = await db.getSetting(AppDb.searchScopeKey);
     if (saved != null && saved.isNotEmpty) {
       searchScope = saved
@@ -217,6 +238,48 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setUiFont(String font) async {
+    if (font != uiFontInter && font != uiFontMiSans) {
+      developer.log('skip, 未知字体标识不写入, font: $font');
+      return;
+    }
+    if (font == uiFont) {
+      return;
+    }
+    uiFont = font;
+    await db.setSetting(AppDb.uiFontKey, font);
+    developer.log('done, 界面字体已切换, uiFont: $font');
+    notifyListeners();
+  }
+
+  void updateFontScale(double scale) {
+    final next =
+        (scale.clamp(fontScaleMin, fontScaleMax) * 100).roundToDouble() / 100;
+    if (next == fontScale) {
+      return;
+    }
+    fontScale = next;
+    notifyListeners();
+  }
+
+  void updateNoteFontSize(double size) {
+    final next = size.clamp(noteFontSizeMin, noteFontSizeMax).roundToDouble();
+    if (next == noteFontSize) {
+      return;
+    }
+    noteFontSize = next;
+    notifyListeners();
+  }
+
+  Future<void> persistFontSizes() async {
+    await db.setSetting(
+        AppDb.uiFontScaleKey, fontScale.toStringAsFixed(2));
+    await db.setSetting(
+        AppDb.noteFontSizeKey, noteFontSize.round().toString());
+    developer.log(
+        'done, 字号设置已持久化, fontScale: $fontScale, noteFontSize: $noteFontSize');
+  }
+
   Future<void> persistPaneWidths() async {
     await db.setSetting(
         AppDb.paneWidthSidebarKey, sidebarWidth.round().toString());
@@ -225,11 +288,11 @@ class AppState extends ChangeNotifier {
         'done, 栏宽已持久化, sidebar: $sidebarWidth, list: $listWidth');
   }
 
-  double _loadedWidth(String? raw, double fallback, double min, double max) {
+  double _loadedDouble(String? raw, double fallback, double min, double max) {
     final parsed = raw == null ? null : double.tryParse(raw);
     if (parsed == null || parsed.isNaN || parsed.isInfinite) {
       if (raw != null) {
-        developer.log('skip, 栏宽设置非法回退默认, raw: $raw, fallback: $fallback');
+        developer.log('skip, 数值设置非法回退默认, raw: $raw, fallback: $fallback');
       }
       return fallback;
     }

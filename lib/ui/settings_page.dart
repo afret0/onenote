@@ -55,6 +55,47 @@ class _SettingsPageState extends State<SettingsPage> {
     await _loadRetention();
   }
 
+  Future<void> _pickFont() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('界面字体'),
+        children: [
+          for (final option in const [
+            (AppState.uiFontMiSans, 'MiSans', '小米开源字体，中文原生支持'),
+            (AppState.uiFontInter, 'Inter', '拉丁字体，中文走系统字体'),
+          ])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, option.$1),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(option.$2,
+                            style: Theme.of(context).textTheme.bodyMedium),
+                        Text(option.$3,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: inkOf(context).inkMuted)),
+                      ],
+                    ),
+                  ),
+                  if (state.uiFont == option.$1)
+                    Icon(Icons.check, size: 18, color: inkOf(context).accentText),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      await state.setUiFont(picked);
+    }
+  }
+
   Future<void> _toggleScope(String notebookId, bool checked) async {
     final next = {...state.searchScope};
     if (checked) {
@@ -81,6 +122,45 @@ class _SettingsPageState extends State<SettingsPage> {
             child: ListView(
               padding: const EdgeInsets.all(spaceLg),
               children: [
+                _SectionTitle('字体'),
+                _SettingCard(children: [
+                  _SettingRow(
+                    icon: Icons.font_download_outlined,
+                    title: '界面字体',
+                    subtitle: '本应用包含小米 MiSans 字体，依其许可免费商用',
+                    action: state.uiFont == AppState.uiFontInter
+                        ? 'Inter'
+                        : 'MiSans',
+                    onTap: _pickFont,
+                  ),
+                  Divider(height: 1, color: t.hairline),
+                  _SliderRow(
+                    icon: Icons.format_size,
+                    title: '全局字号',
+                    subtitle: '标题栏 / 笔记本栏 / 列表 / 正文等比缩放',
+                    value: state.fontScale,
+                    min: AppState.fontScaleMin,
+                    max: AppState.fontScaleMax,
+                    divisions: 11,
+                    valueLabel: '${(state.fontScale * 100).round()}%',
+                    onChanged: state.updateFontScale,
+                    onChangeEnd: (_) => state.persistFontSizes(),
+                  ),
+                  Divider(height: 1, color: t.hairline),
+                  _SliderRow(
+                    icon: Icons.subject,
+                    title: '笔记正文字号',
+                    subtitle: '渲染与编辑生效，正文内标题按原比例联动',
+                    value: state.noteFontSize,
+                    min: AppState.noteFontSizeMin,
+                    max: AppState.noteFontSizeMax,
+                    divisions: 10,
+                    valueLabel: '${state.noteFontSize.round()}px',
+                    onChanged: state.updateNoteFontSize,
+                    onChangeEnd: (_) => state.persistFontSizes(),
+                  ),
+                ]),
+                const SizedBox(height: spaceLg),
                 _SectionTitle('数据保留'),
                 _SettingCard(children: [
                   _SettingRow(
@@ -271,6 +351,86 @@ class _SettingRow extends StatelessWidget {
             Icon(Icons.chevron_right, size: 18, color: t.inkFaint),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SliderRow extends StatelessWidget {
+  const _SliderRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.valueLabel,
+    required this.onChanged,
+    required this.onChangeEnd,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String valueLabel;
+  final ValueChanged<double> onChanged;
+  final ValueChanged<double> onChangeEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return Padding(
+      padding: const EdgeInsets.all(spaceMd),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(icon, size: 20, color: t.inkMuted),
+          ),
+          const SizedBox(width: spaceMd),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(title,
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ),
+                    Text(valueLabel,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(
+                                color: t.accentText,
+                                fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: t.inkMuted)),
+                Slider(
+                  value: value,
+                  min: min,
+                  max: max,
+                  divisions: divisions,
+                  onChanged: onChanged,
+                  onChangeEnd: onChangeEnd,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

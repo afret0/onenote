@@ -37,17 +37,18 @@ class MarkdownView extends StatelessWidget {
       fontWeight: FontWeight.w700,
       letterSpacing: -0.3,
     );
+    final contentScale = t.noteFontSize * t.fontScale / 16;
     final body = TextStyle(
-      fontFamily: sansFamily,
+      fontFamily: t.sans,
       fontFamilyFallback: cjkSansFallback,
-      fontSize: 16,
+      fontSize: 16 * contentScale,
       height: 1.8,
       color: t.ink,
     );
     final mono = TextStyle(
       fontFamily: monoFamily,
       fontFamilyFallback: cjkMonoFallback,
-      fontSize: 13.5,
+      fontSize: 13.5 * contentScale,
       height: 1.6,
       color: t.ink,
     );
@@ -74,10 +75,10 @@ class MarkdownView extends StatelessWidget {
           : {'img': AttachmentImageBuilder(store)},
       styleSheet: MarkdownStyleSheet(
         p: body,
-        h1: headingSerif.copyWith(fontSize: 30, height: 1.3),
-        h2: headingSerif.copyWith(fontSize: 24, height: 1.35),
-        h3: headingSerif.copyWith(fontSize: 20, height: 1.4),
-        h4: headingSerif.copyWith(fontSize: 17, height: 1.4),
+        h1: headingSerif.copyWith(fontSize: 30 * contentScale, height: 1.3),
+        h2: headingSerif.copyWith(fontSize: 24 * contentScale, height: 1.35),
+        h3: headingSerif.copyWith(fontSize: 20 * contentScale, height: 1.4),
+        h4: headingSerif.copyWith(fontSize: 17 * contentScale, height: 1.4),
         h1Padding: const EdgeInsets.only(top: spaceSm, bottom: spaceMd),
         h2Padding: const EdgeInsets.only(top: spaceMd, bottom: spaceSm),
         h3Padding: const EdgeInsets.only(top: spaceMd, bottom: spaceSm),
@@ -93,7 +94,7 @@ class MarkdownView extends StatelessWidget {
         blockquotePadding:
             const EdgeInsets.symmetric(horizontal: spaceMd, vertical: spaceSm),
         code: mono.copyWith(
-            backgroundColor: t.surfaceAlt, fontSize: 13),
+            backgroundColor: t.surfaceAlt, fontSize: 13 * contentScale),
         codeblockDecoration: BoxDecoration(
           color: t.surfaceAlt,
           borderRadius: BorderRadius.circular(radiusMd),

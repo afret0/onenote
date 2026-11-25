@@ -15,6 +15,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
     required this.onAccent,
     required this.danger,
     required this.navy,
+    this.sans = miSansFamily,
+    this.fontScale = 1.0,
+    this.noteFontSize = 18,
   });
 
   final Color paper;
@@ -30,6 +33,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
   final Color onAccent;
   final Color danger;
   final Color navy;
+  final String sans;
+  final double fontScale;
+  final double noteFontSize;
 
   static const light = InkTokens(
     paper: Color(0xFFF7F5F8),
@@ -78,6 +84,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
     Color? onAccent,
     Color? danger,
     Color? navy,
+    String? sans,
+    double? fontScale,
+    double? noteFontSize,
   }) =>
       InkTokens(
         paper: paper ?? this.paper,
@@ -93,6 +102,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
         onAccent: onAccent ?? this.onAccent,
         danger: danger ?? this.danger,
         navy: navy ?? this.navy,
+        sans: sans ?? this.sans,
+        fontScale: fontScale ?? this.fontScale,
+        noteFontSize: noteFontSize ?? this.noteFontSize,
       );
 
   @override
@@ -114,6 +126,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
       navy: Color.lerp(navy, other.navy, t)!,
+      sans: t < 0.5 ? sans : other.sans,
+      fontScale: fontScale + (other.fontScale - fontScale) * t,
+      noteFontSize: noteFontSize + (other.noteFontSize - noteFontSize) * t,
     );
   }
 }
@@ -121,7 +136,8 @@ class InkTokens extends ThemeExtension<InkTokens> {
 InkTokens inkOf(BuildContext context) =>
     Theme.of(context).extension<InkTokens>()!;
 
-const sansFamily = 'Inter';
+const interFamily = 'Inter';
+const miSansFamily = 'MiSans';
 const monoFamily = 'JetBrainsMono';
 const serifFamily = 'Georgia';
 
@@ -166,8 +182,16 @@ const radiusSm = 8.0;
 const radiusMd = 12.0;
 const radiusLg = 16.0;
 
-ThemeData buildInkTheme(Brightness brightness) {
-  final tokens = brightness == Brightness.light ? InkTokens.light : InkTokens.dark;
+ThemeData buildInkTheme(
+  Brightness brightness, {
+  String sans = miSansFamily,
+  double fontScale = 1.0,
+  double noteFontSize = 18,
+}) {
+  final tokens = (brightness == Brightness.light
+          ? InkTokens.light
+          : InkTokens.dark)
+      .copyWith(sans: sans, fontScale: fontScale, noteFontSize: noteFontSize);
   final base = ThemeData(brightness: brightness, useMaterial3: true);
   final scheme = base.colorScheme.copyWith(
     primary: tokens.accent,
@@ -178,12 +202,6 @@ ThemeData buildInkTheme(Brightness brightness) {
     outline: tokens.hairline,
   );
   final textTheme = base.textTheme
-      .apply(
-        fontFamily: sansFamily,
-        fontFamilyFallback: cjkSansFallback,
-        bodyColor: tokens.ink,
-        displayColor: tokens.ink,
-      )
       .copyWith(
         titleLarge: base.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700, letterSpacing: -0.2),
@@ -195,6 +213,13 @@ ThemeData buildInkTheme(Brightness brightness) {
             fontSize: 13, color: tokens.inkMuted, height: 1.5),
         labelSmall: base.textTheme.labelSmall?.copyWith(
             color: tokens.inkFaint, letterSpacing: 0.3),
+      )
+      .apply(
+        fontFamily: sans,
+        fontFamilyFallback: cjkSansFallback,
+        bodyColor: tokens.ink,
+        displayColor: tokens.ink,
+        fontSizeFactor: fontScale,
       );
   return base.copyWith(
     colorScheme: scheme,
@@ -208,7 +233,7 @@ ThemeData buildInkTheme(Brightness brightness) {
         color: tokens.navy,
         borderRadius: BorderRadius.circular(radiusSm),
       ),
-      textStyle: const TextStyle(color: Color(0xFFF2EEE6), fontSize: 12),
+      textStyle: TextStyle(color: const Color(0xFFF2EEE6), fontSize: 12 * fontScale),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -237,8 +262,8 @@ ThemeData buildInkTheme(Brightness brightness) {
         padding: const EdgeInsets.symmetric(horizontal: spaceLg),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusMd)),
-        textStyle: const TextStyle(
-            fontFamily: sansFamily,
+        textStyle: TextStyle(
+            fontFamily: sans,
             fontFamilyFallback: cjkSansFallback,
             fontWeight: FontWeight.w600),
       ),
@@ -247,8 +272,8 @@ ThemeData buildInkTheme(Brightness brightness) {
       style: TextButton.styleFrom(
         foregroundColor: tokens.accent,
         minimumSize: const Size(0, 44),
-        textStyle: const TextStyle(
-            fontFamily: sansFamily,
+        textStyle: TextStyle(
+            fontFamily: sans,
             fontFamilyFallback: cjkSansFallback,
             fontWeight: FontWeight.w600),
       ),
@@ -268,10 +293,10 @@ ThemeData buildInkTheme(Brightness brightness) {
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: tokens.navy,
-      contentTextStyle: const TextStyle(
-          fontFamily: sansFamily,
+      contentTextStyle: TextStyle(
+          fontFamily: sans,
           fontFamilyFallback: cjkSansFallback,
-          color: Color(0xFFF2EEE6)),
+          color: const Color(0xFFF2EEE6)),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusMd)),
