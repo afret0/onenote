@@ -20,6 +20,8 @@ import 'markdown_view.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
+const _noteColumnWidth = 760.0;
+
 class NoteView extends StatefulWidget {
   const NoteView({
     super.key,
@@ -390,8 +392,47 @@ class _NoteViewState extends State<NoteView> {
         ),
       ),
     );
+    final area = Column(
+      children: [
+        Container(
+          color: t.paper,
+          padding:
+              const EdgeInsets.fromLTRB(spaceLg, spaceLg, spaceLg, spaceLg),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _noteColumnWidth),
+              child: _metaRow(
+                _note!,
+                Padding(
+                  padding: const EdgeInsets.only(right: spaceXs),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () => _pickFiles(image: true),
+                        icon: const Icon(Icons.image_outlined),
+                      ),
+                      IconButton(
+                        onPressed: () => _pickFiles(image: false),
+                        icon: const Icon(Icons.attach_file),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _exitEdit,
+                        icon: const Icon(Icons.check, size: 18),
+                        label: const Text('完成'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Expanded(child: editor),
+      ],
+    );
     if (kIsWeb) {
-      return editor;
+      return area;
     }
     return DropTarget(
       onDrop: _onDrop,
@@ -405,7 +446,7 @@ class _NoteViewState extends State<NoteView> {
             _handlePaste();
           },
         },
-        child: editor,
+        child: area,
       ),
     );
   }
@@ -516,22 +557,6 @@ class _NoteViewState extends State<NoteView> {
                   child: Text(_saveStatus,
                       style: Theme.of(context).textTheme.labelSmall),
                 ),
-              if (_editing) ...[
-                IconButton(
-                  onPressed: () => _pickFiles(image: true),
-                  icon: const Icon(Icons.image_outlined),
-                ),
-                IconButton(
-                  onPressed: () => _pickFiles(image: false),
-                  icon: const Icon(Icons.attach_file),
-                ),
-              ],
-              if (_editing)
-                FilledButton.icon(
-                  onPressed: _exitEdit,
-                  icon: const Icon(Icons.check, size: 18),
-                  label: const Text('完成'),
-                ),
             ],
           ),
         ),
@@ -550,37 +575,15 @@ class _NoteViewState extends State<NoteView> {
                           spaceLg, spaceLg, spaceLg, spaceXxl),
                       child: Center(
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 760),
+                          constraints:
+                              const BoxConstraints(maxWidth: _noteColumnWidth),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Padding(
                                 padding:
                                     const EdgeInsets.only(bottom: spaceLg),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                          color: Color(state
-                                              .notebookColor(note.notebookId)),
-                                          shape: BoxShape.circle),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(state.notebookName(note.notebookId),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelSmall),
-                                    const SizedBox(width: spaceMd),
-                                    Text(formatDateTime(note.updateAt),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelSmall),
-                                    const Spacer(),
-                                    _editButton(t),
-                                  ],
-                                ),
+                                child: _metaRow(note, _editButton(t)),
                               ),
                               MarkdownView(
                                 content: note.content,
@@ -596,16 +599,30 @@ class _NoteViewState extends State<NoteView> {
                       ),
                     ),
                     if (_showScrollTop)
-                      Positioned(
-                        right: spaceLg,
-                        bottom: spaceLg,
-                        child: _scrollTopButton(t),
+                      Positioned.fill(
+                        child: _readingColumnOverlay(
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                  right: spaceXs, bottom: spaceLg),
+                              child: _scrollTopButton(t),
+                            ),
+                          ),
+                        ),
                       ),
                     if (!_editing && _highlight.matches.isNotEmpty)
-                      Positioned(
-                        right: spaceLg,
-                        bottom: spaceLg + 52,
-                        child: _matchNav(t),
+                      Positioned.fill(
+                        child: _readingColumnOverlay(
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                  right: spaceXs, bottom: spaceLg + 52),
+                              child: _matchNav(t),
+                            ),
+                          ),
+                        ),
                       ),
                   ],
                 ),
@@ -639,6 +656,40 @@ class _NoteViewState extends State<NoteView> {
             ),
           ),
           child: const Icon(Icons.edit_outlined, size: 18),
+        ),
+      ),
+    );
+  }
+
+  Widget _metaRow(Note note, Widget trailing) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+              color: Color(state.notebookColor(note.notebookId)),
+              shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(state.notebookName(note.notebookId),
+            style: Theme.of(context).textTheme.labelSmall),
+        const SizedBox(width: spaceMd),
+        Text(formatDateTime(note.updateAt),
+            style: Theme.of(context).textTheme.labelSmall),
+        const Spacer(),
+        trailing,
+      ],
+    );
+  }
+
+  Widget _readingColumnOverlay(Widget child) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: spaceLg),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _noteColumnWidth),
+          child: child,
         ),
       ),
     );

@@ -121,4 +121,46 @@ void main() {
     expect(controller.position.pixels, 0);
     expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
   });
+
+  testWidgets('edit actions sit on the meta row at the edit button position',
+      (tester) async {
+    final (state, note) = await seed(tester, 'hello');
+    await tester.pumpWidget(app(state, note));
+    await tester.pumpAndSettle();
+
+    final editRight = tester.getTopRight(find.byType(OutlinedButton)).dx;
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('完成'), findsOneWidget);
+    final done = find.byType(FilledButton);
+    expect(tester.getTopRight(done).dx, moreOrLessEquals(editRight, epsilon: 1));
+    final headerY = tester.getTopLeft(find.byType(TextField).first).dy;
+    expect(tester.getTopLeft(done).dy, greaterThan(headerY));
+    expect(find.byIcon(Icons.image_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.attach_file), findsOneWidget);
+  });
+
+  testWidgets('scroll-top button aligns with the edit button right edge',
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final content = List.generate(150, (i) => 'line $i').join('\n\n');
+    final (state, note) = await seed(tester, content);
+    await tester.pumpWidget(app(state, note));
+    await tester.pumpAndSettle();
+
+    final editRight = tester.getTopRight(find.byType(OutlinedButton)).dx;
+    final controller = renderScroll(tester).controller!;
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    final up = find.bySemanticsLabel('回到顶部');
+    expect(up, findsOneWidget);
+    final viewportWidth = tester.getSize(find.byType(NoteView)).width;
+    final upRight = tester.getTopRight(up).dx;
+    expect(upRight, moreOrLessEquals(editRight, epsilon: 1));
+    expect(upRight, lessThan(viewportWidth - spaceLg));
+  });
 }
