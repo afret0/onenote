@@ -11,6 +11,12 @@ class TaskCheckboxHoistSyntax extends BlockSyntax {
   RegExp get pattern => delegate.pattern;
 
   @override
+  bool canParse(BlockParser parser) => delegate.canParse(parser);
+
+  @override
+  bool canEndBlock(BlockParser parser) => delegate.canEndBlock(parser);
+
+  @override
   Node? parse(BlockParser parser) {
     final node = delegate.parse(parser);
     _hoistCheckboxes(node);

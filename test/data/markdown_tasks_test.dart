@@ -68,4 +68,10 @@ void main() {
     expect(markdownTaskMarkerPosition('- [ ] a', 1), isNull);
     expect(markdownTaskMarkerPosition('plain text', 0), isNull);
   });
+
+  test('thematic breaks do not stall the hoist syntax', () {
+    expect(markdownTaskStates('* * *\n\n- [ ] a\n\n***\n\n- [x] b'),
+        [false, true]);
+    expect(markdownTaskStates('- - -\n\n1. [ ] a'), [false]);
+  });
 }
