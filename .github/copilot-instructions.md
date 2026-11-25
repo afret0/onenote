@@ -111,6 +111,7 @@ flutter build web --release                                # web 产物在 build
   - diff_match_patch 0.4.1 顶层 API 是 `dmp.diff(...)` + `dmp.cleanupSemantic(diffs)`（不是类方法名 diffCleanupSemantic）。
   - 同步测试模式：`test/sync/fake_remote_store.dart` 内存 RemoteStore（objects/etags/writeLog/readLog/failAll），双设备 = 两个 AppDb.memory + 两个 engine 共享同一 FakeRemoteStore；零写/增量断言看 writeLog/readLog。
   - 测试字体每个 glyph 都是方块（宽=fontSize），侧栏头部按钮必须 28×28 紧凑规格，default IconButton(48) 两个并排就 RenderFlex overflow（真实教训）。
+  - **WebDAV 服务器地址允许裸域名（2026-11-26 安卓同步报错修复）**：`WebdavStore.normalizeBaseUrl` 沿用 OSS endpoint 先例——无 scheme 默认补 `https://`、显式 `http://` 保留，构造函数里归一化（已存的无 scheme 配置直接自愈无需重填）。`Uri.parse('裸域名/path')` 解析成无 host 的相对 URI，http 抛 `No host specified in URI`（真实教训）。
 
 - **Raycast/剪贴板管理器粘贴（flutter/flutter#184571，2026-11-25 修复）**：Raycast、Wispr Flow 等用 CGEvent 注入 ⌘V——Command 只挂在 keyDown 的 flags 上、前面没有 flagsChanged，Flutter 键盘管线会把它丢成裸「v」，物理 ⌘V 却正常。修复链路：`MainFlutterWindow` 本地监听（keyDown/keyUp/flagsChanged）跟踪「Command 是否真在事件流里出现过」，只拦截 flags-only 形状并吞掉 down+up 两半，经 `onenote/synthetic_paste` 通道 → `SyntheticPaste.install()`（main() 里装）→ 对 `focusManager.primaryFocus` 派发 `PasteTextIntent`。编辑区图片优先粘贴靠 `Actions` 覆盖 `PasteTextIntent`（EditableText 的 action 是 `Action.overridable`，祖先覆盖生效），物理/合成走同一条 `_handlePaste`；**不要再用 CallbackShortcuts 绑 ⌘V**（DefaultTextEditingShortcuts 全平台已映射 ⌘V/⌃V）。
   - 死路别走：合成事件**不触发 performKeyEquivalent**；`FlutterTextInputPlugin.paste:` 被程序化调用时静默 no-op（上游 issue 实测）。`primaryFocus` 在 `WidgetsBinding.instance.focusManager` 上，不在 WidgetsBinding 上。

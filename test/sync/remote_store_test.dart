@@ -79,6 +79,33 @@ void main() {
     });
   });
 
+  group('WebdavStore.normalizeBaseUrl', () {
+    final cases = {
+      '': '',
+      '  ': '',
+      'webdav.kekeyuyin.com': 'https://webdav.kekeyuyin.com',
+      'webdav.kekeyuyin.com/dav': 'https://webdav.kekeyuyin.com/dav',
+      'https://dav.jianguoyun.com/dav': 'https://dav.jianguoyun.com/dav',
+      'http://192.168.1.2:5005': 'http://192.168.1.2:5005',
+      ' https://a.b ': 'https://a.b',
+    };
+    cases.forEach((raw, expected) {
+      test('「$raw」→「$expected」', () {
+        expect(WebdavStore.normalizeBaseUrl(raw), expected);
+      });
+    });
+
+    test('构造时归一化，裸域名不再产生无 host 的 URI', () {
+      final store = WebdavStore(
+        baseUrl: 'webdav.kekeyuyin.com',
+        username: 'u',
+        password: 'p',
+        rootPath: '/onenote',
+      );
+      expect(store.baseUrl, 'https://webdav.kekeyuyin.com');
+    });
+  });
+
   group('WebdavStore.normalizeRoot', () {
     final cases = {
       '': '/onenote',

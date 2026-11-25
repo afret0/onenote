@@ -9,12 +9,13 @@ import 'remote_store.dart';
 
 class WebdavStore implements RemoteStore {
   WebdavStore({
-    required this.baseUrl,
+    required String baseUrl,
     required this.username,
     required this.password,
     required this.rootPath,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  })  : baseUrl = normalizeBaseUrl(baseUrl),
+        _client = client ?? http.Client();
 
   final String baseUrl;
   final String username;
@@ -24,6 +25,16 @@ class WebdavStore implements RemoteStore {
 
   bool _ready = false;
   final Set<String> _ensuredDirs = {};
+
+  static String normalizeBaseUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty ||
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    return 'https://$trimmed';
+  }
 
   static String normalizeRoot(String raw) {
     final trimmed = raw.trim();
