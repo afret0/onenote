@@ -18,7 +18,6 @@ px = [['bg'] * N for _ in range(N)]
 
 
 def s(x, y, c):
-    x, y = x + 2, y - 2
     if 0 <= x < N and 0 <= y < N:
         px[y][x] = c
 
@@ -63,6 +62,33 @@ for y0 in (9, 13, 17, 21):
     r(4, y0, 7, y0 + 1, 'K')
     r(5, y0, 6, y0 + 1, 'G')
     s(5, y0, 'g')
+bolt = [
+    (26, 1), (27, 1), (28, 1),
+    (25, 2), (26, 2), (27, 2), (28, 2),
+    (24, 3), (25, 3), (26, 3), (27, 3),
+    (23, 4), (24, 4), (25, 4), (26, 4), (27, 4), (28, 4), (29, 4),
+    (25, 5), (26, 5), (27, 5), (28, 5), (29, 5),
+    (26, 6), (27, 6), (28, 6),
+    (25, 7), (26, 7), (27, 7),
+    (24, 8), (25, 8), (26, 8),
+    (23, 9), (24, 9),
+]
+cells = set(bolt)
+outline = set()
+for x, y in bolt:
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if (x + dx, y + dy) not in cells:
+                outline.add((x + dx, y + dy))
+for x, y in bolt:
+    s(x, y, 'Y')
+for x, y in outline:
+    s(x, y, 'K')
+for x, y in [(29, 4), (29, 5), (28, 6), (27, 7), (26, 8), (24, 9)]:
+    s(x, y, 'O')
+for x, y in [(26, 1), (25, 2), (24, 3)]:
+    s(x, y, 'W')
+
 art = Image.new('RGB', (N, N))
 art.putdata([PAL[c] for row in px for c in row])
 art = art.resize((1024, 1024), Image.NEAREST).convert('RGBA')
