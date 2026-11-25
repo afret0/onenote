@@ -230,12 +230,19 @@ const radiusSm = 8.0;
 const radiusMd = 12.0;
 const radiusLg = 16.0;
 
+final Map<String, ThemeData> _themeCache = <String, ThemeData>{};
+
 ThemeData buildInkTheme(
   Brightness brightness, {
   String sans = miSansFamily,
   double fontScale = 1.0,
   double noteFontSize = 18,
 }) {
+  final cacheKey = '${brightness.name}|$sans|$fontScale|$noteFontSize';
+  final cached = _themeCache[cacheKey];
+  if (cached != null) {
+    return cached;
+  }
   final tokens = (brightness == Brightness.light
           ? InkTokens.light
           : InkTokens.dark)
@@ -269,7 +276,7 @@ ThemeData buildInkTheme(
         displayColor: tokens.ink,
         fontSizeFactor: fontScale,
       );
-  return base.copyWith(
+  final theme = base.copyWith(
     colorScheme: scheme,
     scaffoldBackgroundColor: tokens.paper,
     textTheme: textTheme,
@@ -362,4 +369,6 @@ ThemeData buildInkTheme(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
     ),
   );
+  _themeCache[cacheKey] = theme;
+  return theme;
 }

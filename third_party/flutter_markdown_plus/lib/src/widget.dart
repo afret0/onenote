@@ -378,11 +378,25 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
   List<md.BlockSyntax>? _cachedBlockSyntaxes;
   List<md.InlineSyntax>? _cachedInlineSyntaxes;
   md.ExtensionSet? _cachedExtensionSet;
+  MarkdownStyleSheet? _lastMergedSheet;
   final List<GestureRecognizer> _recognizers = <GestureRecognizer>[];
+  final List<GlobalKey> _paragraphKeys = <GlobalKey>[];
+
+  @override
+  GlobalKey paragraphKey(int ordinal) {
+    while (_paragraphKeys.length <= ordinal) {
+      _paragraphKeys.add(GlobalKey());
+    }
+    return _paragraphKeys[ordinal];
+  }
 
   @override
   void didChangeDependencies() {
-    _parseMarkdown();
+    final MarkdownStyleSheet merged =
+        kFallbackStyle(context, widget.styleSheetTheme).merge(widget.styleSheet);
+    if (_lastMergedSheet == null || _lastMergedSheet != merged) {
+      _parseMarkdown();
+    }
     super.didChangeDependencies();
   }
 
@@ -411,6 +425,7 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
   void _parseMarkdown() {
     final MarkdownStyleSheet fallbackStyleSheet = kFallbackStyle(context, widget.styleSheetTheme);
     final MarkdownStyleSheet styleSheet = fallbackStyleSheet.merge(widget.styleSheet);
+    _lastMergedSheet = styleSheet;
 
     _disposeRecognizers();
 

@@ -103,6 +103,8 @@ abstract class MarkdownBuilderDelegate {
   ///
   /// The `styleSheet` is the value of [MarkdownBuilder.styleSheet].
   TextSpan formatText(MarkdownStyleSheet styleSheet, String code);
+
+  GlobalKey paragraphKey(int ordinal);
 }
 
 /// Builds a [Widget] tree from parsed Markdown.
@@ -214,6 +216,7 @@ class MarkdownBuilder implements md.NodeVisitor {
   final List<_InlineElement> _inlines = <_InlineElement>[];
   final List<GestureRecognizer> _linkHandlers = <GestureRecognizer>[];
   int _highlightParagraphOrdinal = 0;
+  int _paragraphOrdinal = 0;
   String? _currentBlockTag;
   String? _lastVisitedTag;
   bool _isInBlockquote = false;
@@ -229,6 +232,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     _linkHandlers.clear();
     _isInBlockquote = false;
     _highlightParagraphOrdinal = 0;
+    _paragraphOrdinal = 0;
     highlightController?.reset();
     tocController?.beginBuild();
 
@@ -951,7 +955,9 @@ class MarkdownBuilder implements md.NodeVisitor {
       return widget;
     }
     final InlineSpan? span = _getInlineSpanFromText(widget);
-    if (span is! TextSpan) {
+    if (span is! TextSpan ||
+        highlightController == null ||
+        highlightColor == null) {
       return widget;
     }
     final int base = highlightController!.matches.length;
@@ -1251,6 +1257,8 @@ class MarkdownBuilder implements md.NodeVisitor {
     return rebuild(root);
   }
 
+  GlobalKey _nextParagraphKey() => delegate.paragraphKey(_paragraphOrdinal++);
+
   Widget _buildRichText(TextSpan text,
       {TextAlign? textAlign, String? key, bool highlight = false}) {
     //Adding a unique key prevents the problem of using the same link handler for text spans with the same text
@@ -1263,7 +1271,7 @@ class MarkdownBuilder implements md.NodeVisitor {
             ? GlobalKey()
             : highlightController!.paragraphKey(_highlightParagraphOrdinal++))
         : null;
-    final Key k = highlightKey ?? (key == null ? UniqueKey() : Key(key));
+    final Key k = highlightKey ?? (key == null ? _nextParagraphKey() : Key(key));
     if (doHighlight) {
       text = _applyHighlight(text);
     }
