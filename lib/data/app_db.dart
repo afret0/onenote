@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:drift/drift.dart';
@@ -64,6 +65,34 @@ class Settings extends Table {
   Set<Column> get primaryKey => {key};
 }
 
+class SyncState extends Table {
+  TextColumn get id => text()();
+  TextColumn get kind => text()();
+  TextColumn get baseJson => text()();
+  IntColumn get syncedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class SyncConflicts extends Table {
+  TextColumn get noteId => text()();
+  TextColumn get json => text()();
+  IntColumn get createAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {noteId};
+}
+
+class Tombstones extends Table {
+  TextColumn get id => text()();
+  TextColumn get kind => text()();
+  IntColumn get deletedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 int _compareSortKey(int? a, int? b) {
   if (a == null && b == null) {
     return 0;
@@ -86,7 +115,15 @@ class NotebookNotEmptyException implements Exception {
   String toString() => 'notebook still has $noteCount notes';
 }
 
-@DriftDatabase(tables: [Notebooks, Notes, NoteVersions, Settings])
+@DriftDatabase(tables: [
+  Notebooks,
+  Notes,
+  NoteVersions,
+  Settings,
+  SyncState,
+  SyncConflicts,
+  Tombstones,
+])
 class AppDb extends _$AppDb {
   AppDb(super.executor, {int Function()? clock})
       : clock = clock ?? _systemClock;
@@ -113,6 +150,30 @@ class AppDb extends _$AppDb {
   static const narrowStartupKey = 'narrowStartup';
   static const msPerDay = 86400000;
   static const versionCoalesceWindowMs = 10 * 60 * 1000;
+  static const syncProtocolKey = 'syncProtocol';
+  static const syncWebdavUrlKey = 'syncWebdavUrl';
+  static const syncWebdavUserKey = 'syncWebdavUser';
+  static const syncWebdavPassKey = 'syncWebdavPass';
+  static const syncWebdavPathKey = 'syncWebdavPath';
+  static const syncOssEndpointKey = 'syncOssEndpoint';
+  static const syncOssBucketKey = 'syncOssBucket';
+  static const syncOssAkKey = 'syncOssAk';
+  static const syncOssSkKey = 'syncOssSk';
+  static const syncOssPrefixKey = 'syncOssPrefix';
+  static const syncPollMinutesKey = 'syncPollMinutes';
+  static const syncDeviceIdKey = 'syncDeviceId';
+  static const syncDeviceNameKey = 'syncDeviceName';
+  static const syncManifestCacheKey = 'syncManifestCache';
+  static const syncManifestEtagKey = 'syncManifestEtag';
+  static const syncLastAtKey = 'syncLastAt';
+  static const syncProtocolOff = 'off';
+  static const syncProtocolWebdav = 'webdav';
+  static const syncProtocolOss = 'oss';
+  static const syncKindNote = 'note';
+  static const syncKindNotebook = 'notebook';
+  static const tombstoneRetentionDays = 90;
+  static const syncRequestTimeout = Duration(seconds: 15);
+  static const syncPollMinutesMax = 1440;
 
   static QueryExecutor openExecutor() => driftDatabase(
         name: 'onenote',
@@ -123,7 +184,7 @@ class AppDb extends _$AppDb {
       );
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -157,6 +218,14 @@ class AppDb extends _$AppDb {
           if (from < 4) {
             await m.addColumn(notebooks, notebooks.sortKey);
             await m.addColumn(notes, notes.sortKey);
+          }
+          if (from < 5) {
+            await m.createTable(syncState);
+            await m.createTable(syncConflicts);
+            await m.createTable(tombstones);
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS note_versions_note_id '
+                'ON note_versions (note_id)');
           }
         },
       );
@@ -217,6 +286,7 @@ class AppDb extends _$AppDb {
       throw err;
     }
     await (delete(notebooks)..where((t) => t.id.equals(id))).go();
+    await addTombstone(id, syncKindNotebook);
     developer.log('done, 笔记本已删除, notebookId: $id');
   }
 
@@ -291,6 +361,9 @@ class AppDb extends _$AppDb {
   Future<Note> getNote(String id) =>
       (select(notes)..where((t) => t.id.equals(id))).getSingle();
 
+  Future<Note?> findNote(String id) =>
+      (select(notes)..where((t) => t.id.equals(id))).getSingleOrNull();
+
   Future<bool> saveNote(String id, String title, String content,
       {bool coalesce = true}) async {
     final current = await getNote(id);
@@ -352,8 +425,163 @@ class AppDb extends _$AppDb {
       final versions =
           await (delete(noteVersions)..where((t) => t.noteId.equals(id))).go();
       await (delete(notes)..where((t) => t.id.equals(id))).go();
+      await (delete(syncConflicts)..where((t) => t.noteId.equals(id))).go();
       developer.log('done, 笔记已彻底删除, noteId: $id, deletedVersions: $versions');
     });
+    await removeSyncState(id);
+  }
+
+  Future<void> addTombstone(String id, String kind) =>
+      addTombstoneAt(id, kind, clock());
+
+  Future<void> addTombstoneAt(String id, String kind, int deletedAt) async {
+    await into(tombstones).insertOnConflictUpdate(TombstonesCompanion.insert(
+        id: id, kind: kind, deletedAt: deletedAt));
+    developer.log('done, 已记墓碑, id: $id, kind: $kind, deletedAt: $deletedAt');
+  }
+
+  Future<List<Tombstone>> listTombstones() => select(tombstones).get();
+
+  Future<void> removeTombstone(String id) async {
+    await (delete(tombstones)..where((t) => t.id.equals(id))).go();
+    developer.log('done, 墓碑已移除(实体复活), id: $id');
+  }
+
+  Future<String> deviceId() async {
+    final saved = await getSetting(syncDeviceIdKey);
+    if (saved != null && saved.isNotEmpty) {
+      return saved;
+    }
+    final id = _uuid.v4();
+    await setSetting(syncDeviceIdKey, id);
+    developer.log('done, 已生成本机同步设备 id, deviceId: $id');
+    return id;
+  }
+
+  Future<Map<String, SyncStateData>> syncStateMap() async => {
+        for (final row in await select(syncState).get()) row.id: row,
+      };
+
+  Future<void> setSyncState(
+      String id, String kind, Map<String, dynamic> baseJson) async {
+    await into(syncState).insertOnConflictUpdate(SyncStateCompanion.insert(
+        id: id,
+        kind: kind,
+        baseJson: jsonEncode(baseJson),
+        syncedAt: clock()));
+  }
+
+  Future<void> removeSyncState(String id) async {
+    await (delete(syncState)..where((t) => t.id.equals(id))).go();
+  }
+
+  Future<({String title, String content})?> syncBaseContent(String id) async {
+    final row = await (select(syncState)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null || row.kind != syncKindNote) {
+      return null;
+    }
+    final parsed = jsonDecode(row.baseJson) as Map<String, dynamic>;
+    return (
+      title: parsed['title'] as String? ?? '',
+      content: parsed['content'] as String? ?? '',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getConflict(String noteId) async {
+    final row = await (select(syncConflicts)
+          ..where((t) => t.noteId.equals(noteId)))
+        .getSingleOrNull();
+    return row == null
+        ? null
+        : jsonDecode(row.json) as Map<String, dynamic>;
+  }
+
+  Future<Set<String>> conflictNoteIds() async =>
+      (await select(syncConflicts).get()).map((r) => r.noteId).toSet();
+
+  Future<void> setConflict(String noteId, Map<String, dynamic> payload) async {
+    await into(syncConflicts).insertOnConflictUpdate(
+        SyncConflictsCompanion.insert(
+            noteId: noteId, json: jsonEncode(payload), createAt: clock()));
+    developer.log('hit, 已记录同步冲突等待裁决, noteId: $noteId');
+  }
+
+  Future<void> removeConflict(String noteId) async {
+    await (delete(syncConflicts)..where((t) => t.noteId.equals(noteId))).go();
+    developer.log('done, 同步冲突已裁决移除, noteId: $noteId');
+  }
+
+  Future<void> applyRemoteNote(
+      String id,
+      String notebookId,
+      String title,
+      String content,
+      int? sortKey,
+      int createAt,
+      int updateAt,
+      int? deletedAt) async {
+    await transaction(() async {
+      await into(notes).insertOnConflictUpdate(NotesCompanion.insert(
+          id: id,
+          notebookId: notebookId,
+          title: title,
+          content: content,
+          sortKey: Value(sortKey),
+          createAt: createAt,
+          updateAt: updateAt,
+          deletedAt: Value(deletedAt)));
+      await _insertVersion(id, title, content, updateAt);
+    });
+    developer.log(
+        'done, 远端笔记已应用本地, noteId: $id, updateAt: $updateAt, trashed: ${deletedAt != null}');
+  }
+
+  Future<void> applyRemoteNotebook(String id, String name, int color,
+      int? sortKey, int createAt, int updateAt) async {
+    await into(notebooks).insertOnConflictUpdate(NotebooksCompanion.insert(
+        id: id,
+        name: name,
+        color: Value(color),
+        sortKey: Value(sortKey),
+        createAt: createAt,
+        updateAt: updateAt));
+    developer.log('done, 远端笔记本已应用本地, notebookId: $id, name: $name');
+  }
+
+  Future<void> applyRemoteHardDeleteNote(String id) async {
+    await transaction(() async {
+      final versions =
+          await (delete(noteVersions)..where((t) => t.noteId.equals(id))).go();
+      await (delete(notes)..where((t) => t.id.equals(id))).go();
+      await (delete(syncConflicts)..where((t) => t.noteId.equals(id))).go();
+      developer.log(
+          'done, 远端删除已应用本地, noteId: $id, deletedVersions: $versions');
+    });
+    await removeSyncState(id);
+  }
+
+  Future<void> applyRemoteHardDeleteNotebook(String id) async {
+    await (delete(notebooks)..where((t) => t.id.equals(id))).go();
+    await clearLastOpenNote(id);
+    await removeSyncState(id);
+    developer.log('done, 远端删除笔记本已应用本地, notebookId: $id');
+  }
+
+  Future<void> wipeForRebuild() async {
+    await transaction(() async {
+      await delete(noteVersions).go();
+      await delete(notes).go();
+      await delete(notebooks).go();
+      await delete(syncState).go();
+      await delete(syncConflicts).go();
+      await delete(tombstones).go();
+      await (delete(settings)
+            ..where((t) => t.key.like('$lastOpenNotePrefix%')))
+          .go();
+      await deleteSetting(lastViewNoteKey);
+    });
+    developer.log('done, 以远端为准重建: 本地笔记数据已清空');
   }
 
   Future<List<Note>> listNotes({String? notebookId}) async {
@@ -410,6 +638,8 @@ class AppDb extends _$AppDb {
     developer.log(
         'done, 笔记已移动, noteId: $id, notebookId: ${note.notebookId}, from: $index, to: $target');
   }
+
+  Future<List<Note>> listAllNotes() => select(notes).get();
 
   Future<List<Note>> listTrash() => (select(notes)
         ..where((t) => t.deletedAt.isNotNull())
@@ -505,12 +735,17 @@ class AppDb extends _$AppDb {
           .get();
       for (final note in expired) {
         await hardDeleteNote(note.id);
+        await addTombstone(note.id, syncKindNote);
       }
       final versions = await (delete(noteVersions)
             ..where((t) => t.createAt.isSmallerThanValue(versionCutoff)))
           .go();
+      final tombstoneCutoff = now - tombstoneRetentionDays * msPerDay;
+      final staleTombstones = await (delete(tombstones)
+            ..where((t) => t.deletedAt.isSmallerThanValue(tombstoneCutoff)))
+          .go();
       developer.log(
-          'done, 过期清理完成, purgedNotes: ${expired.length}, purgedVersions: $versions, trashDays: $trashDays, versionDays: $versionDays');
+          'done, 过期清理完成, purgedNotes: ${expired.length}, purgedVersions: $versions, staleTombstones: $staleTombstones, trashDays: $trashDays, versionDays: $versionDays, tombstoneDays: $tombstoneRetentionDays');
     });
   }
 }

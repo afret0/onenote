@@ -21,7 +21,7 @@
 ## 已确认的设计决策（用户拍板，不得擅改）
 
 - 层级两级：笔记本 → 笔记；**非空笔记本禁止删除**（回收站里的笔记也算非空）。
-- 笔记默认渲染（flutter_markdown_plus），点「编辑」才进源码编辑；**进入编辑前先同步一次**（同步引擎未落地，失败时放行离线编辑）。无 vim。
+- 笔记默认渲染（flutter_markdown_plus），点「编辑」才进源码编辑；**进入编辑前先同步一次**（`state.syncNow('edit')`，失败时放行离线编辑；带出冲突先弹裁决面板）。无 vim。
 - **todo 清单（2026-11-25 用户拍板）**：`- [ ]`/`- [x]` 渲染为复选框而非圆点；渲染态点复选框切换 `[ ]`↔`[x]` 写回源码，走既有 800ms 防抖自动保存（内容变化按 saveNote 语义记版本）；点击热区仅复选框本身，正文保持可选中。序号 = li 后序遍历（嵌套列表子先父后），与 checkboxBuilder 调用序一致；源码行定位用「逐候选行翻转重解析、比对哪个序号状态变化」的 oracle 法，天然跳过代码块里的似任务行。
 - 保存自动落库（800ms 防抖 + 完成/返回时保存）；`AppDb.saveNote` 先比对 title+content，**内容不变绝不记版本**。**10 分钟窗口合并（2026-11-25 用户拍板）**：距最近一版 createAt 不足 `versionCoalesceWindowMs`（10 分钟）的改动**原地并入该版**（更新 title/content，createAt 锚定该版首次记录时刻），满窗才切新版；**恢复历史版本走 `coalesce: false` 总是单独记新版**（方便反悔）。
 - 版本历史仅存本地（省同步流量），保留 90 天；回收站软删除保留 90 天。两者天数可在设置页改（settings 表 `versionRetentionDays` / `trashRetentionDays`，缺省 90）。清理在启动 + 轮询时顺带跑（`AppDb.purgeExpired`）。
@@ -29,9 +29,9 @@
 - **三栏布局与打开记忆（2026-11-25 用户拍板）**：宽屏（≥900）三栏 = 笔记本侧栏 268 + 笔记列表 320 + 内容区；**每本笔记本记住上次打开的笔记**（settings 表 `lastOpenNote:<notebookId>`，「全部」用伪 key `lastOpenNote:all`），**只记用户手动打开**（openNote），自动打开不写记忆。**自动打开只属于宽屏 UI**：HomePage build 里宽屏、无打开笔记、非搜索、非回收站且列表非空时 post-frame 调 `state.autoOpenCurrentScope()`；init/selectScope/trashNote 本身不做自动打开（openNoteId 置 null），记忆笔记须仍在当前列表否则回退第一篇，覆盖启动/切本/窄转宽三种时机。回收站永不自动打开。**窄屏（<900）使用中不自动打开、先看列表**（用户 2026-11-25 追问拍板），Drawer + 列表↔内容切换不变；宽屏把打开中的笔记移入回收站后由自动打开回退到第一篇，窄屏则返回列表。删除笔记本清对应记忆 key。内容区滚动位置只做会话内记忆（PageStorageKey `noteScroll:<noteId>`），不持久化。
 - **启动恢复上次页面（2026-11-25 用户拍板）**：settings 表 `lastViewScope`（`all` / `trash` / `notebook:<id>`）+ `lastViewNote` 记录最后展示的页面，openNote/closeNote/selectScope/增删恢复笔记/删笔记本时落库（closeNote 删除 note key = 记录列表页）。启动 init 只恢复作用域（笔记本已删回退全部）；笔记由 HomePage 首帧 post-frame 调 `resolveStartupRestore(isWide:)` 恢复，`startupRestorePending` 期间宽屏自动打开被抑制、用户先操作则取消恢复。**窄屏启动页面是设置项** `narrowStartup`（`note`=上次笔记，缺省 / `list`=先看列表，设置页「启动」区），宽屏不受它影响；回收站作用域和打开着的回收站笔记也照恢复；编辑态不恢复（回渲染态）；笔记已不在当前列表则该次回退（宽屏仍走既有自动打开）。搜索态/设置页属瞬态不恢复。
 - **分隔条拖动（2026-11-25 用户拍板）**：宽屏两条竖分隔条可水平拖动调栏宽（8px 命中区、hover/拖动时紫色高亮、resizeColumn 光标）；范围侧栏 200–400、列表 240–480、内容区 ≥360，268/320 只是默认值；宽度写 settings 表 `paneWidth:sidebar` / `paneWidth:list`（拖动结束才落库，重启恢复，非法值回退默认）。窗口缩小时先压侧栏再压列表保内容区 ≥360，存储值不动、窗口回宽即恢复；窄屏无分隔条不变。`_paneWidths` 只许在宽屏分支计算——窄屏宽度下 clamp 上下界会倒置抛 ArgumentError（真实教训：无条件计算弄挂窄屏布局）。
-- **设置页多栏（2026-11-25 用户拍板）**：自适应栏数 ≥900 两栏、≥1400 三栏、<900 单栏（沿用宽屏 900 断点）；区块按顺序均分连续切块（5 区块：两栏 3+2、三栏 2+2+1），单个 ListView 整页滚动、栏顶对齐，每栏上限 640（沿用旧单栏宽度）；区块顺序 字体/启动/数据保留/即将上线/**搜索范围最后**（用户指定）。设置页返回按钮 `Transform.translate` 下右各 8px（用户指定，仅设置页；translate 不丢命中区）；按钮为 IconButton + `Semantics(button/label:'返回')` + ButtonStyle `mouseCursor: click`（hover 小手，用户指定），无 Tooltip（沿用图标按钮无 hover 浮字规矩）。`_SettingCard` 内层必须包 `Material(type: MaterialType.transparency)`——CheckboxListTile 直接放带色 Container 会触发 debug 断言（真实教训：settings 布局测试暴露）。
-- 同步：启动 + 手动 + 定时轮询；远端故障/manifest 为空**绝不清本地**，「以远端为准重建」仅设置页手动触发；删除走墓碑。
-- 冲突：diff3（行级 + 字符细化）三方合并，本地保存共同祖先快照；冲突以**结构化面板**逐块裁决（设备名 + 时间），笔记正文永不插入 `<<<<<<<` 标记。
+- **设置页多栏（2026-11-25 用户拍板）**：自适应栏数 ≥900 两栏、≥1400 三栏、<900 单栏（沿用宽屏 900 断点）；区块按顺序均分连续切块（6 区块：两栏 3+3、三栏 2+2+2），单个 ListView 整页滚动、栏顶对齐，每栏上限 640（沿用旧单栏宽度）；区块顺序 字体/启动/数据保留/同步/即将上线/**搜索范围最后**（用户指定；同步区块 2026-11-25 随同步引擎从「即将上线」转正，布局测试 settings_layout_test 已按 6 区块更新）。设置页返回按钮 `Transform.translate` 下右各 8px（用户指定，仅设置页；translate 不丢命中区）；按钮为 IconButton + `Semantics(button/label:'返回')` + ButtonStyle `mouseCursor: click`（hover 小手，用户指定），无 Tooltip（沿用图标按钮无 hover 浮字规矩）。`_SettingCard` 内层必须包 `Material(type: MaterialType.transparency)`——CheckboxListTile 直接放带色 Container 会触发 debug 断言（真实教训：settings 布局测试暴露）。
+- **同步引擎（已落地，2026-11-25 用户拍板）**：WebDAV 与阿里云 OSS 双协议（settings `syncProtocol` off/webdav/oss，凭据全存 settings 表）；触发 = 启动 + 侧栏手动按钮 + 点编辑前 + **每次写操作前拉取**、写后立即推送 + 定时轮询（`syncPollMinutes` 0=关闭缺省，上限 1440）。**严格增量（用户硬要求，OSS 流量贵）**：manifest 只存元数据（笔记正文在 `notes/<id>.md`、附件在 `assets/<sha256>` 内容寻址去重）；manifest GET 带 ETag/If-None-Match 吃 304；正文/附件仅在变化时传输；无变化整轮零 PUT（canonical manifest 比对）。**远端故障/manifest 为空绝不清本地**；「以远端为准重建」仅设置页手动触发（manifest 缺失拒绝执行，空远端需显式确认清空警告）。删除走墓碑（保留 90 天，`deletedAt` 毫秒）；删除 vs 编辑冲突 = 本地编辑复活笔记；笔记本元数据冲突 = updateAt 新的赢。远端布局/设备名/15s 超时/V1 签名等实现细节见 `lib/sync/`。
+- 冲突：diff3（行级 + 字符细化 `dmp.cleanupSemantic`）三方合并，基线快照存 SyncState 表；冲突以**结构化面板**逐块裁决（设备名 + 时间，`lib/ui/conflict_panel.dart`），笔记正文永不插入 `<<<<<<<` 标记。保存路径也做 diff3 保护（`AppState.saveNote`：写前拉取后双端都改 → 自动合并或记冲突，编辑器内容不丢）。裁决/合并结果保留本地 title/notebook 归属。
 - 加密：AES-256-GCM + Argon2id，每笔记本独立密钥；生物识别只解锁本地托管密钥，密码是恢复根；Linux 无生物识别回退密码。
 - 剪藏：Chrome MV3 插件 → 应用内 127.0.0.1 桥接服务（Joplin 式），不经云端明文；插件不上架。
 - **可读性优先（项目规矩，2026-11-25 用户明确：这是笔记本应用）**：行高 ≥1.7，正文对比度 ≥4.5:1（文字用 `accentText` 变体）；正文缺省 18px，可调下限以「字体与字号」条目（用户拍板）为准；任何视觉改动不得牺牲可读性。
@@ -53,14 +53,15 @@
 
 ## 目录与关键文件
 
-- `lib/data/app_db.dart`：drift 表（Notebooks/Notes/NoteVersions/Settings）与全部业务语义；时间戳一律毫秒 int，可注入 clock 便于测试；`allAttachmentRefs` 扫笔记 + 全部版本供附件 GC。
+- `lib/data/app_db.dart`：drift 表（Notebooks/Notes/NoteVersions/Settings + v5 的 SyncState/SyncConflicts/Tombstones）与全部业务语义；时间戳一律毫秒 int，可注入 clock 便于测试；`allAttachmentRefs` 扫笔记 + 全部版本供附件 GC。
+- `lib/sync/`：sync_engine（编排：拉取→合并→推送、墓碑、附件去重与远端孤儿 GC、轮询、`storeOverride` 测试注入缝）、remote_store（接口 + manifest 模型）、webdav_store（MKCOL 逐级建目录后再 PUT，否则 409）、oss_store（V1 签名）、diff3、sync_manifest。
 - `lib/data/attachment_store.dart`：附件内容寻址存储 + GC（`forTest` 构造可注入目录）。
 - `lib/data/markdown_tasks.dart`：todo 解析/切换纯逻辑（`markdownTaskBlockSyntaxes`、`markdownTaskStates`、`markdownTaskMarkerPosition`、`toggleMarkdownTaskAt`），可普通 `test()` 直测。
-- `lib/state/app_state.dart`：列表/作用域/搜索范围状态、附件 store 生命周期、`notebookColor`。
+- `lib/state/app_state.dart`：列表/作用域/搜索范围状态、附件 store 生命周期、`notebookColor`；持有 SyncEngine，**所有写操作**走 `_pullBeforeWrite`/`_pushAfterWrite` 包装，saveNote 内嵌 diff3 合并保护；测试可传 `syncStoreOverride`。
 - `lib/window_metrics.dart`：窗口尺寸纯计算（`scaledDefaultWindowSize`/`fitWindowSize`/`parseWindowSize`/`formatWindowSize` + 常量），无平台依赖，表驱动单测在 `test/window_metrics_test.dart`。
 - `lib/window_setup.dart`：`WindowSizeController`（桌面启动设尺寸 + 事件防抖落库），`main()` 里 `isDesktopWindow` 时创建并 `await init()` 再 runApp，`OneNoteApp` dispose 时释放。
 - `lib/ui/theme.dart`：InkTokens 主题扩展（紫调纸色 + 墨色 + OneNote 紫），`accentText` 是保证 4.5:1 的正文用主色变体，文字场景用它、填充用 `accent`。
-- `lib/ui/`：home_page（宽屏三栏 / 窄屏 Drawer + 导航）、note_view（渲染/编辑/版本历史/附件上传）、settings_page、markdown_view、attachment_image。
+- `lib/ui/`：home_page（宽屏三栏 / 窄屏 Drawer + 导航、侧栏同步按钮）、note_view（渲染/编辑/版本历史/附件上传/冲突横幅）、settings_page、sync_settings_page（协议/凭据/轮询/立即同步/以远端为准重建）、conflict_panel、markdown_view、attachment_image。
 
 ## 命令与坑
 
@@ -92,6 +93,15 @@ flutter build web --release                                # web 产物在 build
 - **macOS 窗口状态恢复会覆盖 Dart 预设尺寸**：`AppDelegate applicationSupportsSecureRestorableState=true` + NSWindow 默认可恢复 → show 时用旧 frame 盖掉预设尺寸，resize 监听再把错误尺寸写库。`MainFlutterWindow.awakeFromNib` 加 `self.isRestorable = false`（尺寸记忆归 Dart 全权）。
 - **多屏定位别用 `window.center()`**：它居中到「窗口当前所在屏幕」，大尺寸窗口会落到副屏并被夹到副屏宽度（真实教训：竖屏副屏 1440 宽把窗口夹成 1440×1440）。改为按主屏 `display.workArea` 显式算居中坐标 + `window.bounds = na.Rectangle(x,y,w,h)`，确定性落主屏。
 
+- **同步引擎的坑（2026-11-25 落地实录）**：
+  - 引擎未配置远端时 `requestSync` 必须**不碰 db 直接返回 ran:false**（`_store == null` 短路）：widget 测试 FakeAsync 区里 drift 查询走真实 isolate 永不返回，任何写操作的写前拉取都会把整个 suite 挂死。配置变更靠设置页保存后显式 `reloadConfig()` 重建 store，不靠每轮读库发现。
+  - 生命周期：`dispose()` 置 `_disposed`，`_run` 各阶段 `_ensureAlive()` 抛 `_SyncAborted` 安静中止；notifyListeners 一律走 `_safeNotify()`；unawaited 的启动/写后同步不得在 db.close 后触库（真实教训：45 个测试报 Can't re-open a database after closing it）。
+  - **JSON 比对必须先投影再比**：本地/远端 map 的 key 顺序不同（assets 位置不同），`jsonEncode(a)==jsonEncode(b)` 恒不等 → 干净远端更新被误判冲突（真实教训）。统一走 `_samePayload`（剥 deviceId/deviceName 后 encode），两侧 map 构造保持同一 key 顺序。
+  - diff3 区间判定：区内 `remoteText==baseText` 取 local、`localText==baseText` 取 remote，只有双端都改且不同才记冲突；把单侧改动当冲突是最容易犯的错（真实教训：4 个合并测试全红）。
+  - diff_match_patch 0.4.1 顶层 API 是 `dmp.diff(...)` + `dmp.cleanupSemantic(diffs)`（不是类方法名 diffCleanupSemantic）。
+  - 同步测试模式：`test/sync/fake_remote_store.dart` 内存 RemoteStore（objects/etags/writeLog/readLog/failAll），双设备 = 两个 AppDb.memory + 两个 engine 共享同一 FakeRemoteStore；零写/增量断言看 writeLog/readLog。
+  - 测试字体每个 glyph 都是方块（宽=fontSize），侧栏头部按钮必须 28×28 紧凑规格，default IconButton(48) 两个并排就 RenderFlex overflow（真实教训）。
+
 ## 未实现（下一阶段，动工前先与用户确认边界值）
 
-同步引擎（WebDAV/OSS、manifest 差分、墓碑、轮询间隔、附件远端同步与 Web 端附件）、加密与笔记本锁、diff3 冲突面板、桥接服务与 MV3 插件（端口/token/配对方式待定）。
+加密与笔记本锁、Web 端附件（web 上 attachment store 为 null）、桥接服务与 MV3 插件（端口/token/配对方式待定）。

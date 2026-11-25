@@ -52,7 +52,7 @@ void main() {
     final state = await seed(tester);
     await pumpSettings(tester, state);
 
-    const titles = ['字体', '启动', '数据保留', '即将上线', '搜索范围'];
+    const titles = ['字体', '启动', '数据保留', '同步', '即将上线', '搜索范围'];
     for (final title in titles) {
       expect(dx(tester, title), dx(tester, '字体'));
     }
@@ -103,7 +103,8 @@ void main() {
 
     expect(dx(tester, '启动'), dx(tester, '字体'));
     expect(dx(tester, '数据保留'), greaterThan(dx(tester, '字体')));
-    expect(dx(tester, '即将上线'), dx(tester, '数据保留'));
-    expect(dx(tester, '搜索范围'), greaterThan(dx(tester, '数据保留')));
+    expect(dx(tester, '同步'), dx(tester, '数据保留'));
+    expect(dx(tester, '即将上线'), greaterThan(dx(tester, '数据保留')));
+    expect(dx(tester, '搜索范围'), dx(tester, '即将上线'));
   });
 }

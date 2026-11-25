@@ -177,6 +177,7 @@ class NoteCard extends StatelessWidget {
     this.highlight,
     this.selected = false,
     this.dense = false,
+    this.conflicted = false,
   });
 
   final Note note;
@@ -187,6 +188,7 @@ class NoteCard extends StatelessWidget {
   final String? highlight;
   final bool selected;
   final bool dense;
+  final bool conflicted;
 
   @override
   Widget build(BuildContext context) {
@@ -224,12 +226,22 @@ class NoteCard extends StatelessWidget {
                         ? const EdgeInsets.fromLTRB(
                             spaceMd, spaceSm, spaceMd, spaceSm)
                         : const EdgeInsets.all(spaceMd),
-                    child: HighlightText(
-                      text: title,
-                      needle: highlight,
-                      style: Theme.of(context).textTheme.titleMedium
-                          ?.copyWith(letterSpacing: -0.1),
-                      maxLines: 1,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: HighlightText(
+                            text: title,
+                            needle: highlight,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(letterSpacing: -0.1),
+                            maxLines: 1,
+                          ),
+                        ),
+                        if (conflicted) ...[
+                          const SizedBox(width: spaceXs),
+                          Icon(Icons.sync_problem, size: 16, color: t.danger),
+                        ],
+                      ],
                     ),
                   ),
                   if (striped && tintColor != null)

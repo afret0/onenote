@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/app_db.dart';
 import '../state/app_state.dart';
 import 'dialogs.dart';
+import 'sync_settings_page.dart';
 import 'theme.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -17,6 +18,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   int _trashDays = AppDb.defaultRetentionDays;
   int _versionDays = AppDb.defaultRetentionDays;
+  String _syncProtocol = AppDb.syncProtocolOff;
 
   AppState get state => widget.state;
 
@@ -29,12 +31,22 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadRetention() async {
     final trash = await state.db.retentionDays(AppDb.trashRetentionKey);
     final version = await state.db.retentionDays(AppDb.versionRetentionKey);
+    final protocol = await state.db.getSetting(AppDb.syncProtocolKey);
     if (mounted) {
       setState(() {
         _trashDays = trash;
         _versionDays = version;
+        _syncProtocol =
+            protocol == null || protocol.isEmpty ? AppDb.syncProtocolOff : protocol;
       });
     }
+  }
+
+  Future<void> _openSyncSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SyncSettingsPage(state: state)),
+    );
+    await _loadRetention();
   }
 
   Future<void> _editDays(String key, int current, String label) async {
@@ -313,13 +325,24 @@ class _SettingsPageState extends State<SettingsPage> {
           ]),
         ]),
         _group([
+          _SectionTitle('同步'),
+          _SettingCard(children: [
+            _SettingRow(
+              icon: Icons.sync,
+              title: 'WebDAV / OSS 同步',
+              subtitle: '增量同步 · 启动 + 手动 + 编辑与写入前后 + 定时轮询',
+              action: switch (_syncProtocol) {
+                AppDb.syncProtocolWebdav => 'WebDAV',
+                AppDb.syncProtocolOss => 'OSS',
+                _ => '未开启',
+              },
+              onTap: _openSyncSettings,
+            ),
+          ]),
+        ]),
+        _group([
           _SectionTitle('即将上线'),
           _SettingCard(children: [
-            _DisabledRow(
-                icon: Icons.sync,
-                title: '同步',
-                subtitle: 'WebDAV / OSS 增量同步 · 启动 + 手动 + 定时轮询'),
-            Divider(height: 1, color: t.hairline),
             _DisabledRow(
                 icon: Icons.lock_outline,
                 title: '加密与锁定',

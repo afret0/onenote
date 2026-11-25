@@ -330,6 +330,44 @@ class _HomePageState extends State<HomePage> {
     return (sidebar.toDouble(), list.toDouble());
   }
 
+  Widget _syncButton() {
+    final engine = state.sync;
+    final hasError = engine.lastError != null;
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        iconSize: 18,
+        tooltip: hasError ? '同步失败：${engine.lastError}' : '立即同步',
+        onPressed: engine.syncing ? null : _manualSync,
+        icon: engine.syncing
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(Icons.sync,
+                color: hasError ? inkOf(context).danger : null),
+      ),
+    );
+  }
+
+  Future<void> _manualSync() async {
+    final outcome = await state.syncNow('manual');
+    if (!mounted) {
+      return;
+    }
+    final message = !outcome.ran
+        ? '未配置同步，去设置页开启'
+        : outcome.error != null
+            ? '同步失败：${outcome.error}'
+            : '同步完成 · 上传 ${outcome.uploadedNotes} · 下载 ${outcome.downloadedNotes}'
+                '${outcome.conflicts > 0 ? ' · ${outcome.conflicts} 处冲突待裁决' : ''}';
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Widget _sidebar({required bool compact}) {
     final scope = state.scope;
     return Column(
@@ -352,11 +390,20 @@ class _HomePageState extends State<HomePage> {
                     ?.copyWith(letterSpacing: -0.2),
               ),
               const Spacer(),
-              IconButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => SettingsPage(state: state)),
+              _syncButton(),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 18,
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => SettingsPage(state: state)),
+                  ),
+                  icon: const Icon(Icons.tune),
                 ),
-                icon: const Icon(Icons.tune),
               ),
             ],
           ),
@@ -592,6 +639,7 @@ class _HomePageState extends State<HomePage> {
                     }
                     return NoteCard(
                       note: note,
+                      conflicted: state.sync.conflictIds.contains(note.id),
                       tintColor: Color(state.notebookColor(note.notebookId)),
                       striped: state.scope.kind != NoteScopeKind.notebook,
                       highlight: searching
@@ -670,6 +718,7 @@ class _HomePageState extends State<HomePage> {
         final note = entry.note!;
         return NoteCard(
           note: note,
+          conflicted: state.sync.conflictIds.contains(note.id),
           tintColor: Color(state.notebookColor(note.notebookId)),
           highlight: _searchController.text.trim(),
           selected: dense && note.id == state.openNoteId,

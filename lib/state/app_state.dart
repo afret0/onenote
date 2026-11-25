@@ -1,9 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
+import '../sync/diff3.dart';
+import '../sync/remote_store.dart';
+import '../sync/sync_engine.dart';
 
 enum NoteScopeKind { all, notebook, trash }
 
@@ -21,7 +26,11 @@ class NoteScope {
 }
 
 class AppState extends ChangeNotifier {
-  AppState(this.db);
+  AppState(this.db, {RemoteStore? syncStoreOverride}) {
+    sync = SyncEngine(db,
+        attachments: () => attachments, storeOverride: syncStoreOverride);
+    sync.addListener(_onSyncChanged);
+  }
 
   static const sidebarMinWidth = 200.0;
   static const sidebarMaxWidth = 400.0;
@@ -43,6 +52,8 @@ class AppState extends ChangeNotifier {
   static const _notebookScopePrefix = 'notebook:';
 
   final AppDb db;
+
+  late final SyncEngine sync;
 
   AttachmentStore? attachments;
 
@@ -110,6 +121,47 @@ class AppState extends ChangeNotifier {
       }
     }
     await refresh();
+    await sync.init();
+    unawaited(sync.requestSync('startup').then(_applyOutcome));
+  }
+
+  bool _disposed = false;
+
+  void _onSyncChanged() {
+    if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _applyOutcome(SyncOutcome outcome) async {
+    if (_disposed) {
+      return;
+    }
+    if (outcome.changedLocal) {
+      developer.log('hit, 同步改动了本地数据刷新界面, reason: 同步回调');
+      await refresh();
+    }
+  }
+
+  Future<void> _pullBeforeWrite(String op) async {
+    final outcome = await sync.requestSync('beforeWrite:$op');
+    if (outcome.error != null) {
+      developer.log(
+          'skip, 写前同步失败放行离线写入, op: $op, err: ${outcome.error}');
+    }
+    await _applyOutcome(outcome);
+  }
+
+  void _pushAfterWrite(String op) {
+    unawaited(sync.requestSync('afterWrite:$op').then(_applyOutcome));
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    sync.removeListener(_onSyncChanged);
+    sync.dispose();
+    super.dispose();
   }
 
   Future<void> refresh() async {
@@ -179,37 +231,49 @@ class AppState extends ChangeNotifier {
   }
 
   Future<Notebook> createNotebook(String name) async {
+    await _pullBeforeWrite('createNotebook');
     final notebook = await db.createNotebook(name);
     await refresh();
+    _pushAfterWrite('createNotebook');
     return notebook;
   }
 
   Future<void> renameNotebook(String id, String name) async {
+    await _pullBeforeWrite('renameNotebook');
     await db.renameNotebook(id, name);
     await refresh();
+    _pushAfterWrite('renameNotebook');
   }
 
   Future<void> setNotebookColor(String id, int color) async {
+    await _pullBeforeWrite('setNotebookColor');
     await db.setNotebookColor(id, color);
     await refresh();
+    _pushAfterWrite('setNotebookColor');
   }
 
   Future<void> moveNotebook(String id, int delta) async {
+    await _pullBeforeWrite('moveNotebook');
     await db.moveNotebook(id, delta);
     await refresh();
+    _pushAfterWrite('moveNotebook');
   }
 
   Future<void> moveNote(String id, int delta) async {
+    await _pullBeforeWrite('moveNote');
     await db.moveNote(id, delta);
     await refresh();
+    _pushAfterWrite('moveNote');
   }
 
   Future<void> deleteNotebook(String id) async {
+    await _pullBeforeWrite('deleteNotebook');
     await db.deleteNotebook(id);
     lastOpenNote.remove(id);
     await db.clearLastOpenNote(id);
     await refresh();
     await _persistView();
+    _pushAfterWrite('deleteNotebook');
   }
 
   Future<Note?> createNote() async {
@@ -220,10 +284,92 @@ class AppState extends ChangeNotifier {
     final target = scope.kind == NoteScopeKind.notebook
         ? scope.notebookId!
         : notebooks.first.id;
+    await _pullBeforeWrite('createNote');
     final note = await db.createNote(target);
     await refresh();
     await openNote(note.id);
+    _pushAfterWrite('createNote');
     return note;
+  }
+
+  Future<bool> saveNote(String id, String title, String content,
+      {bool coalesce = true}) async {
+    final before = await db.getNote(id);
+    final base = await db.syncBaseContent(id);
+    await _pullBeforeWrite('saveNote');
+    final current = await db.findNote(id);
+    if (current == null) {
+      developer.log('hit, 保存时远端已删除该笔记按本地改动优先复活, noteId: $id');
+      await db.applyRemoteNote(id, before.notebookId, title, content,
+          before.sortKey, before.createAt, db.clock(), before.deletedAt);
+      await db.removeTombstone(id);
+      await refresh();
+      _pushAfterWrite('saveNote');
+      return true;
+    }
+    final nextTitle = title == before.title ? current.title : title;
+    var nextContent = content;
+    List<Map<String, dynamic>>? conflictSegments;
+    if (content == before.content) {
+      nextContent = current.content;
+    } else if (current.content != before.content) {
+      final merge = diff3Merge(
+          base?.content ?? before.content, content, current.content);
+      if (merge.hasConflict) {
+        conflictSegments = [
+          for (final segment in merge.segments)
+            segment.isConflict
+                ? {
+                    'conflict': true,
+                    'local': segment.local,
+                    'remote': segment.remote,
+                  }
+                : {'conflict': false, 'text': segment.text},
+        ];
+      } else {
+        nextContent = merge.autoMerged;
+        developer.log(
+            'done, 保存时远端已更新 diff3 自动合并, noteId: $id, mergedLength: ${nextContent.length}');
+      }
+    }
+    final saved =
+        await db.saveNote(id, nextTitle, nextContent, coalesce: coalesce);
+    if (conflictSegments != null) {
+      final stateRow = (await db.syncStateMap())[id];
+      final remoteMeta = stateRow == null
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(
+              jsonDecode(stateRow.baseJson) as Map<String, dynamic>)
+            ..remove('content');
+      await db.setConflict(id, {
+        'remoteMeta': remoteMeta,
+        'remoteContent': current.content,
+        'localUpdateAt': (await db.getNote(id)).updateAt,
+        'segments': conflictSegments,
+      });
+      developer.log(
+          'hit, 保存内容与远端更新冲突进入裁决面板, noteId: $id, conflictCount: ${conflictSegments.where((s) => s['conflict'] == true).length}');
+    }
+    if (saved || conflictSegments != null) {
+      await refresh();
+      _pushAfterWrite('saveNote');
+    }
+    return saved;
+  }
+
+  Future<bool> restoreVersion(String noteId, String versionId) async {
+    await _pullBeforeWrite('restoreVersion');
+    final restored = await db.restoreVersion(noteId, versionId);
+    if (restored) {
+      await refresh();
+      _pushAfterWrite('restoreVersion');
+    }
+    return restored;
+  }
+
+  Future<void> resolveConflict(String noteId, List<bool> pickLocal) async {
+    await sync.resolveConflict(noteId, pickLocal);
+    await refresh();
   }
 
   Future<void> openNote(String id) async {
@@ -256,28 +402,50 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> trashNote(String id) async {
+    await _pullBeforeWrite('trashNote');
     await db.softDeleteNote(id);
     if (openNoteId == id) {
       openNoteId = null;
     }
     await refresh();
     await _persistView();
+    _pushAfterWrite('trashNote');
   }
 
   Future<void> restoreNote(String id) async {
+    await _pullBeforeWrite('restoreNote');
     await db.restoreNote(id);
     await refresh();
     await _persistView();
+    _pushAfterWrite('restoreNote');
   }
 
   Future<void> hardDeleteNote(String id) async {
+    await _pullBeforeWrite('hardDeleteNote');
     await db.hardDeleteNote(id);
+    await db.addTombstone(id, AppDb.syncKindNote);
     if (openNoteId == id) {
       openNoteId = null;
     }
     await refresh();
     await _persistView();
+    _pushAfterWrite('hardDeleteNote');
   }
+
+  Future<SyncOutcome> syncNow(String reason) async {
+    final outcome = await sync.requestSync(reason);
+    await _applyOutcome(outcome);
+    return outcome;
+  }
+
+  Future<SyncOutcome> rebuildFromRemote() async {
+    final outcome = await sync.rebuildFromRemote();
+    await refresh();
+    return outcome;
+  }
+
+  Future<Map<String, dynamic>?> conflictPayload(String noteId) =>
+      db.getConflict(noteId);
 
   Future<void> purgeAttachments() async {
     final store = attachments;

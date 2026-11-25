@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -16,6 +17,7 @@ import '../data/app_db.dart';
 import '../data/attachment_store.dart';
 import '../data/markdown_tasks.dart';
 import '../state/app_state.dart';
+import 'conflict_panel.dart';
 import 'dialogs.dart';
 import 'markdown_view.dart';
 import 'theme.dart';
@@ -224,7 +226,27 @@ class _NoteViewState extends State<NoteView> {
     _load();
   }
 
-  void _enterEdit() {
+  Future<void> _enterEdit() async {
+    final outcome = await state.syncNow('edit');
+    if (outcome.error != null) {
+      developer.log(
+          'skip, 编辑前同步失败放行离线编辑, noteId: ${widget.noteId}, err: ${outcome.error}');
+    }
+    if (!mounted) {
+      return;
+    }
+    if (state.sync.conflictIds.contains(widget.noteId)) {
+      developer.log(
+          'hit, 笔记存在未裁决冲突先打开裁决面板, noteId: ${widget.noteId}');
+      await showConflictPanel(context, state: state, noteId: widget.noteId);
+      if (!mounted) {
+        return;
+      }
+    }
+    await _load();
+    if (!mounted) {
+      return;
+    }
     final fraction = _renderScroll.hasClients &&
             _renderScroll.position.maxScrollExtent > 0
         ? (_renderScroll.position.pixels /
@@ -277,21 +299,32 @@ class _NoteViewState extends State<NoteView> {
     }
     final title = _titleController.text;
     final content = _contentController.text;
-    final changed = await state.db.saveNote(note.id, title, content);
-    await state.refresh();
+    final changed = await state.saveNote(note.id, title, content);
     if (!mounted) {
       return;
     }
-    final fresh = await state.db.getNote(note.id);
-    if (!mounted) {
+    final fresh = await state.db.findNote(note.id);
+    if (!mounted || fresh == null) {
       return;
     }
+    final typedDuringSave = _dirty;
     setState(() {
       _note = fresh;
-      _dirty = false;
       _saveStatus = changed
           ? '已保存 ${formatHm(fresh.updateAt)}'
           : '无变更';
+      if (typedDuringSave) {
+        return;
+      }
+      _dirty = false;
+      if (_contentController.text != fresh.content) {
+        _contentController.text = fresh.content;
+        developer.log(
+            'hit, 保存后内容与编辑器不同已回填合并结果, noteId: ${fresh.id}');
+      }
+      if (_titleController.text != fresh.title) {
+        _titleController.text = fresh.title;
+      }
     });
     if (!silent && !changed) {
       ScaffoldMessenger.of(context)
@@ -625,6 +658,8 @@ class _NoteViewState extends State<NoteView> {
             ],
           ),
         ),
+        if (state.sync.conflictIds.contains(widget.noteId))
+          _conflictBanner(t),
         Expanded(
           child: _editing
               ? _editorArea()
@@ -721,6 +756,33 @@ class _NoteViewState extends State<NoteView> {
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _conflictBanner(InkTokens t) {
+    return Container(
+      color: t.danger.withValues(alpha: 0.08),
+      padding: const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm),
+      child: Row(
+        children: [
+          Icon(Icons.sync_problem, size: 18, color: t.danger),
+          const SizedBox(width: spaceSm),
+          Expanded(
+            child: Text(
+              '此笔记与其他设备的修改存在冲突，裁决前不会上传。',
+              style: Theme.of(context)
+                  .textTheme
+                  .labelMedium
+                  ?.copyWith(color: t.ink),
+            ),
+          ),
+          TextButton(
+            onPressed: () => showConflictPanel(context,
+                state: state, noteId: widget.noteId),
+            child: const Text('去裁决'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -962,8 +1024,7 @@ class _HistorySheetState extends State<_HistorySheet> {
       return;
     }
     final changed =
-        await widget.state.db.restoreVersion(widget.noteId, version.id);
-    await widget.state.refresh();
+        await widget.state.restoreVersion(widget.noteId, version.id);
     if (!mounted) {
       return;
     }
