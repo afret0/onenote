@@ -76,6 +76,23 @@ void main() {
     expect(dy(tester, '搜索范围'), greaterThan(dy(tester, '即将上线')));
   });
 
+  testWidgets('settings back button uses click cursor without tooltip',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1000, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final state = await seed(tester);
+    await pumpSettings(tester, state);
+
+    expect(find.byTooltip('Back'), findsNothing);
+    final region = tester.widget<MouseRegion>(find
+        .ancestor(
+            of: find.byIcon(Icons.arrow_back_ios),
+            matching: find.byType(MouseRegion))
+        .first);
+    expect(region.cursor, SystemMouseCursors.click);
+  });
+
   testWidgets('settings uses three columns from 1400 width',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1400, 1200);

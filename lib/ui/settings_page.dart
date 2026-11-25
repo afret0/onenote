@@ -158,7 +158,18 @@ class _SettingsPageState extends State<SettingsPage> {
           title: const Text('设置'),
           leading: Transform.translate(
             offset: const Offset(spaceSm, spaceSm),
-            child: const BackButton(),
+            child: Semantics(
+              button: true,
+              label: '返回',
+              child: IconButton(
+                onPressed: () => Navigator.maybePop(context),
+                style: const ButtonStyle(
+                  mouseCursor:
+                      WidgetStatePropertyAll(SystemMouseCursors.click),
+                ),
+                icon: const Icon(Icons.arrow_back_ios),
+              ),
+            ),
           ),
         ),
         body: LayoutBuilder(
