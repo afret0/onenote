@@ -6,6 +6,7 @@
 
 - **每次任务完成（验证通过后）自动 `git commit` + `git push origin main`，不再逐次询问**。本授权仅覆盖本仓库，优先于全局「commit 逐次确认」规则；不写进全局白名单。
 - 只提交本轮任务范围内的改动（显式列路径或确认 status 后 add），不扫入用户无关的本地文件；instructions 改动随当轮提交一并入库。
+- **多会话并行同仓（2026-11-25 真实场景）**：开工先 `git status`，他会话未提交改动绝不扫入。同文件 hunk 交错时只提交自己的：`git show HEAD:<file>` 取基线、重放本轮编辑成临时 blob，`git hash-object -w` + `git update-index --cacheinfo` 只动 index 不动工作区；验证用临时 worktree（HEAD + 本轮文件 + 拷主仓 `.dart_tool` 与 `pubspec.lock`）跑 analyze/test，完事 `git worktree remove --force`。构建/拷包/重启由并行会话协商一人统一做，其余会话跳过避免撞车（协商消息会注明）。**去 tooltip 会让 `find.byTooltip` 的测试挂**：改 `find.byIcon`，这类连带测试修复随本轮提交。
 - commit message：中文短句描述本轮改动，带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` trailer。
 - 验证失败（analyze/test/build 红）不提交；push 失败（远程分叉需 rebase、鉴权、hooks）停下报告，不 force push、不 amend 既有提交。
 
