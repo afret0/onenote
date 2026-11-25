@@ -1,20 +1,23 @@
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 N = 32
 PAL = {
-    'bg': (46, 125, 91),
+    'GL': (54, 146, 105),
+    'GD': (38, 106, 77),
     'K': (16, 20, 24),
     'W': (255, 255, 255),
-    'C': (240, 234, 220),
-    'B': (125, 211, 252),
-    'G': (148, 163, 184),
-    'g': (203, 213, 225),
-    'P': (236, 72, 153),
-    'Y': (250, 204, 21),
-    'O': (245, 158, 11),
-    'F': (226, 232, 240),
 }
-px = [['bg'] * N for _ in range(N)]
+
+
+def bgfn(x, y):
+    if x + y < 31:
+        return 'GL'
+    if x + y > 31:
+        return 'GD'
+    return 'GL' if x % 2 else 'GD'
+
+
+px = [[bgfn(x, y) for x in range(N)] for y in range(N)]
 
 
 def s(x, y, c):
@@ -22,79 +25,42 @@ def s(x, y, c):
         px[y][x] = c
 
 
-def r(x0, y0, x1, y1, c):
+cells = []
+
+
+def put(x0, y0, x1, y1):
     for y in range(y0, y1 + 1):
         for x in range(x0, x1 + 1):
-            s(x, y, c)
+            s(x, y, 'W')
+            cells.append((x, y))
 
 
-r(7, 6, 24, 26, 'K')
-r(8, 7, 23, 25, 'W')
-r(23, 7, 23, 25, 'C')
-r(8, 25, 23, 25, 'C')
-for y in (10, 13, 16, 22, 24):
-    r(10, y, 21, y, 'B')
-for y in range(6, 11):
-    for x in range(20, 25):
-        dx, dy = x - 20, y - 6
-        if dx > dy:
-            s(x, y, 'bg')
-        elif dx == dy:
-            s(x, y, 'K')
-        else:
-            s(x, y, 'F')
-r(11, 14, 14, 17, 'K')
-r(18, 14, 21, 17, 'K')
-r(11, 14, 12, 15, 'W')
-r(18, 14, 19, 15, 'W')
-s(14, 19, 'K')
-s(15, 20, 'K')
-s(16, 20, 'K')
-s(17, 20, 'K')
-s(18, 19, 'K')
-r(9, 18, 10, 19, 'P')
-r(21, 18, 22, 19, 'P')
-r(11, 27, 14, 29, 'K')
-r(12, 28, 13, 28, 'W')
-r(18, 27, 21, 29, 'K')
-r(19, 28, 20, 28, 'W')
-for y0 in (9, 13, 17, 21):
-    r(4, y0, 7, y0 + 1, 'K')
-    r(5, y0, 6, y0 + 1, 'G')
-    s(5, y0, 'g')
-bolt = [
-    (26, 1), (27, 1), (28, 1),
-    (25, 2), (26, 2), (27, 2), (28, 2),
-    (24, 3), (25, 3), (26, 3), (27, 3),
-    (23, 4), (24, 4), (25, 4), (26, 4), (27, 4), (28, 4), (29, 4),
-    (25, 5), (26, 5), (27, 5), (28, 5), (29, 5),
-    (26, 6), (27, 6), (28, 6),
-    (25, 7), (26, 7), (27, 7),
-    (24, 8), (25, 8), (26, 8),
-    (23, 9), (24, 9),
-]
-cells = set(bolt)
-outline = set()
-for x, y in bolt:
+put(8, 7, 11, 24)
+put(20, 7, 23, 24)
+for y in range(7, 25):
+    x0 = 11 + (y - 7) * 9 // 17
+    put(x0, y, x0 + 2, y)
+
+cs = set(cells)
+border = set()
+for x, y in cs:
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
-            if (x + dx, y + dy) not in cells:
-                outline.add((x + dx, y + dy))
-for x, y in bolt:
-    s(x, y, 'Y')
-for x, y in outline:
+            nx, ny = x + dx, y + dy
+            if (nx, ny) not in cs and 0 <= nx < N and 0 <= ny < N:
+                if px[ny][nx] in ('GL', 'GD'):
+                    border.add((nx, ny))
+for x, y in border:
     s(x, y, 'K')
-for x, y in [(29, 4), (29, 5), (28, 6), (27, 7), (26, 8), (24, 9)]:
-    s(x, y, 'O')
-for x, y in [(26, 1), (25, 2), (24, 3)]:
-    s(x, y, 'W')
 
 art = Image.new('RGB', (N, N))
 art.putdata([PAL[c] for row in px for c in row])
 art = art.resize((1024, 1024), Image.NEAREST).convert('RGBA')
 art.save('assets/images/logo.png')
 
-margined = Image.new('RGB', (N + 4, N + 4), PAL['bg'])
+margined = Image.new('RGB', (N + 4, N + 4))
+margined.putdata([PAL[bgfn(x - 2, y - 2)]
+                  for y in range(N + 4) for x in range(N + 4)])
 margined.paste(art.resize((N, N), Image.NEAREST), (2, 2))
 big = margined.resize((1152, 1152), Image.NEAREST).convert('RGBA')
 canvas = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
@@ -116,4 +82,4 @@ for folder, size in (('mdpi', 48), ('hdpi', 72), ('xhdpi', 96),
                      ('xxhdpi', 144), ('xxxhdpi', 192)):
     art.resize((size, size), Image.NEAREST).save(
         f'android/app/src/main/res/mipmap-{folder}/ic_launcher.png')
-print('pixel grid icon deployed')
+print('pixel N icon deployed')
