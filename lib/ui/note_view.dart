@@ -44,6 +44,9 @@ class _NoteViewState extends State<NoteView> {
   Timer? _autosave;
   late final TextEditingController _titleController;
   late final TextEditingController _contentController;
+  final ScrollController _renderScroll = ScrollController();
+  final ScrollController _editScroll = ScrollController();
+  bool _showScrollTop = false;
 
   AppState get state => widget.state;
 
@@ -52,6 +55,7 @@ class _NoteViewState extends State<NoteView> {
     super.initState();
     _titleController = TextEditingController();
     _contentController = TextEditingController();
+    _renderScroll.addListener(_onRenderScroll);
     _load();
   }
 
@@ -72,15 +76,47 @@ class _NoteViewState extends State<NoteView> {
     _autosave?.cancel();
     _titleController.dispose();
     _contentController.dispose();
+    _renderScroll.dispose();
+    _editScroll.dispose();
     super.dispose();
   }
 
   void _enterEdit() {
+    final fraction = _renderScroll.hasClients &&
+            _renderScroll.position.maxScrollExtent > 0
+        ? (_renderScroll.position.pixels /
+                _renderScroll.position.maxScrollExtent)
+            .clamp(0.0, 1.0)
+        : 0.0;
+    final text = _contentController.text;
+    _contentController.selection = TextSelection.collapsed(
+        offset: (fraction * text.length).round().clamp(0, text.length));
     setState(() {
       _editing = true;
       _dirty = false;
       _saveStatus = '';
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_editing || !_editScroll.hasClients) {
+        return;
+      }
+      _editScroll.jumpTo(fraction * _editScroll.position.maxScrollExtent);
+    });
+  }
+
+  void _onRenderScroll() {
+    final show = _renderScroll.hasClients && _renderScroll.position.pixels > 0;
+    if (show != _showScrollTop) {
+      setState(() => _showScrollTop = show);
+    }
+  }
+
+  void _scrollToTop() {
+    if (!_renderScroll.hasClients) {
+      return;
+    }
+    _renderScroll.animateTo(0,
+        duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
   }
 
   void _changed() {
@@ -260,6 +296,7 @@ class _NoteViewState extends State<NoteView> {
       padding: const EdgeInsets.symmetric(horizontal: spaceSm),
       child: TextField(
         controller: _contentController,
+        scrollController: _editScroll,
         onChanged: (_) => _changed(),
         autofocus: true,
         maxLines: null,
@@ -467,52 +504,89 @@ class _NoteViewState extends State<NoteView> {
         Expanded(
           child: _editing
               ? _editorArea()
-              : SingleChildScrollView(
-                  key: PageStorageKey<String>('noteScroll:${widget.noteId}'),
-                  padding: const EdgeInsets.fromLTRB(
-                      spaceLg, spaceLg, spaceLg, spaceXxl),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: spaceLg),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                      color: Color(state
-                                          .notebookColor(note.notebookId)),
-                                      shape: BoxShape.circle),
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    SingleChildScrollView(
+                      key:
+                          PageStorageKey<String>('noteScroll:${widget.noteId}'),
+                      controller: _renderScroll,
+                      padding: const EdgeInsets.fromLTRB(
+                          spaceLg, spaceLg, spaceLg, spaceXxl),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding:
+                                    const EdgeInsets.only(bottom: spaceLg),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                          color: Color(state
+                                              .notebookColor(note.notebookId)),
+                                          shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(state.notebookName(note.notebookId),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall),
+                                    const SizedBox(width: spaceMd),
+                                    Text(formatDateTime(note.updateAt),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall),
+                                  ],
                                 ),
-                                const SizedBox(width: 6),
-                                Text(state.notebookName(note.notebookId),
-                                    style:
-                                        Theme.of(context).textTheme.labelSmall),
-                                const SizedBox(width: spaceMd),
-                                Text(formatDateTime(note.updateAt),
-                                    style:
-                                        Theme.of(context).textTheme.labelSmall),
-                              ],
-                            ),
+                              ),
+                              MarkdownView(
+                                content: note.content,
+                                attachments: state.attachments,
+                                onAttachmentLink: _openAttachment,
+                                onToggleTask: _toggleTask,
+                              ),
+                            ],
                           ),
-                          MarkdownView(
-                            content: note.content,
-                            attachments: state.attachments,
-                            onAttachmentLink: _openAttachment,
-                            onToggleTask: _toggleTask,
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
+                    if (_showScrollTop)
+                      Positioned(
+                        right: spaceLg,
+                        bottom: spaceLg,
+                        child: _scrollTopButton(t),
+                      ),
+                  ],
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _scrollTopButton(InkTokens t) {
+    return Tooltip(
+      message: '回到顶部',
+      child: Material(
+        color: t.surfaceAlt,
+        shape: CircleBorder(side: BorderSide(color: t.hairline)),
+        elevation: 4,
+        shadowColor: Colors.black54,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _scrollToTop,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(Icons.keyboard_arrow_up, color: t.inkMuted),
+          ),
+        ),
+      ),
     );
   }
 
