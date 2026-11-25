@@ -9,6 +9,12 @@
 - commit message：中文短句描述本轮改动，带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>` trailer。
 - 验证失败（analyze/test/build 红）不提交；push 失败（远程分叉需 rebase、鉴权、hooks）停下报告，不 force push、不 amend 既有提交。
 
+## 交付构建与运行（项目级常设规矩，2026-11-25 用户明确）
+
+- 每轮改动验证通过后打 macOS release 包：`flutter build macos --release`，产物 `build/macos/Build/Products/Release/onenote.app` **整包拷到 `~/Downloads/onenote.app`**（先删旧拷贝再 `cp -R`，避免新旧文件混杂）。
+- **直接 kill 旧运行实例并把新包运行起来，不必询问**：`pgrep -x onenote` 拿 PID 逐个 `kill <PID>`（禁 pkill/killall），`open ~/Downloads/onenote.app`，再 pgrep 确认新进程在跑。
+- 构建失败不拷不跑，先报告失败原因。
+
 ## 已确认的设计决策（用户拍板，不得擅改）
 
 - 层级两级：笔记本 → 笔记；**非空笔记本禁止删除**（回收站里的笔记也算非空）。
