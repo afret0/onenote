@@ -85,6 +85,8 @@ class AppDb extends _$AppDb {
   static const trashRetentionKey = 'trashRetentionDays';
   static const versionRetentionKey = 'versionRetentionDays';
   static const searchScopeKey = 'searchScope';
+  static const paneWidthSidebarKey = 'paneWidth:sidebar';
+  static const paneWidthListKey = 'paneWidth:list';
   static const lastOpenNotePrefix = 'lastOpenNote:';
   static const allNotesScopeKey = 'all';
   static const msPerDay = 86400000;

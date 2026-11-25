@@ -195,4 +195,100 @@ void main() {
     await tester.pumpAndSettle();
     expect(noteContent('alpha content'), findsOneWidget);
   });
+
+  testWidgets('dragging pane dividers resizes columns and persists widths',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_widget_test');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    final db = AppDb(NativeDatabase.memory());
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+        find.byKey(const Key('paneDivider:sidebar')), const Offset(60, 0));
+    await tester.pumpAndSettle();
+    expect(state.sidebarWidth, greaterThan(AppState.sidebarDefaultWidth));
+    expect(state.sidebarWidth,
+        lessThanOrEqualTo(AppState.sidebarDefaultWidth + 60));
+
+    await tester.drag(
+        find.byKey(const Key('paneDivider:list')), const Offset(-1000, 0));
+    await tester.pumpAndSettle();
+    expect(state.listWidth, AppState.listMinWidth);
+
+    await tester.runAsync(() async {
+      expect(await db.getSetting(AppDb.paneWidthSidebarKey),
+          state.sidebarWidth.round().toString());
+      expect(await db.getSetting(AppDb.paneWidthListKey),
+          AppState.listMinWidth.round().toString());
+    });
+  });
+
+  testWidgets('shrinking window keeps content minimum then restores widths',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_widget_test');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    final db = AppDb(NativeDatabase.memory());
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      await state.init();
+    });
+    state.updateSidebarWidth(400);
+    state.updateListWidth(480);
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+
+    final sidebarDivider = find.byKey(const Key('paneDivider:sidebar'));
+    final listDivider = find.byKey(const Key('paneDivider:list'));
+    expect(tester.getTopLeft(sidebarDivider).dx, 400);
+    expect(tester.getTopLeft(listDivider).dx - 400 - 8, 480);
+
+    tester.view.physicalSize = const Size(900, 900);
+    await tester.pumpAndSettle();
+    final sidebarWidth = tester.getTopLeft(sidebarDivider).dx;
+    final listWidth = tester.getTopLeft(listDivider).dx - sidebarWidth - 8;
+    expect(sidebarWidth, 284);
+    expect(listWidth, AppState.listMinWidth);
+    expect(state.sidebarWidth, 400);
+    expect(state.listWidth, 480);
+
+    tester.view.physicalSize = const Size(1400, 900);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(sidebarDivider).dx, 400);
+    expect(tester.getTopLeft(listDivider).dx - 400 - 8, 480);
+  });
 }

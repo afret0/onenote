@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../data/app_db.dart';
@@ -101,7 +103,10 @@ class _HomePageState extends State<HomePage> {
       animation: state,
       builder: (context, _) {
         final openId = state.openNoteId;
-        final isWide = MediaQuery.sizeOf(context).width >= 900;
+        final windowWidth = MediaQuery.sizeOf(context).width;
+        final isWide = windowWidth >= 900;
+        final panes =
+            isWide ? _paneWidths(windowWidth) : (0.0, 0.0);
         final drawerNeeded = !isWide && openId != null;
         final searching = _searchHits != null;
         if (isWide &&
@@ -140,15 +145,39 @@ class _HomePageState extends State<HomePage> {
               children: [
                 if (isWide)
                   SizedBox(
-                    width: 268,
+                    width: panes.$1,
                     child: _sidebar(compact: false),
                   ),
-                if (isWide) const VerticalDivider(width: 1),
                 if (isWide)
-                  SizedBox(width: 320, child: _listPane(dense: true))
+                  _PaneDivider(
+                    key: const Key('paneDivider:sidebar'),
+                    onDelta: (delta) => state.updateSidebarWidth((panes.$1 +
+                            delta)
+                        .clamp(AppState.sidebarMinWidth, math.min(
+                            AppState.sidebarMaxWidth,
+                            windowWidth -
+                                _PaneDivider.hitWidth * 2 -
+                                AppState.contentMinWidth -
+                                panes.$2))),
+                    onDragEnd: state.persistPaneWidths,
+                  ),
+                if (isWide)
+                  SizedBox(width: panes.$2, child: _listPane(dense: true))
                 else if (openId == null)
                   Expanded(child: _listPane()),
-                if (isWide) const VerticalDivider(width: 1),
+                if (isWide)
+                  _PaneDivider(
+                    key: const Key('paneDivider:list'),
+                    onDelta: (delta) => state.updateListWidth((panes.$2 +
+                            delta)
+                        .clamp(AppState.listMinWidth, math.min(
+                            AppState.listMaxWidth,
+                            windowWidth -
+                                _PaneDivider.hitWidth * 2 -
+                                AppState.contentMinWidth -
+                                panes.$1))),
+                    onDragEnd: state.persistPaneWidths,
+                  ),
                 if (isWide || openId != null)
                   Expanded(
                     child: openId != null
@@ -167,6 +196,16 @@ class _HomePageState extends State<HomePage> {
         );
       },
     );
+  }
+
+  (double, double) _paneWidths(double windowWidth) {
+    final available =
+        windowWidth - _PaneDivider.hitWidth * 2 - AppState.contentMinWidth;
+    final sidebar = state.sidebarWidth.clamp(AppState.sidebarMinWidth,
+        math.min(AppState.sidebarMaxWidth, available - AppState.listMinWidth));
+    final list = state.listWidth.clamp(
+        AppState.listMinWidth, math.min(AppState.listMaxWidth, available - sidebar));
+    return (sidebar.toDouble(), list.toDouble());
   }
 
   Widget _sidebar({required bool compact}) {
@@ -462,6 +501,54 @@ class _HomePageState extends State<HomePage> {
             child: const Text('删除'),
           ),
         ],
+      ),
+    );
+  }
+}
+class _PaneDivider extends StatefulWidget {
+  const _PaneDivider({super.key, required this.onDelta, required this.onDragEnd});
+
+  static const hitWidth = 8.0;
+
+  final void Function(double delta) onDelta;
+  final Future<void> Function() onDragEnd;
+
+  @override
+  State<_PaneDivider> createState() => _PaneDividerState();
+}
+
+class _PaneDividerState extends State<_PaneDivider> {
+  bool _hovering = false;
+  bool _dragging = false;
+
+  void _endDrag() {
+    setState(() => _dragging = false);
+    widget.onDragEnd();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    final active = _hovering || _dragging;
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => setState(() => _dragging = true),
+        onHorizontalDragUpdate: (details) => widget.onDelta(details.delta.dx),
+        onHorizontalDragEnd: (_) => _endDrag(),
+        onHorizontalDragCancel: _endDrag,
+        child: SizedBox(
+          width: _PaneDivider.hitWidth,
+          child: Center(
+            child: Container(
+              width: 1,
+              color: active ? t.accent : t.hairline,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -23,6 +23,14 @@ class NoteScope {
 class AppState extends ChangeNotifier {
   AppState(this.db);
 
+  static const sidebarMinWidth = 200.0;
+  static const sidebarMaxWidth = 400.0;
+  static const sidebarDefaultWidth = 268.0;
+  static const listMinWidth = 240.0;
+  static const listMaxWidth = 480.0;
+  static const listDefaultWidth = 320.0;
+  static const contentMinWidth = 360.0;
+
   final AppDb db;
 
   AttachmentStore? attachments;
@@ -33,6 +41,8 @@ class AppState extends ChangeNotifier {
   String? openNoteId;
   Set<String> searchScope = {};
   Map<String, String> lastOpenNote = {};
+  double sidebarWidth = sidebarDefaultWidth;
+  double listWidth = listDefaultWidth;
 
   Future<void> init() async {
     if (!kIsWeb) {
@@ -42,6 +52,10 @@ class AppState extends ChangeNotifier {
       developer.log('skip, web 端附件存储未启用, 原因: 附件随同步阶段支持 web');
     }
     notebooks = await db.listNotebooks();
+    sidebarWidth = _loadedWidth(await db.getSetting(AppDb.paneWidthSidebarKey),
+        sidebarDefaultWidth, sidebarMinWidth, sidebarMaxWidth);
+    listWidth = _loadedWidth(await db.getSetting(AppDb.paneWidthListKey),
+        listDefaultWidth, listMinWidth, listMaxWidth);
     final saved = await db.getSetting(AppDb.searchScopeKey);
     if (saved != null && saved.isNotEmpty) {
       searchScope = saved
@@ -183,6 +197,43 @@ class AppState extends ChangeNotifier {
     searchScope = ids;
     await db.setSetting(AppDb.searchScopeKey, ids.join(','));
     notifyListeners();
+  }
+
+  void updateSidebarWidth(double width) {
+    final next = width.clamp(sidebarMinWidth, sidebarMaxWidth).toDouble();
+    if (next == sidebarWidth) {
+      return;
+    }
+    sidebarWidth = next;
+    notifyListeners();
+  }
+
+  void updateListWidth(double width) {
+    final next = width.clamp(listMinWidth, listMaxWidth).toDouble();
+    if (next == listWidth) {
+      return;
+    }
+    listWidth = next;
+    notifyListeners();
+  }
+
+  Future<void> persistPaneWidths() async {
+    await db.setSetting(
+        AppDb.paneWidthSidebarKey, sidebarWidth.round().toString());
+    await db.setSetting(AppDb.paneWidthListKey, listWidth.round().toString());
+    developer.log(
+        'done, 栏宽已持久化, sidebar: $sidebarWidth, list: $listWidth');
+  }
+
+  double _loadedWidth(String? raw, double fallback, double min, double max) {
+    final parsed = raw == null ? null : double.tryParse(raw);
+    if (parsed == null || parsed.isNaN || parsed.isInfinite) {
+      if (raw != null) {
+        developer.log('skip, 栏宽设置非法回退默认, raw: $raw, fallback: $fallback');
+      }
+      return fallback;
+    }
+    return parsed.clamp(min, max).toDouble();
   }
 
   String? _resolveAutoOpen() {

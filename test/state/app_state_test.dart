@@ -175,4 +175,28 @@ void main() {
     state.autoOpenCurrentScope();
     expect(state.openNoteId, other.id);
   });
+
+  test('pane widths persist across restart and clamp out-of-range values',
+      () async {
+    await state.init();
+    expect(state.sidebarWidth, AppState.sidebarDefaultWidth);
+    expect(state.listWidth, AppState.listDefaultWidth);
+
+    state.updateSidebarWidth(320.4);
+    state.updateListWidth(9000);
+    expect(state.listWidth, AppState.listMaxWidth);
+    await state.persistPaneWidths();
+
+    final restarted = await restartedState();
+    expect(restarted.sidebarWidth, 320);
+    expect(restarted.listWidth, AppState.listMaxWidth);
+  });
+
+  test('invalid persisted pane widths fall back to defaults', () async {
+    await db.setSetting(AppDb.paneWidthSidebarKey, 'oops');
+    await db.setSetting(AppDb.paneWidthListKey, '-5');
+    await state.init();
+    expect(state.sidebarWidth, AppState.sidebarDefaultWidth);
+    expect(state.listWidth, AppState.listMinWidth);
+  });
 }
