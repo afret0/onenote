@@ -267,8 +267,8 @@ class _NoteViewState extends State<NoteView> {
         textAlignVertical: TextAlignVertical.top,
         keyboardType: TextInputType.multiline,
         style: TextStyle(
-          fontFamily: monoFamily,
-          fontFamilyFallback: cjkMonoFallback,
+          fontFamily: t.sans,
+          fontFamilyFallback: cjkSansFallback,
           fontSize: t.noteFontSize * t.fontScale,
           height: 1.75,
           color: t.ink,
