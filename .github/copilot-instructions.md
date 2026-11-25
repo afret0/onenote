@@ -110,6 +110,8 @@ flutter build web --release                                # web 产物在 build
   - 测试手法（test/synthetic_paste_test.dart）：mock `pasteboard` 通道（'image'→null）+ `SystemChannels.platform` 的 Clipboard.getData，用 `binding.defaultBinaryMessenger.handlePlatformMessage('onenote/synthetic_paste', encodeMethodCall(MethodCall('paste')))` 模拟原生派发；autofocus 后光标在 offset 0，粘贴插在最前。
   - 真机注入验证：`CGEvent(keyboardEventSource:virtualKey:9,keyDown:true).flags=.maskCommand` + `postToPid` 可复现 Raycast 形状，但**app 必须前台且屏幕未锁**（loginwindow 前台时事件不派发，别在用户锁屏/开会时抢焦点验证）。
 
+- **macOS 沙箱出站权限与代理（2026-11-25 真实教训）**：release 包所有出站 connect 报 `Operation not permitted errno 1` = 沙箱缺 `com.apple.security.network.client`（loopback 也算出站），Release/DebugProfile 两份 entitlements 都要显式声明；剪藏桥接监听另需 `network.server`。Dart `HttpClient` 缺省 `findProxyFromEnvironment`（dart-sdk `lib/_http/http_impl.dart`），`open` 起的 app 会继承启动 shell 的 proxy env（`ps eww <pid>` 可查）——同步连 127.0.0.1:1087 不是代码配了代理；用户拍板保持跟随环境代理。改 entitlements 后核验 `codesign -d --entitlements - <app>`；他会话注入的临时 entitlements 会让 codesign 输出含 `get-task-allow`/多余键，别误判自己的改动没生效。
+
 ## 未实现（下一阶段，动工前先与用户确认边界值）
 
 加密与笔记本锁、Web 端附件（web 上 attachment store 为 null）、桥接服务与 MV3 插件（端口/token/配对方式待定）。
