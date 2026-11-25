@@ -17,6 +17,7 @@ class MarkdownView extends StatefulWidget {
     this.highlightActiveIndex = -1,
     this.highlightController,
     this.tocController,
+    this.tint,
   });
 
   final String content;
@@ -27,6 +28,7 @@ class MarkdownView extends StatefulWidget {
   final int highlightActiveIndex;
   final MarkdownHighlightController? highlightController;
   final MarkdownTocController? tocController;
+  final Color? tint;
 
   @override
   State<MarkdownView> createState() => _MarkdownViewState();
@@ -36,6 +38,7 @@ class _MarkdownViewState extends State<MarkdownView> {
   MarkdownStyleSheet? _sheet;
   InkTokens? _sheetTokens;
   double _sheetScale = -1;
+  Color? _sheetTint;
   String? _taskContent;
   List<bool> _taskStates = const [];
 
@@ -53,7 +56,13 @@ class _MarkdownViewState extends State<MarkdownView> {
     final contentScale = t.noteFontSize * t.fontScale / 16;
     if (_sheet == null ||
         !identical(_sheetTokens, t) ||
-        _sheetScale != contentScale) {
+        _sheetScale != contentScale ||
+        _sheetTint != widget.tint) {
+      final tint = widget.tint;
+      final accentFill =
+          tint == null ? t.accent : readableOn(tint, t.paper, ratio: 3);
+      final accentInk =
+          tint == null ? t.accentText : readableOn(tint, t.paper);
       final headingSerif = TextStyle(
         fontFamily: serifFamily,
         fontFamilyFallback: cjkSerifFallback,
@@ -87,10 +96,10 @@ class _MarkdownViewState extends State<MarkdownView> {
         strong: body.copyWith(fontWeight: FontWeight.w700),
         em: body.copyWith(fontStyle: FontStyle.italic),
         a: body.copyWith(
-            color: t.accentText, decoration: TextDecoration.underline),
+            color: accentInk, decoration: TextDecoration.underline),
         blockquote: body.copyWith(color: t.inkMuted),
         blockquoteDecoration: BoxDecoration(
-          border: Border(left: BorderSide(color: t.accent, width: 3)),
+          border: Border(left: BorderSide(color: accentFill, width: 3)),
           color: t.surfaceAlt.withValues(alpha: 0.5),
         ),
         blockquotePadding:
@@ -104,7 +113,7 @@ class _MarkdownViewState extends State<MarkdownView> {
         ),
         codeblockPadding: const EdgeInsets.all(spaceMd),
         codeblockAlign: WrapAlignment.start,
-        listBullet: body.copyWith(color: t.accent),
+        listBullet: body.copyWith(color: accentFill),
         listIndent: 28,
         horizontalRuleDecoration: BoxDecoration(
           border: Border(top: BorderSide(color: t.hairline, width: 1)),
@@ -115,10 +124,11 @@ class _MarkdownViewState extends State<MarkdownView> {
         tableCellsPadding: const EdgeInsets.symmetric(
             horizontal: spaceSm + 4, vertical: spaceSm),
         tableCellsDecoration: BoxDecoration(color: t.surface),
-        checkbox: body.copyWith(color: t.accent),
+        checkbox: body.copyWith(color: accentFill),
       );
       _sheetTokens = t;
       _sheetScale = contentScale;
+      _sheetTint = tint;
     }
     final sheet = _sheet!;
     if (!identical(_taskContent, content)) {
@@ -146,13 +156,15 @@ class _MarkdownViewState extends State<MarkdownView> {
       listItemCrossAxisAlignment: MarkdownListItemCrossAxisAlignment.start,
       checkboxBuilder: (checked) {
         if (toggle == null || taskCount == 0) {
-          return _TaskCheckbox(checked: checked, lineHeight: lineHeight);
+          return _TaskCheckbox(
+              checked: checked, lineHeight: lineHeight, tint: widget.tint);
         }
         final ordinal = checkboxCalls++ % taskCount;
         return _TaskCheckbox(
           checked: checked,
           lineHeight: lineHeight,
           onTap: () => toggle(ordinal),
+          tint: widget.tint,
         );
       },
       builders: store == null
@@ -179,11 +191,13 @@ class _TaskCheckbox extends StatefulWidget {
     required this.checked,
     required this.lineHeight,
     this.onTap,
+    this.tint,
   });
 
   final bool checked;
   final double lineHeight;
   final VoidCallback? onTap;
+  final Color? tint;
 
   @override
   State<_TaskCheckbox> createState() => _TaskCheckboxState();
@@ -197,6 +211,11 @@ class _TaskCheckboxState extends State<_TaskCheckbox> {
   Widget build(BuildContext context) {
     final t = inkOf(context);
     final interactive = widget.onTap != null;
+    final tint = widget.tint;
+    final fill =
+        tint == null ? t.accent : readableOn(tint, t.paper, ratio: 3);
+    final hover =
+        tint == null ? t.accentText : readableOn(tint, t.paper);
     return MouseRegion(
       cursor: interactive ? SystemMouseCursors.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _hover = true),
@@ -223,7 +242,7 @@ class _TaskCheckboxState extends State<_TaskCheckbox> {
                       ? Icons.check_box
                       : Icons.check_box_outline_blank,
                   size: 20,
-                  color: interactive && _hover ? t.accentText : t.accent,
+                  color: interactive && _hover ? hover : fill,
                 ),
               ),
             ),

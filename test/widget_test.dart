@@ -439,6 +439,83 @@ void main() {
     expect(ordinals.last, 1);
   });
 
+  testWidgets('markdown accents follow notebook tint, default stays accent',
+      (WidgetTester tester) async {
+    const orange = Color(0xFFE8890C);
+    const green = Color(0xFF16A34A);
+    const content = '- [x] done\n- plain\n\n> quote\n\n[link](https://e.com)';
+    Color? linkColor(InlineSpan span, Color? inherited) {
+      if (span is TextSpan) {
+        final color = span.style?.color ?? inherited;
+        if (span.text == 'link') {
+          return color;
+        }
+        for (final child in span.children ?? const <InlineSpan>[]) {
+          final found = linkColor(child, color);
+          if (found != null) {
+            return found;
+          }
+        }
+      }
+      return null;
+    }
+
+    for (final brightness in Brightness.values) {
+      late InkTokens t;
+      Widget host(Color? tint) => MaterialApp(
+            theme: buildInkTheme(brightness),
+            home: Scaffold(body: Builder(builder: (context) {
+              t = inkOf(context);
+              return MarkdownView(
+                  content: content, onToggleTask: (_) {}, tint: tint);
+            })),
+          );
+      await tester.pumpWidget(host(orange));
+      await tester.pumpAndSettle();
+      final fill = readableOn(orange, t.paper, ratio: 3);
+      final ink = readableOn(orange, t.paper);
+      expect(contrastRatio(fill, t.paper), greaterThanOrEqualTo(3),
+          reason: 'brightness: $brightness');
+      expect(contrastRatio(ink, t.paper), greaterThanOrEqualTo(4.5),
+          reason: 'brightness: $brightness');
+      expect(tester.widget<Icon>(find.byIcon(Icons.check_box)).color, fill);
+      expect(tester.widget<Text>(find.text('•')).style!.color, fill);
+      final quoteText = tester
+          .widgetList<SelectableText>(find.byType(SelectableText))
+          .firstWhere(
+              (w) => (w.textSpan?.toPlainText() ?? '').contains('quote'));
+      final quote = tester.widget<DecoratedBox>(find
+          .ancestor(
+              of: find.byWidget(quoteText),
+              matching: find.byType(DecoratedBox))
+          .first);
+      expect(
+          ((quote.decoration as BoxDecoration).border! as Border).left.color,
+          fill);
+      final link = tester
+          .widgetList<SelectableText>(find.byType(SelectableText))
+          .firstWhere(
+              (w) => (w.textSpan?.toPlainText() ?? '').contains('link'));
+      expect(linkColor(link.textSpan!, null), ink);
+
+      await tester.pumpWidget(host(green));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Icon>(find.byIcon(Icons.check_box)).color,
+          readableOn(green, t.paper, ratio: 3));
+
+      await tester.pumpWidget(host(null));
+      await tester.pumpAndSettle();
+      expect(
+          tester.widget<Icon>(find.byIcon(Icons.check_box)).color, t.accent);
+      expect(tester.widget<Text>(find.text('•')).style!.color, t.accent);
+      final plainLink = tester
+          .widgetList<SelectableText>(find.byType(SelectableText))
+          .firstWhere(
+              (w) => (w.textSpan?.toPlainText() ?? '').contains('link'));
+      expect(linkColor(plainLink.textSpan!, null), t.accentText);
+    }
+  });
+
   testWidgets('tapping a rendered todo toggles the source and autosaves',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1400, 900);
