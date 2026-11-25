@@ -8,4 +8,5 @@ library;
 export 'src/builder.dart';
 export 'src/highlight.dart';
 export 'src/style_sheet.dart';
+export 'src/toc.dart';
 export 'src/widget.dart';

@@ -16,6 +16,7 @@ class MarkdownView extends StatefulWidget {
     this.highlightQuery,
     this.highlightActiveIndex = -1,
     this.highlightController,
+    this.tocController,
   });
 
   final String content;
@@ -25,6 +26,7 @@ class MarkdownView extends StatefulWidget {
   final String? highlightQuery;
   final int highlightActiveIndex;
   final MarkdownHighlightController? highlightController;
+  final MarkdownTocController? tocController;
 
   @override
   State<MarkdownView> createState() => _MarkdownViewState();
@@ -139,6 +141,7 @@ class _MarkdownViewState extends State<MarkdownView> {
       highlightActiveInk:
           widget.highlightQuery == null ? null : t.searchActiveInk,
       highlightController: widget.highlightController,
+      tocController: widget.tocController,
       blockSyntaxes: markdownTaskBlockSyntaxes,
       listItemCrossAxisAlignment: MarkdownListItemCrossAxisAlignment.start,
       checkboxBuilder: (checked) {

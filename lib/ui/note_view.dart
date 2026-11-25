@@ -9,7 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
-    show MarkdownHighlightController;
+    show MarkdownHighlightController, MarkdownTocController, MarkdownTocEntry;
 import 'package:mime/mime.dart';
 import 'package:pasteboard/pasteboard.dart';
 
@@ -21,11 +21,14 @@ import '../window_setup.dart';
 import 'conflict_panel.dart';
 import 'dialogs.dart';
 import 'markdown_view.dart';
+import 'note_toc.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
 const _noteColumnWidth = 760.0;
+const _tocColumnMinWidth = 600.0;
 const _navPosSettingKey = 'searchNavPos';
+const _tocVisibleSettingKey = 'tocVisible';
 
 class NoteView extends StatefulWidget {
   const NoteView({
@@ -59,6 +62,9 @@ class NoteViewState extends State<NoteView> {
   final ScrollController _editScroll = ScrollController();
   bool _showScrollTop = false;
   final MarkdownHighlightController _highlight = MarkdownHighlightController();
+  final MarkdownTocController _toc = MarkdownTocController();
+  bool _tocVisible = true;
+  int _tocActive = -1;
   final GlobalKey _renderViewportKey = GlobalKey();
   final GlobalKey _navKey = GlobalKey();
   Size _navSize = const Size(200, 52);
@@ -85,9 +91,11 @@ class NoteViewState extends State<NoteView> {
     _contentController = TextEditingController();
     _renderScroll.addListener(_onRenderScroll);
     _highlight.addListener(_onHighlightChanged);
+    _toc.addListener(_onTocChanged);
     state.addListener(_reloadIfIdle);
     _load();
     _loadNavPos();
+    _loadTocVisible();
   }
 
   Future<void> _loadNavPos() async {
@@ -231,6 +239,8 @@ class NoteViewState extends State<NoteView> {
     _renderScroll.dispose();
     _editScroll.dispose();
     _highlight.removeListener(_onHighlightChanged);
+    _toc.removeListener(_onTocChanged);
+    _toc.dispose();
     super.dispose();
   }
 
@@ -290,9 +300,94 @@ class NoteViewState extends State<NoteView> {
 
   void _onRenderScroll() {
     final show = _renderScroll.hasClients && _renderScroll.position.pixels > 0;
-    if (show != _showScrollTop) {
+    final previousActive = _tocActive;
+    _updateTocActive();
+    if (show != _showScrollTop || _tocActive != previousActive) {
       setState(() => _showScrollTop = show);
     }
+  }
+
+  List<MarkdownTocEntry> _tocEntries() => noteTocVisibleEntries(_toc.entries);
+
+  Future<void> _loadTocVisible() async {
+    final raw = await state.db.getSetting(_tocVisibleSettingKey);
+    if (!mounted || raw == null) {
+      return;
+    }
+    setState(() => _tocVisible = raw != '0');
+  }
+
+  Future<void> _toggleTocVisible() async {
+    setState(() {
+      _tocVisible = !_tocVisible;
+      _updateTocActive();
+    });
+    await state.db.setSetting(_tocVisibleSettingKey, _tocVisible ? '1' : '0');
+  }
+
+  void _onTocChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(_updateTocActive);
+    });
+  }
+
+  void _updateTocActive() {
+    var active = -1;
+    if (!_editing && _tocVisible && _renderScroll.hasClients) {
+      final viewport =
+          _renderViewportKey.currentContext?.findRenderObject() as RenderBox?;
+      if (viewport != null && viewport.hasSize) {
+        final top = viewport.localToGlobal(Offset.zero).dy;
+        final entries = _tocEntries();
+        for (var i = 0; i < entries.length; i++) {
+          final box =
+              entries[i].key.currentContext?.findRenderObject() as RenderBox?;
+          if (box == null || !box.hasSize) {
+            continue;
+          }
+          if (box.localToGlobal(Offset.zero).dy - top <=
+              noteTocRevealOffset + 1) {
+            active = i;
+          }
+        }
+      }
+    }
+    _tocActive = active;
+  }
+
+  void _jumpToTocEntry(MarkdownTocEntry entry) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_renderScroll.hasClients) {
+        return;
+      }
+      final viewport =
+          _renderViewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final box = entry.key.currentContext?.findRenderObject() as RenderBox?;
+      if (viewport == null || box == null) {
+        return;
+      }
+      final top = viewport.localToGlobal(Offset.zero).dy;
+      final target = (_renderScroll.position.pixels +
+              box.localToGlobal(Offset.zero).dy -
+              top -
+              noteTocRevealOffset)
+          .clamp(0.0, _renderScroll.position.maxScrollExtent);
+      _renderScroll.animateTo(target,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic);
+    });
+  }
+
+  void _openTocSheet() {
+    final entries = _tocEntries();
+    if (entries.isEmpty) {
+      return;
+    }
+    showNoteTocSheet(context,
+        entries: entries, activeIndex: _tocActive, onSelect: _jumpToTocEntry);
   }
 
   void _scrollToTop() {
@@ -822,6 +917,7 @@ class NoteViewState extends State<NoteView> {
     if (note == null) {
       return const Center(child: CircularProgressIndicator());
     }
+    final isWideWindow = MediaQuery.sizeOf(context).width >= 900;
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -887,96 +983,147 @@ class NoteViewState extends State<NoteView> {
         Expanded(
           child: _editing
               ? _editorArea()
-              : Stack(
-                  key: _renderViewportKey,
-                  fit: StackFit.expand,
-                  children: [
-                    SingleChildScrollView(
-                      key:
-                          PageStorageKey<String>('noteScroll:${widget.noteId}'),
-                      controller: _renderScroll,
-                      padding: const EdgeInsets.fromLTRB(
-                          spaceLg, spaceLg, spaceLg, spaceXxl),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints:
-                              const BoxConstraints(maxWidth: _noteColumnWidth),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding:
-                                    const EdgeInsets.only(bottom: spaceLg),
-                                child: _metaRow(note),
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    final tocEntries = _tocEntries();
+                    final showTocColumn = isWideWindow &&
+                        _tocVisible &&
+                        tocEntries.isNotEmpty &&
+                        constraints.maxWidth >= _tocColumnMinWidth;
+                    final showTocButton =
+                        !showTocColumn && _tocVisible && tocEntries.isNotEmpty;
+                    final renderArea = Stack(
+                      key: _renderViewportKey,
+                      fit: StackFit.expand,
+                      children: [
+                        SingleChildScrollView(
+                          key: PageStorageKey<String>(
+                              'noteScroll:${widget.noteId}'),
+                          controller: _renderScroll,
+                          padding: const EdgeInsets.fromLTRB(
+                              spaceLg, spaceLg, spaceLg, spaceXxl),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                  maxWidth: _noteColumnWidth),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding:
+                                        const EdgeInsets.only(bottom: spaceLg),
+                                    child: _metaRow(note),
+                                  ),
+                                  MarkdownView(
+                                    content: note.content,
+                                    attachments: state.attachments,
+                                    onAttachmentLink: _openAttachment,
+                                    onToggleTask: _toggleTask,
+                                    highlightQuery: widget.highlightQuery,
+                                    highlightActiveIndex: _matchIndex,
+                                    highlightController: _highlight,
+                                    tocController: _toc,
+                                  ),
+                                ],
                               ),
-                              MarkdownView(
-                                content: note.content,
-                                attachments: state.attachments,
-                                onAttachmentLink: _openAttachment,
-                                onToggleTask: _toggleTask,
-                                highlightQuery: widget.highlightQuery,
-                                highlightActiveIndex: _matchIndex,
-                                highlightController: _highlight,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: _readingColumnOverlay(
-                        Align(
-                          alignment: Alignment.topRight,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: spaceLg),
-                            child: _editButton(t),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (_showScrollTop)
-                      Positioned.fill(
-                        child: _readingColumnOverlay(
-                          Align(
-                            alignment: Alignment.bottomRight,
-                            child: Padding(
-                              padding: const EdgeInsets.only(
-                                  right: spaceXs, bottom: spaceLg),
-                              child: _scrollTopButton(t),
                             ),
                           ),
                         ),
-                      ),
-                    if (!_editing && _highlight.matches.isNotEmpty)
-                      Positioned.fill(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final area = constraints.biggest;
-                            final bar = _navSize;
-                            final pos = _clampNav(
-                                _navPos ?? _defaultNavPos(area, bar), area, bar);
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (!mounted) {
-                                return;
-                              }
-                              final size = _navKey.currentContext?.size;
-                              if (size != null && size != _navSize) {
-                                setState(() => _navSize = size);
-                              }
-                            });
-                            return Stack(
-                              children: [
-                                Positioned(
-                                  left: pos.dx,
-                                  top: pos.dy,
-                                  child: _matchNav(t),
-                                ),
-                              ],
-                            );
-                          },
+                        Positioned.fill(
+                          child: _readingColumnOverlay(
+                            Align(
+                              alignment: Alignment.topRight,
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: spaceLg),
+                                child: _editButton(t),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                  ],
+                        if (_showScrollTop)
+                          Positioned.fill(
+                            child: _readingColumnOverlay(
+                              Align(
+                                alignment: Alignment.bottomRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                      right: spaceXs, bottom: spaceLg),
+                                  child: _scrollTopButton(t),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (showTocButton)
+                          Positioned.fill(
+                            child: _readingColumnOverlay(
+                              Align(
+                                alignment: Alignment.bottomRight,
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                      right: spaceXs,
+                                      bottom:
+                                          spaceLg + (_showScrollTop ? 52 : 0)),
+                                  child: _tocButton(t),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (!_editing && _highlight.matches.isNotEmpty)
+                          Positioned.fill(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final area = constraints.biggest;
+                                final bar = _navSize;
+                                final pos = _clampNav(
+                                    _navPos ?? _defaultNavPos(area, bar),
+                                    area,
+                                    bar);
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (!mounted) {
+                                    return;
+                                  }
+                                  final size = _navKey.currentContext?.size;
+                                  if (size != null && size != _navSize) {
+                                    setState(() => _navSize = size);
+                                  }
+                                });
+                                return Stack(
+                                  children: [
+                                    Positioned(
+                                      left: pos.dx,
+                                      top: pos.dy,
+                                      child: _matchNav(t),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    );
+                    if (!showTocColumn) {
+                      return renderArea;
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: renderArea),
+                        Container(
+                          width: noteTocWidth,
+                          decoration: BoxDecoration(
+                            border:
+                                Border(left: BorderSide(color: t.hairline)),
+                          ),
+                          child: NoteTocPanel(
+                            entries: tocEntries,
+                            activeIndex: _tocActive,
+                            onTap: _jumpToTocEntry,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
         ),
       ],
@@ -1094,15 +1241,20 @@ class NoteViewState extends State<NoteView> {
     final value = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx, pos.dy),
-      items: const [
-        PopupMenuItem(value: 'history', child: Text('版本历史')),
-        PopupMenuItem(value: 'trash', child: Text('移入回收站')),
+      items: [
+        PopupMenuItem(
+            value: 'toc',
+            child: Text(_tocVisible ? '隐藏目录' : '显示目录')),
+        const PopupMenuItem(value: 'history', child: Text('版本历史')),
+        const PopupMenuItem(value: 'trash', child: Text('移入回收站')),
       ],
     );
     if (!mounted) {
       return;
     }
-    if (value == 'history') {
+    if (value == 'toc') {
+      _toggleTocVisible();
+    } else if (value == 'history') {
       _showHistory();
     } else if (value == 'trash') {
       _trash();
@@ -1185,6 +1337,28 @@ class NoteViewState extends State<NoteView> {
             width: 44,
             height: 44,
             child: Icon(Icons.keyboard_arrow_up, color: t.inkMuted),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tocButton(InkTokens t) {
+    return Semantics(
+      button: true,
+      label: '目录',
+      child: Material(
+        color: t.surfaceAlt,
+        shape: CircleBorder(side: BorderSide(color: t.hairline)),
+        elevation: 4,
+        shadowColor: Colors.black54,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _openTocSheet,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(Icons.format_list_bulleted, color: t.inkMuted),
           ),
         ),
       ),

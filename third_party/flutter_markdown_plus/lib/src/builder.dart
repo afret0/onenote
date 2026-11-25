@@ -9,6 +9,7 @@ import 'package:markdown/markdown.dart' as md;
 import '_functions_io.dart' if (dart.library.js_interop) '_functions_web.dart';
 import 'highlight.dart';
 import 'style_sheet.dart';
+import 'toc.dart';
 import 'widget.dart';
 
 final List<String> _kBlockTags = <String>[
@@ -37,6 +38,16 @@ const List<String> _kListTags = <String>['ul', 'ol'];
 bool _isBlockTag(String? tag) => _kBlockTags.contains(tag);
 
 bool _isListTag(String tag) => _kListTags.contains(tag);
+
+int? _tocHeadingLevel(String tag) {
+  if (tag.length == 2 && tag.codeUnitAt(0) == 0x68) {
+    final int level = tag.codeUnitAt(1) - 0x30;
+    if (level >= 1 && level <= 6) {
+      return level;
+    }
+  }
+  return null;
+}
 
 class _BlockElement {
   _BlockElement(this.tag);
@@ -123,6 +134,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     this.highlightActiveColor,
     this.highlightActiveInk,
     this.highlightController,
+    this.tocController,
   });
 
   /// A delegate that controls how link and `pre` elements behave.
@@ -139,6 +151,8 @@ class MarkdownBuilder implements md.NodeVisitor {
   final Color? highlightActiveInk;
 
   final MarkdownHighlightController? highlightController;
+
+  final MarkdownTocController? tocController;
 
   /// If true, the text is selectable.
   ///
@@ -216,6 +230,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     _isInBlockquote = false;
     _highlightParagraphOrdinal = 0;
     highlightController?.reset();
+    tocController?.beginBuild();
 
     builders.forEach((String key, MarkdownElementBuilder value) {
       if (value.isBlockElement()) {
@@ -236,6 +251,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     assert(_inlines.isEmpty);
     assert(!_isInBlockquote);
     highlightController?.recorded();
+    tocController?.endBuild();
     return _blocks.single.children;
   }
 
@@ -518,6 +534,14 @@ class MarkdownBuilder implements md.NodeVisitor {
       if (tag == 'hr' && paddingBuilders.containsKey(tag)) {
         child = Padding(
           padding: paddingBuilders[tag]!.getPadding(),
+          child: child,
+        );
+      }
+
+      final int? tocLevel = _tocHeadingLevel(tag);
+      if (tocLevel != null && tocController != null) {
+        child = KeyedSubtree(
+          key: tocController!.recordHeading(tocLevel, element.textContent),
           child: child,
         );
       }

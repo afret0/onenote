@@ -232,6 +232,7 @@ abstract class MarkdownWidget extends StatefulWidget {
     this.highlightActiveColor,
     this.highlightActiveInk,
     this.highlightController,
+    this.tocController,
   });
 
   /// The Markdown to display.
@@ -359,6 +360,8 @@ abstract class MarkdownWidget extends StatefulWidget {
 
   final MarkdownHighlightController? highlightController;
 
+  final MarkdownTocController? tocController;
+
   /// Subclasses should override this function to display the given children,
   /// which are the parsed representation of [data].
   @protected
@@ -393,7 +396,8 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
         widget.highlightActiveIndex != oldWidget.highlightActiveIndex ||
         widget.highlightActiveColor != oldWidget.highlightActiveColor ||
         widget.highlightActiveInk != oldWidget.highlightActiveInk ||
-        widget.highlightController != oldWidget.highlightController) {
+        widget.highlightController != oldWidget.highlightController ||
+        widget.tocController != oldWidget.tocController) {
       _parseMarkdown();
     }
   }
@@ -456,6 +460,7 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
       highlightActiveColor: widget.highlightActiveColor,
       highlightActiveInk: widget.highlightActiveInk,
       highlightController: widget.highlightController,
+      tocController: widget.tocController,
     );
 
     _children = builder.build(astNodes);
@@ -538,6 +543,7 @@ class MarkdownBody extends MarkdownWidget {
     super.highlightActiveColor,
     super.highlightActiveInk,
     super.highlightController,
+    super.tocController,
   });
 
   /// If [shrinkWrap] is `true`, [MarkdownBody] will take the minimum height
@@ -602,6 +608,7 @@ class Markdown extends MarkdownWidget {
     super.highlightActiveColor,
     super.highlightActiveInk,
     super.highlightController,
+    super.tocController,
   });
 
   /// The amount of space by which to inset the children.
