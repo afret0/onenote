@@ -156,165 +156,223 @@ class _SettingsPageState extends State<SettingsPage> {
         appBar: AppBar(
           backgroundColor: t.paper,
           title: const Text('设置'),
+          leading: Transform.translate(
+            offset: const Offset(spaceSm, spaceSm),
+            child: const BackButton(),
+          ),
         ),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: ListView(
-              padding: const EdgeInsets.all(spaceLg),
-              children: [
-                _SectionTitle('字体'),
-                _SettingCard(children: [
-                  _SettingRow(
-                    icon: Icons.font_download_outlined,
-                    title: '界面字体',
-                    subtitle: '本应用包含小米 MiSans 字体，依其许可免费商用',
-                    action: state.uiFont == AppState.uiFontInter
-                        ? 'Inter'
-                        : 'MiSans',
-                    onTap: _pickFont,
-                  ),
-                  Divider(height: 1, color: t.hairline),
-                  _SliderRow(
-                    icon: Icons.format_size,
-                    title: '全局字号',
-                    subtitle: '标题栏 / 笔记本栏 / 列表 / 正文等比缩放',
-                    value: state.fontScale,
-                    min: AppState.fontScaleMin,
-                    max: AppState.fontScaleMax,
-                    divisions: 11,
-                    valueLabel: '${(state.fontScale * 100).round()}%',
-                    onChanged: state.updateFontScale,
-                    onChangeEnd: (_) => state.persistFontSizes(),
-                  ),
-                  Divider(height: 1, color: t.hairline),
-                  _SliderRow(
-                    icon: Icons.subject,
-                    title: '笔记正文字号',
-                    subtitle: '渲染与编辑生效，正文内标题按原比例联动',
-                    value: state.noteFontSize,
-                    min: AppState.noteFontSizeMin,
-                    max: AppState.noteFontSizeMax,
-                    divisions: 10,
-                    valueLabel: '${state.noteFontSize.round()}px',
-                    onChanged: state.updateNoteFontSize,
-                    onChangeEnd: (_) => state.persistFontSizes(),
-                  ),
-                ]),
-                const SizedBox(height: spaceLg),
-                _SectionTitle('启动'),
-                _SettingCard(children: [
-                  _SettingRow(
-                    icon: Icons.restore_page_outlined,
-                    title: '窄屏启动页面',
-                    subtitle: '手机 / 小窗启动时显示哪个页面，宽屏始终恢复上次页面',
-                    action: state.narrowStartup == AppState.narrowStartupList
-                        ? '笔记列表'
-                        : '上次笔记',
-                    onTap: _pickNarrowStartup,
-                  ),
-                ]),
-                const SizedBox(height: spaceLg),
-                _SectionTitle('数据保留'),
-                _SettingCard(children: [
-                  _SettingRow(
-                    icon: Icons.delete_outline,
-                    title: '回收站保留',
-                    subtitle: '删除的笔记保留 $_trashDays 天后自动清除',
-                    action: '$_trashDays 天',
-                    onTap: () => _editDays(
-                        AppDb.trashRetentionKey, _trashDays, '回收站保留天数'),
-                  ),
-                  Divider(height: 1, color: t.hairline),
-                  _SettingRow(
-                    icon: Icons.history,
-                    title: '版本历史保留',
-                    subtitle: '每次保存自动记录版本（内容不变不记录），保留 $_versionDays 天',
-                    action: '$_versionDays 天',
-                    onTap: () => _editDays(
-                        AppDb.versionRetentionKey, _versionDays, '版本历史保留天数'),
-                  ),
-                ]),
-                const SizedBox(height: spaceLg),
-                _SectionTitle('搜索范围'),
-                Text(
-                  state.searchScope.isEmpty
-                      ? '当前搜索全部笔记本。勾选后只搜索所选笔记本。'
-                      : '当前只搜索勾选的 ${state.searchScope.length} 个笔记本。',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: t.inkMuted),
-                ),
-                const SizedBox(height: spaceSm),
-                _SettingCard(
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 1400
+                ? 3
+                : constraints.maxWidth >= 900
+                    ? 2
+                    : 1;
+            final sections = _sections(context, t);
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxWidth: columns * 640.0 + (columns - 1) * spaceLg),
+                child: ListView(
+                  padding: const EdgeInsets.all(spaceLg),
                   children: [
-                    for (var i = 0; i < state.notebooks.length; i++) ...[
-                      if (i > 0) Divider(height: 1, color: t.hairline),
-                      CheckboxListTile(
-                        value: state.searchScope
-                            .contains(state.notebooks[i].id),
-                        onChanged: (checked) => _toggleScope(
-                            state.notebooks[i].id, checked ?? false),
-                        title: Text(state.notebooks[i].name),
-                        secondary: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                              color: Color(state.notebooks[i].color),
-                              shape: BoxShape.circle),
-                        ),
-                        controlAffinity: ListTileControlAffinity.trailing,
+                    if (columns == 1)
+                      for (var i = 0; i < sections.length; i++) ...[
+                        if (i > 0) const SizedBox(height: spaceLg),
+                        sections[i],
+                      ]
+                    else
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (var c = 0; c < columns; c++) ...[
+                            if (c > 0) const SizedBox(width: spaceLg),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: _columnChildren(sections, c, columns),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
-                    if (state.notebooks.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(spaceMd),
-                        child: Text('还没有笔记本',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: t.inkFaint)),
-                      ),
+                    const SizedBox(height: spaceXxl),
                   ],
                 ),
-                if (state.searchScope.isNotEmpty) ...[
-                  const SizedBox(height: spaceSm),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () => state.setSearchScope({}),
-                      icon: const Icon(Icons.select_all, size: 18),
-                      label: const Text('恢复为搜索全部'),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: spaceLg),
-                _SectionTitle('即将上线'),
-                _SettingCard(children: [
-                  _DisabledRow(
-                      icon: Icons.sync,
-                      title: '同步',
-                      subtitle: 'WebDAV / OSS 增量同步 · 启动 + 手动 + 定时轮询'),
-                  Divider(height: 1, color: t.hairline),
-                  _DisabledRow(
-                      icon: Icons.lock_outline,
-                      title: '加密与锁定',
-                      subtitle: '端到端加密 · 密码 / 生物识别 · 笔记本单独锁定'),
-                  Divider(height: 1, color: t.hairline),
-                  _DisabledRow(
-                      icon: Icons.extension_outlined,
-                      title: '网页剪藏',
-                      subtitle: 'Chrome 插件 · 本地桥接直入应用'),
-                ]),
-                const SizedBox(height: spaceXxl),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
+
+  List<Widget> _columnChildren(
+      List<Widget> sections, int index, int columns) {
+    final base = sections.length ~/ columns;
+    final extra = sections.length % columns;
+    final start = index * base + (index < extra ? index : extra);
+    final end = start + base + (index < extra ? 1 : 0);
+    return [
+      for (var i = start; i < end; i++) ...[
+        if (i > start) const SizedBox(height: spaceLg),
+        sections[i],
+      ],
+    ];
+  }
+
+  Widget _group(List<Widget> children) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
+
+  List<Widget> _sections(BuildContext context, InkTokens t) => [
+        _group([
+          _SectionTitle('字体'),
+          _SettingCard(children: [
+            _SettingRow(
+              icon: Icons.font_download_outlined,
+              title: '界面字体',
+              subtitle: '本应用包含小米 MiSans 字体，依其许可免费商用',
+              action: state.uiFont == AppState.uiFontInter
+                  ? 'Inter'
+                  : 'MiSans',
+              onTap: _pickFont,
+            ),
+            Divider(height: 1, color: t.hairline),
+            _SliderRow(
+              icon: Icons.format_size,
+              title: '全局字号',
+              subtitle: '标题栏 / 笔记本栏 / 列表 / 正文等比缩放',
+              value: state.fontScale,
+              min: AppState.fontScaleMin,
+              max: AppState.fontScaleMax,
+              divisions: 11,
+              valueLabel: '${(state.fontScale * 100).round()}%',
+              onChanged: state.updateFontScale,
+              onChangeEnd: (_) => state.persistFontSizes(),
+            ),
+            Divider(height: 1, color: t.hairline),
+            _SliderRow(
+              icon: Icons.subject,
+              title: '笔记正文字号',
+              subtitle: '渲染与编辑生效，正文内标题按原比例联动',
+              value: state.noteFontSize,
+              min: AppState.noteFontSizeMin,
+              max: AppState.noteFontSizeMax,
+              divisions: 10,
+              valueLabel: '${state.noteFontSize.round()}px',
+              onChanged: state.updateNoteFontSize,
+              onChangeEnd: (_) => state.persistFontSizes(),
+            ),
+          ]),
+        ]),
+        _group([
+          _SectionTitle('启动'),
+          _SettingCard(children: [
+            _SettingRow(
+              icon: Icons.restore_page_outlined,
+              title: '窄屏启动页面',
+              subtitle: '手机 / 小窗启动时显示哪个页面，宽屏始终恢复上次页面',
+              action: state.narrowStartup == AppState.narrowStartupList
+                  ? '笔记列表'
+                  : '上次笔记',
+              onTap: _pickNarrowStartup,
+            ),
+          ]),
+        ]),
+        _group([
+          _SectionTitle('数据保留'),
+          _SettingCard(children: [
+            _SettingRow(
+              icon: Icons.delete_outline,
+              title: '回收站保留',
+              subtitle: '删除的笔记保留 $_trashDays 天后自动清除',
+              action: '$_trashDays 天',
+              onTap: () => _editDays(
+                  AppDb.trashRetentionKey, _trashDays, '回收站保留天数'),
+            ),
+            Divider(height: 1, color: t.hairline),
+            _SettingRow(
+              icon: Icons.history,
+              title: '版本历史保留',
+              subtitle: '每次保存自动记录版本（内容不变不记录），保留 $_versionDays 天',
+              action: '$_versionDays 天',
+              onTap: () => _editDays(
+                  AppDb.versionRetentionKey, _versionDays, '版本历史保留天数'),
+            ),
+          ]),
+        ]),
+        _group([
+          _SectionTitle('即将上线'),
+          _SettingCard(children: [
+            _DisabledRow(
+                icon: Icons.sync,
+                title: '同步',
+                subtitle: 'WebDAV / OSS 增量同步 · 启动 + 手动 + 定时轮询'),
+            Divider(height: 1, color: t.hairline),
+            _DisabledRow(
+                icon: Icons.lock_outline,
+                title: '加密与锁定',
+                subtitle: '端到端加密 · 密码 / 生物识别 · 笔记本单独锁定'),
+            Divider(height: 1, color: t.hairline),
+            _DisabledRow(
+                icon: Icons.extension_outlined,
+                title: '网页剪藏',
+                subtitle: 'Chrome 插件 · 本地桥接直入应用'),
+          ]),
+        ]),
+        _group([
+          _SectionTitle('搜索范围'),
+          Text(
+            state.searchScope.isEmpty
+                ? '当前搜索全部笔记本。勾选后只搜索所选笔记本。'
+                : '当前只搜索勾选的 ${state.searchScope.length} 个笔记本。',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: t.inkMuted),
+          ),
+          const SizedBox(height: spaceSm),
+          _SettingCard(children: [
+            for (var i = 0; i < state.notebooks.length; i++) ...[
+              if (i > 0) Divider(height: 1, color: t.hairline),
+              CheckboxListTile(
+                value: state.searchScope.contains(state.notebooks[i].id),
+                onChanged: (checked) =>
+                    _toggleScope(state.notebooks[i].id, checked ?? false),
+                title: Text(state.notebooks[i].name),
+                secondary: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                      color: Color(state.notebooks[i].color),
+                      shape: BoxShape.circle),
+                ),
+                controlAffinity: ListTileControlAffinity.trailing,
+              ),
+            ],
+            if (state.notebooks.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(spaceMd),
+                child: Text('还没有笔记本',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: t.inkFaint)),
+              ),
+          ]),
+          if (state.searchScope.isNotEmpty) ...[
+            const SizedBox(height: spaceSm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => state.setSearchScope({}),
+                icon: const Icon(Icons.select_all, size: 18),
+                label: const Text('恢复为搜索全部'),
+              ),
+            ),
+          ],
+        ]),
+      ];
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -349,7 +407,11 @@ class _SettingCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(radiusLg),
         border: Border.all(color: t.hairline),
       ),
-      child: Column(children: children),
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(radiusLg),
+        child: Column(children: children),
+      ),
     );
   }
 }
