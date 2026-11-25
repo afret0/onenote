@@ -48,19 +48,19 @@ class InkTokens extends ThemeExtension<InkTokens> {
   );
 
   static const dark = InkTokens(
-    paper: Color(0xFF0E0B12),
-    surface: Color(0xFF181420),
-    surfaceAlt: Color(0xFF221C2C),
-    ink: Color(0xFFEFEAF4),
-    inkMuted: Color(0xFFBAB2C6),
-    inkFaint: Color(0xFF8E87A0),
-    hairline: Color(0xFF2E2839),
+    paper: Color(0xFF111113),
+    surface: Color(0xFF1A1A1E),
+    surfaceAlt: Color(0xFF25252B),
+    ink: Color(0xFFF0EFEB),
+    inkMuted: Color(0xFFB9B7B2),
+    inkFaint: Color(0xFF8F8C87),
+    hairline: Color(0xFF303036),
     accent: Color(0xFFA54FD4),
     accentText: Color(0xFFC89AE6),
-    accentSoft: Color(0xFF2E2140),
+    accentSoft: Color(0xFF2A2432),
     onAccent: Color(0xFFFFFFFF),
     danger: Color(0xFFF87171),
-    navy: Color(0xFF241530),
+    navy: Color(0xFF232327),
   );
 
   @override

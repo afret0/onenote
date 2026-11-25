@@ -3,7 +3,7 @@
   "short_name": "onenote",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#0E0B12",
+  "background_color": "#111113",
   "theme_color": "#7719AA",
   "description": "A new Flutter project.",
   "orientation": "portrait-primary",
