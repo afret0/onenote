@@ -55,18 +55,21 @@ class MarkdownView extends StatelessWidget {
     final store = attachments;
     final toggle = onToggleTask;
     final taskCount = toggle == null ? 0 : markdownTaskStates(content).length;
+    final lineHeight = body.fontSize! * body.height!;
     var checkboxCalls = 0;
     return MarkdownBody(
       data: content,
       selectable: true,
       blockSyntaxes: markdownTaskBlockSyntaxes,
+      listItemCrossAxisAlignment: MarkdownListItemCrossAxisAlignment.start,
       checkboxBuilder: (checked) {
         if (toggle == null || taskCount == 0) {
-          return _TaskCheckbox(checked: checked);
+          return _TaskCheckbox(checked: checked, lineHeight: lineHeight);
         }
         final ordinal = checkboxCalls++ % taskCount;
         return _TaskCheckbox(
           checked: checked,
+          lineHeight: lineHeight,
           onTap: () => toggle(ordinal),
         );
       },
@@ -103,7 +106,7 @@ class MarkdownView extends StatelessWidget {
         codeblockPadding: const EdgeInsets.all(spaceMd),
         codeblockAlign: WrapAlignment.start,
         listBullet: body.copyWith(color: t.accent),
-        listIndent: 24,
+        listIndent: 28,
         horizontalRuleDecoration: BoxDecoration(
           border: Border(top: BorderSide(color: t.hairline, width: 1)),
         ),
@@ -130,28 +133,58 @@ class MarkdownView extends StatelessWidget {
   }
 }
 
-class _TaskCheckbox extends StatelessWidget {
-  const _TaskCheckbox({required this.checked, this.onTap});
+class _TaskCheckbox extends StatefulWidget {
+  const _TaskCheckbox({
+    required this.checked,
+    required this.lineHeight,
+    this.onTap,
+  });
 
   final bool checked;
+  final double lineHeight;
   final VoidCallback? onTap;
+
+  @override
+  State<_TaskCheckbox> createState() => _TaskCheckboxState();
+}
+
+class _TaskCheckboxState extends State<_TaskCheckbox> {
+  bool _hover = false;
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 4),
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: Center(
-            child: Icon(
-              checked ? Icons.check_box : Icons.check_box_outline_blank,
-              size: 18,
-              color: t.accent,
+    final interactive = widget.onTap != null;
+    return MouseRegion(
+      cursor: interactive ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() {
+        _hover = false;
+        _pressed = false;
+      }),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onTapDown: interactive ? (_) => setState(() => _pressed = true) : null,
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: SizedBox(
+            width: 28,
+            height: widget.lineHeight,
+            child: Center(
+              child: Opacity(
+                opacity: _pressed ? 0.7 : 1,
+                child: Icon(
+                  widget.checked
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
+                  size: 20,
+                  color: interactive && _hover ? t.accentText : t.accent,
+                ),
+              ),
             ),
           ),
         ),

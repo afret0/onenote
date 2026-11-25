@@ -311,10 +311,24 @@ void main() {
     expect(find.byIcon(Icons.check_box), findsOneWidget);
     expect(find.byIcon(Icons.check_box_outline_blank), findsNWidgets(2));
 
+    final iconRect =
+        tester.getRect(find.byIcon(Icons.check_box_outline_blank).at(0));
+    final textRect = tester.getRect(find.text('parent'));
+    expect((iconRect.center.dy - textRect.center.dy).abs(), lessThan(1.5));
+    final region = tester.widget<MouseRegion>(find
+        .ancestor(
+            of: find.byIcon(Icons.check_box_outline_blank).at(0),
+            matching: find.byType(MouseRegion))
+        .first);
+    expect(region.cursor, SystemMouseCursors.click);
+
     await tester.tap(find.byIcon(Icons.check_box_outline_blank).at(0));
     await tester.tap(find.byIcon(Icons.check_box_outline_blank).at(1));
     await tester.tap(find.byIcon(Icons.check_box));
     expect(ordinals, [1, 2, 0]);
+
+    await tester.tapAt(Offset(iconRect.left - 2, iconRect.center.dy));
+    expect(ordinals.last, 1);
   });
 
   testWidgets('tapping a rendered todo toggles the source and autosaves',
