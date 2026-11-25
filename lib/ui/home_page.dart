@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/app_db.dart';
 import '../state/app_state.dart';
+import '../window_setup.dart';
 import 'dialogs.dart';
 import 'note_view.dart';
 import 'notebook_color_picker.dart';
@@ -23,6 +25,9 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
+  GlobalKey<NoteViewState> _noteViewKey = GlobalKey<NoteViewState>();
+  String? _noteViewKeyId;
   List<Note>? _searchHits;
 
   AppState get state => widget.state;
@@ -30,6 +35,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -181,6 +187,34 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _activateSearch() async {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 900 && state.openNoteId != null) {
+      await _noteViewKey.currentState?.flushEdits();
+      if (!mounted) {
+        return;
+      }
+      await state.closeNote();
+    }
+    if (!mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocus.requestFocus();
+      }
+    });
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SettingsPage(state: state)),
+    );
+  }
+
   Future<void> _searchChanged(String value) async {
     final query = value.trim();
     final hits = query.isEmpty ? null : await state.search(query);
@@ -209,6 +243,10 @@ class _HomePageState extends State<HomePage> {
       animation: state,
       builder: (context, _) {
         final openId = state.openNoteId;
+        if (openId != _noteViewKeyId) {
+          _noteViewKey = GlobalKey<NoteViewState>();
+          _noteViewKeyId = openId;
+        }
         final windowWidth = MediaQuery.sizeOf(context).width;
         final isWide = windowWidth >= 900;
         final panes = isWide ? _paneWidths(windowWidth) : (0.0, 0.0);
@@ -231,7 +269,7 @@ class _HomePageState extends State<HomePage> {
             }
           });
         }
-        return Scaffold(
+        final scaffold = Scaffold(
           key: _scaffoldKey,
           drawer: isWide
               ? null
@@ -298,7 +336,7 @@ class _HomePageState extends State<HomePage> {
                   Expanded(
                     child: openId != null
                         ? NoteView(
-                            key: ValueKey(openId),
+                            key: _noteViewKey,
                             state: state,
                             noteId: openId,
                             showBack: drawerNeeded,
@@ -311,6 +349,22 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ),
+        );
+        if (!isDesktopWindow) {
+          return scaffold;
+        }
+        return CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+                _activateSearch,
+            const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+                _activateSearch,
+            const SingleActivator(LogicalKeyboardKey.comma, meta: true):
+                _openSettings,
+            const SingleActivator(LogicalKeyboardKey.comma, control: true):
+                _openSettings,
+          },
+          child: Focus(autofocus: true, child: scaffold),
         );
       },
     );
@@ -398,10 +452,7 @@ class _HomePageState extends State<HomePage> {
                 child: IconButton(
                   padding: EdgeInsets.zero,
                   iconSize: 18,
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                        builder: (_) => SettingsPage(state: state)),
-                  ),
+                  onPressed: _openSettings,
                   icon: const Icon(Icons.tune),
                 ),
               ),
@@ -538,6 +589,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     TextField(
                       controller: _searchController,
+                      focusNode: _searchFocus,
                       onChanged: _searchChanged,
                       decoration: InputDecoration(
                         prefixIcon: searching

@@ -7,6 +7,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
     show MarkdownHighlightController;
 import 'package:mime/mime.dart';
@@ -16,6 +17,7 @@ import '../data/app_db.dart';
 import '../data/attachment_store.dart';
 import '../data/markdown_tasks.dart';
 import '../state/app_state.dart';
+import '../window_setup.dart';
 import 'conflict_panel.dart';
 import 'dialogs.dart';
 import 'markdown_view.dart';
@@ -42,10 +44,10 @@ class NoteView extends StatefulWidget {
   final String? highlightQuery;
 
   @override
-  State<NoteView> createState() => _NoteViewState();
+  State<NoteView> createState() => NoteViewState();
 }
 
-class _NoteViewState extends State<NoteView> {
+class NoteViewState extends State<NoteView> {
   Note? _note;
   bool _editing = false;
   bool _dirty = false;
@@ -63,8 +65,18 @@ class _NoteViewState extends State<NoteView> {
   Offset? _navPos;
   int _matchIndex = 0;
   int _matchCount = 0;
+  bool _replaceOpen = false;
+  final TextEditingController _findController = TextEditingController();
+  final TextEditingController _replaceController = TextEditingController();
+  final FocusNode _findFocus = FocusNode();
+  final FocusNode _contentFocus = FocusNode();
+  final GlobalKey _editorFieldKey = GlobalKey();
+  List<int> _findMatches = [];
+  int _findIndex = 0;
 
   AppState get state => widget.state;
+
+  Future<void> flushEdits() => _save(silent: true);
 
   @override
   void initState() {
@@ -212,6 +224,10 @@ class _NoteViewState extends State<NoteView> {
     state.removeListener(_reloadIfIdle);
     _titleController.dispose();
     _contentController.dispose();
+    _findController.dispose();
+    _replaceController.dispose();
+    _findFocus.dispose();
+    _contentFocus.dispose();
     _renderScroll.dispose();
     _editScroll.dispose();
     _highlight.removeListener(_onHighlightChanged);
@@ -261,7 +277,11 @@ class _NoteViewState extends State<NoteView> {
       _saveStatus = '';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_editing || !_editScroll.hasClients) {
+      if (!mounted || !_editing) {
+        return;
+      }
+      _contentFocus.requestFocus();
+      if (!_editScroll.hasClients) {
         return;
       }
       _editScroll.jumpTo(fraction * _editScroll.position.maxScrollExtent);
@@ -288,6 +308,9 @@ class _NoteViewState extends State<NoteView> {
     _autosave?.cancel();
     _autosave = Timer(const Duration(milliseconds: 800), () => _save(silent: true));
     setState(() => _saveStatus = '未保存');
+    if (_replaceOpen) {
+      _refreshFindMatches(null);
+    }
   }
 
   Future<void> _save({bool silent = false}) async {
@@ -336,7 +359,212 @@ class _NoteViewState extends State<NoteView> {
     if (!mounted) {
       return;
     }
-    setState(() => _editing = false);
+    setState(() {
+      _editing = false;
+      _replaceOpen = false;
+    });
+  }
+
+  void _openReplace() {
+    if (!_editing) {
+      developer.log('skip, 非编辑态忽略替换快捷键, noteId: ${widget.noteId}');
+      return;
+    }
+    setState(() {
+      _replaceOpen = true;
+      _refreshFindMatches(null);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _replaceOpen) {
+        _findFocus.requestFocus();
+      }
+    });
+  }
+
+  void _closeReplace() {
+    setState(() => _replaceOpen = false);
+    _contentFocus.requestFocus();
+  }
+
+  void _refreshFindMatches(int? preferred) {
+    final needle = _findController.text;
+    final content = _contentController.text;
+    final matches = <int>[];
+    if (needle.isNotEmpty) {
+      var start = content.indexOf(needle);
+      while (start >= 0) {
+        matches.add(start);
+        start = content.indexOf(needle, start + needle.length);
+      }
+    }
+    _findMatches = matches;
+    if (matches.isEmpty) {
+      _findIndex = 0;
+      return;
+    }
+    final target = preferred ?? _findMatches[_findIndex.clamp(0, matches.length - 1)];
+    var best = 0;
+    for (var i = 0; i < matches.length; i++) {
+      if (matches[i] <= target) {
+        best = i;
+      }
+    }
+    _findIndex = best;
+  }
+
+  void _selectFindMatch() {
+    if (_findMatches.isEmpty) {
+      return;
+    }
+    final start = _findMatches[_findIndex];
+    final end = start + _findController.text.length;
+    _contentController.selection =
+        TextSelection(baseOffset: start, extentOffset: end);
+    if (!_editScroll.hasClients) {
+      return;
+    }
+    final box =
+        _editorFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) {
+      return;
+    }
+    final painter = TextPainter(
+      text: TextSpan(
+        text: _contentController.text.substring(0, start),
+        style: _editorTextStyle(inkOf(context)),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: math.max(1.0, box.size.width - spaceMd * 2));
+    final viewport = _editScroll.position.viewportDimension;
+    final target = (painter.height - viewport * 0.4)
+        .clamp(0.0, _editScroll.position.maxScrollExtent);
+    painter.dispose();
+    _editScroll.animateTo(target,
+        duration: const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
+  }
+
+  void _stepFindMatch(int delta) {
+    final count = _findMatches.length;
+    if (count == 0) {
+      return;
+    }
+    setState(() => _findIndex = (_findIndex + delta + count) % count);
+    _selectFindMatch();
+  }
+
+  void _replaceCurrent() {
+    if (_findMatches.isEmpty) {
+      return;
+    }
+    final needle = _findController.text;
+    final replacement = _replaceController.text;
+    final start = _findMatches[_findIndex];
+    final text = _contentController.text;
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(start, start + needle.length, replacement),
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+    _changed();
+    _refreshFindMatches(start);
+    developer.log(
+        'done, 替换一处, noteId: ${widget.noteId}, offset: $start, 剩余: ${_findMatches.length}');
+    setState(() {});
+    if (_findMatches.isNotEmpty) {
+      _selectFindMatch();
+    }
+  }
+
+  void _replaceAll() {
+    final needle = _findController.text;
+    if (needle.isEmpty || _findMatches.isEmpty) {
+      return;
+    }
+    final replaced = _findMatches.length;
+    _contentController.value = TextEditingValue(
+      text: _contentController.text.replaceAll(needle, _replaceController.text),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+    _changed();
+    _refreshFindMatches(0);
+    setState(() {});
+    developer.log('done, 全部替换, noteId: ${widget.noteId}, replaced: $replaced');
+    _snack('已替换 $replaced 处');
+  }
+
+  Widget _replacePanel(InkTokens t) {
+    final count = _findMatches.length;
+    return Container(
+      key: const ValueKey('replacePanel'),
+      decoration: BoxDecoration(
+        color: t.surfaceAlt,
+        border: Border(bottom: BorderSide(color: t.hairline)),
+      ),
+      padding: const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _findController,
+                  focusNode: _findFocus,
+                  onChanged: (_) {
+                    setState(() => _refreshFindMatches(null));
+                    _selectFindMatch();
+                  },
+                  decoration: const InputDecoration(
+                    hintText: '查找（区分大小写）',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: spaceSm),
+              Text('${count == 0 ? 0 : _findIndex + 1}/$count',
+                  style: Theme.of(context).textTheme.labelMedium),
+              IconButton(
+                tooltip: '上一处',
+                onPressed: count == 0 ? null : () => _stepFindMatch(-1),
+                icon: const Icon(Icons.keyboard_arrow_up, size: 20),
+              ),
+              IconButton(
+                tooltip: '下一处',
+                onPressed: count == 0 ? null : () => _stepFindMatch(1),
+                icon: const Icon(Icons.keyboard_arrow_down, size: 20),
+              ),
+              IconButton(
+                tooltip: '关闭',
+                onPressed: _closeReplace,
+                icon: const Icon(Icons.close, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: spaceSm),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _replaceController,
+                  decoration: const InputDecoration(
+                    hintText: '替换为',
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: spaceSm),
+              TextButton(
+                onPressed: count == 0 ? null : _replaceCurrent,
+                child: const Text('替换'),
+              ),
+              TextButton(
+                onPressed: count == 0 ? null : _replaceAll,
+                child: const Text('全部替换'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   void _snack(String message) {
@@ -470,7 +698,9 @@ class _NoteViewState extends State<NoteView> {
       color: t.paper,
       padding: const EdgeInsets.symmetric(horizontal: spaceSm),
       child: TextField(
+        key: _editorFieldKey,
         controller: _contentController,
+        focusNode: _contentFocus,
         scrollController: _editScroll,
         onChanged: (_) => _changed(),
         autofocus: true,
@@ -478,13 +708,7 @@ class _NoteViewState extends State<NoteView> {
         expands: true,
         textAlignVertical: TextAlignVertical.top,
         keyboardType: TextInputType.multiline,
-        style: TextStyle(
-          fontFamily: t.sans,
-          fontFamilyFallback: cjkSansFallback,
-          fontSize: t.noteFontSize * t.fontScale,
-          height: 1.75,
-          color: t.ink,
-        ),
+        style: _editorTextStyle(t),
         decoration: const InputDecoration(
           hintText: '用 Markdown 书写…',
           filled: false,
@@ -531,6 +755,7 @@ class _NoteViewState extends State<NoteView> {
             ),
           ),
         ),
+        if (_replaceOpen) _replacePanel(t),
         Expanded(child: editor),
       ],
     );
@@ -597,7 +822,7 @@ class _NoteViewState extends State<NoteView> {
     if (note == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
@@ -755,6 +980,22 @@ class _NoteViewState extends State<NoteView> {
                 ),
         ),
       ],
+    );
+    if (!isDesktopWindow) {
+      return content;
+    }
+    return CallbackShortcuts(
+      bindings: {
+        if (_editing) ...{
+          const SingleActivator(LogicalKeyboardKey.keyR, meta: true):
+              _openReplace,
+          const SingleActivator(LogicalKeyboardKey.keyR, control: true):
+              _openReplace,
+        },
+        if (_replaceOpen)
+          const SingleActivator(LogicalKeyboardKey.escape): _closeReplace,
+      },
+      child: content,
     );
   }
 
@@ -956,6 +1197,14 @@ class _NoteViewState extends State<NoteView> {
             fontFamilyFallback: cjkSerifFallback,
             fontSize: 22 * inkOf(context).fontScale,
           );
+
+  TextStyle _editorTextStyle(InkTokens t) => TextStyle(
+        fontFamily: t.sans,
+        fontFamilyFallback: cjkSansFallback,
+        fontSize: t.noteFontSize * t.fontScale,
+        height: 1.75,
+        color: t.ink,
+      );
 }
 
 String formatHm(int ms) {

@@ -50,6 +50,7 @@
 - **桌面窗口尺寸（2026-11-25 用户拍板）**：横版默认 **1300×800**，按 **1920×1080** 基准设计；非该分辨率**等比缩放**——缩放系数取 `min(screenW/1920, screenH/1080)` 且**封顶 1（大于基准屏不放大）**。**记录窗口尺寸、重启不变**（settings 表 `windowSize`，格式 `WxH` 整数）；记忆尺寸超出当前屏幕时**等比缩到屏内**（`fitWindowSize`，floor 取整）。仅桌面（mac/win/linux）生效，web/移动端不参与。尺寸记忆由 Dart 侧全权负责（`WindowSizeController`），**每次启动居中到主屏 workArea，不记位置**；最大化/最小化/全屏不记尺寸，尺寸未变跳过落库，800ms 防抖（沿用保存先例）。
 
 - **搜索悬浮栏与命中高亮（2026-11-25 用户拍板）**：matchNav 整栏可拖（pan 拖动、上下按钮仍可点），位置记 settings `searchNavPos`="x,y"（内容区局部坐标、**全局单位置**、恢复时 clamp 进边界）；默认贴内容区右缘（margin spaceSm）、底边避开回顶按钮（spaceLg+52）。命中高亮 = 全部命中 `searchMark` 黄底 + 当前命中 `searchActive` 橙底配 `searchActiveInk` 深字（dark #6E5A1C/#FFC53D、light #FDE68A/#F59E0B，对文字对比 5.81/11.08/14.04/8.14 均 ≥4.5）；上下按钮点击必须滚动到命中行。
+- **全局快捷键（2026-11-25 用户拍板）**：Cmd/Ctrl+F 聚焦全局搜索（遵循 searchScope 设置，缺省全部笔记本；窄屏开着笔记时先 `NoteViewState.flushEdits()` 落盘再 closeNote 回列表——GlobalKey 按 openId 重建保持每笔记独立 State）；Cmd/Ctrl+, 打开设置页；Cmd/Ctrl+R **仅笔记编辑态**弹查找替换面板（非编辑态忽略、不自动进编辑），**区分大小写**（与全局搜索的不敏感刻意不同），定位（上/下一处循环+选中+滚动到命中）+ 替换当前 + 全部替换，Esc 关闭回焦点正文；替换写入走 `_changed()` 800ms 防抖自动保存。**仅桌面原生注册**（`isDesktopWindow`，Web/Android 不占浏览器/系统键位）。⚠️ HomePage 外层包 `Focus(autofocus:true)` 后，编辑框 TextField 的 `autofocus` 不会再触发（autofocus 只在 scope 无焦点时生效）——`_enterEdit` 必须显式 `_contentFocus.requestFocus()`，否则进编辑后打字丢、Cmd+R 绑定不在焦点链上（真实教训，测试键盘绑定必须先验证 primaryFocus 落点）。
 
 ## 目录与关键文件
 
