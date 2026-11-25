@@ -244,7 +244,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               ScopeTile(
                 icon: Icons.notes,
-                label: '全部笔记',
+                label: '全部',
                 selected: scope.kind == NoteScopeKind.all,
                 onTap: () {
                   state.selectScope(const NoteScope.all());
@@ -447,7 +447,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _scopeTitle() => switch (state.scope.kind) {
-        NoteScopeKind.all => '全部笔记',
+        NoteScopeKind.all => '全部',
         NoteScopeKind.trash => '回收站',
         NoteScopeKind.notebook => state.notebookName(state.scope.notebookId!),
       };

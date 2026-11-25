@@ -27,7 +27,7 @@ void main() {
 
     expect(find.text('onenote'), findsOneWidget);
     expect(find.text('还没有笔记，写下第一条吧'), findsOneWidget);
-    expect(find.text('全部笔记'), findsWidgets);
+    expect(find.text('全部'), findsWidgets);
     expect(find.text('回收站'), findsOneWidget);
   });
 
@@ -79,7 +79,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(noteContent('alpha content v2'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(ScopeTile, '全部笔记'));
+    await tester.tap(find.widgetWithText(ScopeTile, '全部'));
     await tester.pumpAndSettle();
     expect(noteContent(second.content), findsOneWidget);
 
