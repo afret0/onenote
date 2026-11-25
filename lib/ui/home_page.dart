@@ -10,6 +10,7 @@ import '../window_setup.dart';
 import 'dialogs.dart';
 import 'note_view.dart';
 import 'notebook_color_picker.dart';
+import 'password_prompts.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -64,7 +65,20 @@ class _HomePageState extends State<HomePage> {
   AppState get state => widget.state;
 
   @override
+  void initState() {
+    super.initState();
+    state.onAppLocking = _flushOpenEdits;
+  }
+
+  Future<void> _flushOpenEdits() async {
+    await _noteViewKey.currentState?.flushEdits();
+  }
+
+  @override
   void dispose() {
+    if (state.onAppLocking == _flushOpenEdits) {
+      state.onAppLocking = null;
+    }
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -89,6 +103,8 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _notebookContext(Notebook notebook, Offset position) async {
     final index = state.notebooks.indexWhere((n) => n.id == notebook.id);
+    final locked = state.isNotebookLocked(notebook.id);
+    final hasPassword = state.notebookLock(notebook.id)?.active == true;
     final value = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -96,23 +112,42 @@ class _HomePageState extends State<HomePage> {
         Offset.zero & MediaQuery.sizeOf(context),
       ),
       items: [
+        if (locked)
+          const PopupMenuItem(value: 'unlock', child: Text('输入密码解锁')),
         PopupMenuItem(
             value: 'up',
-            enabled: index > 0,
+            enabled: !locked && index > 0,
             child: const Text('上移')),
         PopupMenuItem(
             value: 'down',
-            enabled: index >= 0 && index < state.notebooks.length - 1,
+            enabled:
+                !locked && index >= 0 && index < state.notebooks.length - 1,
             child: const Text('下移')),
-        const PopupMenuItem(value: 'rename', child: Text('重命名')),
-        const PopupMenuItem(value: 'color', child: Text('自定义背景色')),
-        const PopupMenuItem(value: 'delete', child: Text('删除')),
+        PopupMenuItem(
+            value: 'rename',
+            enabled: !locked,
+            child: const Text('重命名')),
+        PopupMenuItem(
+            value: 'color',
+            enabled: !locked,
+            child: const Text('自定义背景色')),
+        PopupMenuItem(
+            value: 'password',
+            child: Text(hasPassword ? '修改密码' : '设置密码')),
+        if (hasPassword)
+          const PopupMenuItem(value: 'removePassword', child: Text('移除密码')),
+        PopupMenuItem(
+            value: 'delete',
+            enabled: !locked,
+            child: const Text('删除')),
       ],
     );
     if (!mounted || value == null) {
       return;
     }
-    if (value == 'up') {
+    if (value == 'unlock') {
+      await unlockNotebookDialog(context, state, notebook.id);
+    } else if (value == 'up') {
       await state.moveNotebook(notebook.id, -1);
     } else if (value == 'down') {
       await state.moveNotebook(notebook.id, 1);
@@ -120,6 +155,10 @@ class _HomePageState extends State<HomePage> {
       await _renameNotebook(notebook);
     } else if (value == 'color') {
       await _customizeNotebookColor(notebook);
+    } else if (value == 'password') {
+      await setNotebookPasswordFlow(context, state, notebook.id);
+    } else if (value == 'removePassword') {
+      await removeNotebookPasswordFlow(context, state, notebook.id);
     } else if (value == 'delete') {
       await _deleteNotebook(notebook);
     }
@@ -163,8 +202,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _newNote() async {
+    if (state.notebooks.isEmpty) {
+      _snack('请先创建一个笔记本');
+      return;
+    }
+    final target = state.scope.kind == NoteScopeKind.notebook
+        ? state.scope.notebookId!
+        : state.notebooks.first.id;
+    if (state.isNotebookLocked(target)) {
+      final ok = await unlockNotebookDialog(context, state, target);
+      if (!ok || !mounted) {
+        return;
+      }
+    }
     final note = await state.createNote();
-    if (note == null) {
+    if (note == null && mounted) {
       _snack('请先创建一个笔记本');
     }
   }
@@ -172,6 +224,8 @@ class _HomePageState extends State<HomePage> {
   Future<void> _noteContext(Note note, Offset position,
       {bool canReorder = false}) async {
     final index = state.notes.indexWhere((n) => n.id == note.id);
+    final locked = state.isNoteLocked(note.id);
+    final hasPassword = state.noteLock(note.id)?.active == true;
     final value = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -179,27 +233,49 @@ class _HomePageState extends State<HomePage> {
         Offset.zero & MediaQuery.sizeOf(context),
       ),
       items: [
+        if (locked)
+          const PopupMenuItem(value: 'unlock', child: Text('输入密码解锁')),
         PopupMenuItem(
             value: 'up',
-            enabled: canReorder && index > 0,
+            enabled: !locked && canReorder && index > 0,
             child: const Text('上移')),
         PopupMenuItem(
             value: 'down',
-            enabled: canReorder && index >= 0 && index < state.notes.length - 1,
+            enabled: !locked &&
+                canReorder &&
+                index >= 0 &&
+                index < state.notes.length - 1,
             child: const Text('下移')),
-        const PopupMenuItem(value: 'history', child: Text('版本历史')),
-        const PopupMenuItem(value: 'trash', child: Text('移入回收站')),
+        PopupMenuItem(
+            value: 'history',
+            enabled: !locked,
+            child: const Text('版本历史')),
+        PopupMenuItem(
+            value: 'password',
+            child: Text(hasPassword ? '修改密码' : '设置密码')),
+        if (hasPassword)
+          const PopupMenuItem(value: 'removePassword', child: Text('移除密码')),
+        PopupMenuItem(
+            value: 'trash',
+            enabled: !locked,
+            child: const Text('移入回收站')),
       ],
     );
     if (!mounted || value == null) {
       return;
     }
-    if (value == 'up') {
+    if (value == 'unlock') {
+      await unlockNoteDialog(context, state, note.id);
+    } else if (value == 'up') {
       await state.moveNote(note.id, -1);
     } else if (value == 'down') {
       await state.moveNote(note.id, 1);
     } else if (value == 'history') {
       await showNoteHistory(context, state: state, noteId: note.id);
+    } else if (value == 'password') {
+      await setNotePasswordFlow(context, state, note.id);
+    } else if (value == 'removePassword') {
+      await removeNotePasswordFlow(context, state, note.id);
     } else if (value == 'trash') {
       await _trashFromList(note);
     }
@@ -257,6 +333,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openHit(Note hit) async {
+    if (state.isNoteLocked(hit.id)) {
+      final ok = await unlockNoteDialog(context, state, hit.id);
+      if (!ok || !mounted) {
+        return;
+      }
+    }
     final scope = state.scope;
     if (scope.kind == NoteScopeKind.trash ||
         (scope.kind == NoteScopeKind.notebook &&
@@ -538,12 +620,20 @@ class _HomePageState extends State<HomePage> {
                 ScopeTile(
                   dotColor: Color(notebook.color),
                   label: notebook.name,
+                  locked: state.isNotebookLocked(notebook.id),
                   selected:
                       scope.kind == NoteScopeKind.notebook &&
                       scope.notebookId == notebook.id,
-                  onTap: () {
-                    state.selectScope(NoteScope.notebook(notebook.id));
-                    if (compact) Navigator.of(context).pop();
+                  onTap: () async {
+                    if (state.isNotebookLocked(notebook.id)) {
+                      final ok = await unlockNotebookDialog(
+                          context, state, notebook.id);
+                      if (!ok || !mounted) {
+                        return;
+                      }
+                    }
+                    await state.selectScope(NoteScope.notebook(notebook.id));
+                    if (compact && mounted) Navigator.of(context).pop();
                   },
                   onContext: (position) => _notebookContext(notebook, position),
                 ),
@@ -730,6 +820,7 @@ class _HomePageState extends State<HomePage> {
                     return NoteCard(
                       note: note,
                       conflicted: state.sync.conflictIds.contains(note.id),
+                      locked: state.isNoteLocked(note.id),
                       tintColor: Color(state.notebookColor(note.notebookId)),
                       striped: state.scope.kind != NoteScopeKind.notebook,
                       highlight: searching
@@ -737,8 +828,20 @@ class _HomePageState extends State<HomePage> {
                           : null,
                       selected: dense && note.id == state.openNoteId,
                       dense: dense,
-                      onTap: () =>
-                          searching ? _openHit(note) : state.openNote(note.id),
+                      onTap: () async {
+                        if (searching) {
+                          await _openHit(note);
+                          return;
+                        }
+                        if (state.isNoteLocked(note.id)) {
+                          final ok =
+                              await unlockNoteDialog(context, state, note.id);
+                          if (!ok || !mounted) {
+                            return;
+                          }
+                        }
+                        await state.openNote(note.id);
+                      },
                       onContext: (position) => _noteContext(note, position,
                           canReorder:
                               state.scope.kind == NoteScopeKind.notebook),
@@ -809,6 +912,7 @@ class _HomePageState extends State<HomePage> {
         return NoteCard(
           note: note,
           conflicted: state.sync.conflictIds.contains(note.id),
+          locked: state.isNoteLocked(note.id),
           tintColor: Color(state.notebookColor(note.notebookId)),
           highlight: _searchController.text.trim(),
           selected: dense && note.id == state.openNoteId,
@@ -828,6 +932,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _trashCard(Note note) {
     final t = inkOf(context);
+    final locked = state.isNoteLocked(note.id);
     return Container(
       decoration: BoxDecoration(
         color: t.surface,
@@ -841,12 +946,22 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  noteDisplayTitle(note),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(color: t.inkMuted),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        noteDisplayTitle(note),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(color: t.inkMuted),
+                      ),
+                    ),
+                    if (locked) ...[
+                      const SizedBox(width: spaceXs),
+                      Icon(Icons.lock_outline, size: 16, color: t.inkMuted),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: spaceXs),
                 Text(
@@ -857,11 +972,26 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           TextButton(
-            onPressed: () => state.restoreNote(note.id),
+            onPressed: () async {
+              if (locked) {
+                final ok = await unlockNoteDialog(context, state, note.id);
+                if (!ok || !mounted) {
+                  return;
+                }
+              }
+              await state.restoreNote(note.id);
+            },
             child: const Text('恢复'),
           ),
           TextButton(
             onPressed: () async {
+              if (locked) {
+                final unlocked =
+                    await unlockNoteDialog(context, state, note.id);
+                if (!unlocked || !mounted) {
+                  return;
+                }
+              }
               final ok = await confirm(
                 context,
                 title: '彻底删除',

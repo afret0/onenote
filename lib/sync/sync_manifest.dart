@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../data/password_lock.dart';
+
 int _asInt(dynamic value) => value is int ? value : (value as num).toInt();
 
 String contentFileOf(String noteId) => 'notes/$noteId.md';
@@ -12,6 +14,7 @@ class RemoteNotebook {
     required this.name,
     required this.color,
     this.sortKey,
+    this.lock,
     required this.createAt,
     required this.updateAt,
     required this.deviceId,
@@ -23,6 +26,7 @@ class RemoteNotebook {
         name: json['name'] as String? ?? '',
         color: _asInt(json['color'] ?? 0),
         sortKey: json['sortKey'] == null ? null : _asInt(json['sortKey']),
+        lock: json['lock'] as String?,
         createAt: _asInt(json['createAt'] ?? 0),
         updateAt: _asInt(json['updateAt'] ?? 0),
         deviceId: json['deviceId'] as String? ?? '',
@@ -33,6 +37,7 @@ class RemoteNotebook {
   final String name;
   final int color;
   final int? sortKey;
+  final String? lock;
   final int createAt;
   final int updateAt;
   final String deviceId;
@@ -43,6 +48,7 @@ class RemoteNotebook {
         'name': name,
         'color': color,
         if (sortKey != null) 'sortKey': sortKey,
+        if (lock != null) 'lock': lock,
         'createAt': createAt,
         'updateAt': updateAt,
         'deviceId': deviceId,
@@ -56,6 +62,7 @@ class RemoteNote {
     required this.notebookId,
     required this.title,
     this.sortKey,
+    this.lock,
     required this.createAt,
     required this.updateAt,
     this.deletedAt,
@@ -69,6 +76,7 @@ class RemoteNote {
         notebookId: json['notebookId'] as String,
         title: json['title'] as String? ?? '',
         sortKey: json['sortKey'] == null ? null : _asInt(json['sortKey']),
+        lock: json['lock'] as String?,
         createAt: _asInt(json['createAt'] ?? 0),
         updateAt: _asInt(json['updateAt'] ?? 0),
         deletedAt:
@@ -84,6 +92,7 @@ class RemoteNote {
   final String notebookId;
   final String title;
   final int? sortKey;
+  final String? lock;
   final int createAt;
   final int updateAt;
   final int? deletedAt;
@@ -96,6 +105,7 @@ class RemoteNote {
         'notebookId': notebookId,
         'title': title,
         if (sortKey != null) 'sortKey': sortKey,
+        if (lock != null) 'lock': lock,
         'createAt': createAt,
         'updateAt': updateAt,
         if (deletedAt != null) 'deletedAt': deletedAt,
@@ -133,6 +143,8 @@ class SyncManifest {
     Set<String>? assets,
     Map<String, String>? assetNames,
     Map<String, RemoteTombstone>? tombstones,
+    this.appLock,
+    this.privacy,
   })  : notebooks = notebooks ?? {},
         notes = notes ?? {},
         assets = assets ?? {},
@@ -167,6 +179,14 @@ class SyncManifest {
           (item as Map<String, dynamic>)['id'] as String:
               RemoteTombstone.fromJson(item),
       },
+      appLock: json['appLock'] == null
+          ? null
+          : PasswordLock.fromJson(json['appLock'] as Map<String, dynamic>)
+              .toJson(),
+      privacy: json['privacy'] == null
+          ? null
+          : PrivacySpaceRef.fromJson(json['privacy'] as Map<String, dynamic>)
+              .toJson(),
     );
   }
 
@@ -177,12 +197,16 @@ class SyncManifest {
   final Set<String> assets;
   final Map<String, String> assetNames;
   final Map<String, RemoteTombstone> tombstones;
+  final Map<String, dynamic>? appLock;
+  final Map<String, dynamic>? privacy;
 
   bool get isEmpty =>
       notebooks.isEmpty &&
       notes.isEmpty &&
       assets.isEmpty &&
-      tombstones.isEmpty;
+      tombstones.isEmpty &&
+      appLock == null &&
+      privacy == null;
 
   String encode() {
     final notebookList = notebooks.values.toList()
@@ -201,6 +225,8 @@ class SyncManifest {
       'assets': assetList,
       'assetNames': {for (final k in nameKeys) k: assetNames[k]},
       'tombstones': [for (final t in tombstoneList) t.toJson()],
+      if (appLock != null) 'appLock': appLock,
+      if (privacy != null) 'privacy': privacy,
     });
   }
 }

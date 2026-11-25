@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/app_db.dart';
+import '../lock/biometrics.dart';
 import '../state/app_state.dart';
 import '../window_setup.dart' show isDesktopWindow;
 import 'dialogs.dart';
+import 'password_prompts.dart';
 import 'sync_settings_page.dart';
 import 'theme.dart';
 
@@ -21,6 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _trashDays = AppDb.defaultRetentionDays;
   int _versionDays = AppDb.defaultRetentionDays;
   String _syncProtocol = AppDb.syncProtocolOff;
+  bool _bioAvailable = false;
 
   AppState get state => widget.state;
 
@@ -28,6 +31,17 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _loadRetention();
+    _loadBio();
+  }
+
+  Future<void> _loadBio() async {
+    if (!Biometrics.supported) {
+      return;
+    }
+    final available = await Biometrics.available();
+    if (mounted) {
+      setState(() => _bioAvailable = available);
+    }
   }
 
   Future<void> _loadRetention() async {
@@ -49,6 +63,145 @@ class _SettingsPageState extends State<SettingsPage> {
       MaterialPageRoute(builder: (_) => SyncSettingsPage(state: state)),
     );
     await _loadRetention();
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _setAppPassword() async {
+    final existing = state.appLock;
+    final hasPassword = existing != null && existing.active;
+    if (hasPassword) {
+      final current = await promptPassword(
+        context,
+        title: '验证当前密码',
+        subtitle: '修改应用密码前先验证',
+        attempts: state.attempts,
+        lock: existing,
+        confirmLabel: '验证',
+      );
+      if (current == null || !mounted) {
+        return;
+      }
+    }
+    final password = await promptNewPassword(
+      context,
+      title: hasPassword ? '修改应用密码' : '设置应用密码',
+      subtitle: '启动与切后台后需输入密码，密码随同步在其它设备生效',
+    );
+    if (password != null) {
+      await state.setAppPassword(password);
+    }
+  }
+
+  Future<void> _removeAppPassword() async {
+    final existing = state.appLock;
+    if (existing == null || !existing.active) {
+      return;
+    }
+    if (state.privacyRef != null && state.privacyRef!.active) {
+      _snack('请先销毁隐私空间，再移除应用密码');
+      return;
+    }
+    final current = await promptPassword(
+      context,
+      title: '移除应用密码',
+      subtitle: '先验证当前密码',
+      attempts: state.attempts,
+      lock: existing,
+      confirmLabel: '验证',
+    );
+    if (current == null || !mounted) {
+      return;
+    }
+    final ok = await confirm(context,
+        title: '移除应用密码',
+        message: '移除后所有设备打开应用都不再需要密码。',
+        confirmLabel: '移除');
+    if (ok) {
+      await state.removeAppPassword();
+    }
+  }
+
+  Future<void> _pickLease() async {
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('自动上锁时长'),
+        children: [
+          for (final minutes in AppState.lockLeasePresets)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, minutes),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      minutes <= 0 ? '不定时（本次运行内免密）' : '$minutes 分钟',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  if (state.lockLeaseMinutes == minutes)
+                    Icon(Icons.check,
+                        size: 18, color: inkOf(context).accentText),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      await state.setLockLeaseMinutes(picked);
+    }
+  }
+
+  Future<void> _createPrivacySpace() async {
+    if (state.appLock == null || !state.appLock!.active) {
+      _snack('请先设置应用密码，再创建隐私空间');
+      return;
+    }
+    final password = await promptNewPassword(
+      context,
+      title: '创建隐私空间',
+      subtitle: '锁屏输入此密码将打开一份完全独立的数据，与日常空间外观一致',
+    );
+    if (password == null || !mounted) {
+      return;
+    }
+    try {
+      await state.createPrivacySpace(password);
+      if (mounted) {
+        _snack('隐私空间已创建，锁屏输入新密码即可进入');
+      }
+    } on StateError {
+      if (mounted) {
+        _snack('已存在隐私空间');
+      }
+    }
+  }
+
+  Future<void> _destroyPrivacySpace() async {
+    final first = await confirm(
+      context,
+      title: '销毁隐私空间',
+      message: '隐私空间内的全部笔记将被永久删除（本地与云端），无法恢复。确定继续？',
+      confirmLabel: '继续',
+      danger: true,
+    );
+    if (!first || !mounted) {
+      return;
+    }
+    final second = await confirm(
+      context,
+      title: '再次确认',
+      message: '销毁后该密码将不再打开任何数据，空间无法找回。确定销毁？',
+      confirmLabel: '销毁',
+      danger: true,
+    );
+    if (second) {
+      await state.deletePrivacySpace();
+    }
   }
 
   Future<void> _editDays(String key, int current, String label) async {
@@ -419,6 +572,87 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ]),
         ]),
+        _group([
+          _SectionTitle('密码与隐私'),
+          _SettingCard(children: [
+            _SettingRow(
+              icon: Icons.lock_outline,
+              title: '应用密码',
+              subtitle: state.isChildSpace
+                  ? '当前处于隐私空间，密码改动同步到所有设备'
+                  : '启动与切后台后需输入密码，密码随同步生效',
+              action: state.appLock?.active == true ? '修改' : '设置',
+              onTap: _setAppPassword,
+            ),
+            if (state.appLock?.active == true) ...[
+              Divider(height: 1, color: t.hairline),
+              _SettingRow(
+                icon: Icons.lock_open_outlined,
+                title: state.isChildSpace ? '销毁此隐私空间' : '移除应用密码',
+                subtitle: state.isChildSpace
+                    ? '移除密码即销毁本空间全部数据，不可恢复'
+                    : '移除后所有设备打开应用不再需要密码',
+                action: '',
+                onTap: state.isChildSpace
+                    ? () => state.removeAppPassword()
+                    : _removeAppPassword,
+              ),
+              Divider(height: 1, color: t.hairline),
+              _SettingRow(
+                icon: Icons.timer_outlined,
+                title: '自动上锁',
+                subtitle: '解锁后无操作超过该时长自动重新上锁，任何操作都会续期',
+                action: state.lockLeaseMinutes <= 0
+                    ? '不定时'
+                    : '${state.lockLeaseMinutes} 分钟',
+                onTap: _pickLease,
+              ),
+              Divider(height: 1, color: t.hairline),
+              _SwitchRow(
+                icon: Icons.visibility_off_outlined,
+                title: '切后台即锁',
+                subtitle: '窗口失焦或应用退到后台时立即锁定',
+                value: state.appBackgroundLock,
+                onChanged: state.setAppBackgroundLock,
+              ),
+              if (_bioAvailable) ...[
+                Divider(height: 1, color: t.hairline),
+                _SwitchRow(
+                  icon: Icons.fingerprint,
+                  title: '生物识别解锁',
+                  subtitle: '锁屏可用指纹 / 面容 / 系统密码快速解锁',
+                  value: state.lockBio,
+                  onChanged: state.setLockBio,
+                ),
+              ],
+              Divider(height: 1, color: t.hairline),
+              _SettingRow(
+                icon: Icons.lock_clock,
+                title: '立即锁定',
+                subtitle: '马上回到锁屏，清空全部免密租期',
+                action: '',
+                onTap: () => state.lockApp(),
+              ),
+            ],
+            Divider(height: 1, color: t.hairline),
+            if (state.privacyRef?.active == true)
+              _SettingRow(
+                icon: Icons.delete_forever_outlined,
+                title: '销毁隐私空间',
+                subtitle: '永久删除隐私空间的全部本地与云端数据',
+                action: '',
+                onTap: _destroyPrivacySpace,
+              )
+            else
+              _SettingRow(
+                icon: Icons.enhanced_encryption_outlined,
+                title: '创建隐私空间',
+                subtitle: '另一个密码打开一份独立数据，外观与日常空间一致',
+                action: '',
+                onTap: _createPrivacySpace,
+              ),
+          ]),
+        ]),
         if (isDesktopWindow)
           _group([
             _SectionTitle('剪藏'),
@@ -509,9 +743,9 @@ class _SettingsPageState extends State<SettingsPage> {
           _SectionTitle('即将上线'),
           _SettingCard(children: [
             _DisabledRow(
-                icon: Icons.lock_outline,
-                title: '加密与锁定',
-                subtitle: '端到端加密 · 密码 / 生物识别 · 笔记本单独锁定'),
+                icon: Icons.enhanced_encryption_outlined,
+                title: '内容加密',
+                subtitle: '笔记正文端到端加密（密码锁定与隐私空间已上线）'),
           ]),
         ]),
         _group([
@@ -659,6 +893,56 @@ class _SettingRow extends StatelessWidget {
                     ?.copyWith(
                         color: t.accentText, fontWeight: FontWeight.w600)),
             Icon(Icons.chevron_right, size: 18, color: t.inkFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(radiusLg),
+      child: Padding(
+        padding: const EdgeInsets.all(spaceMd),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: t.inkMuted),
+            const SizedBox(width: spaceMd),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: t.inkMuted)),
+                ],
+              ),
+            ),
+            const SizedBox(width: spaceSm),
+            Switch(value: value, onChanged: onChanged),
           ],
         ),
       ),

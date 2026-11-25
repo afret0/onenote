@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
+import '../data/password_lock.dart';
 import 'diff3.dart';
 import 'oss_store.dart';
 import 'remote_store.dart';
@@ -85,11 +86,14 @@ class SyncEngine extends ChangeNotifier {
     if (storeOverride != null) {
       return storeOverride;
     }
-    final protocol =
-        await db.getSetting(AppDb.syncProtocolKey) ?? AppDb.syncProtocolOff;
+    return _storeFromSettings(await db.allSettings());
+  }
+
+  RemoteStore? _storeFromSettings(Map<String, String> settings) {
+    final protocol = settings[AppDb.syncProtocolKey] ?? AppDb.syncProtocolOff;
     if (protocol == AppDb.syncProtocolWebdav) {
-      final url = (await db.getSetting(AppDb.syncWebdavUrlKey) ?? '').trim();
-      final user = await db.getSetting(AppDb.syncWebdavUserKey) ?? '';
+      final url = (settings[AppDb.syncWebdavUrlKey] ?? '').trim();
+      final user = settings[AppDb.syncWebdavUserKey] ?? '';
       if (url.isEmpty || user.isEmpty) {
         developer.log(
             'skip, WebDAV 配置不完整不建 store, urlEmpty: ${url.isEmpty}, userEmpty: ${user.isEmpty}');
@@ -98,16 +102,15 @@ class SyncEngine extends ChangeNotifier {
       return WebdavStore(
         baseUrl: url,
         username: user,
-        password: await db.getSetting(AppDb.syncWebdavPassKey) ?? '',
+        password: settings[AppDb.syncWebdavPassKey] ?? '',
         rootPath: WebdavStore.normalizeRoot(
-            await db.getSetting(AppDb.syncWebdavPathKey) ?? ''),
+            settings[AppDb.syncWebdavPathKey] ?? ''),
       );
     }
     if (protocol == AppDb.syncProtocolOss) {
-      final endpoint =
-          (await db.getSetting(AppDb.syncOssEndpointKey) ?? '').trim();
-      final bucket = (await db.getSetting(AppDb.syncOssBucketKey) ?? '').trim();
-      final ak = await db.getSetting(AppDb.syncOssAkKey) ?? '';
+      final endpoint = (settings[AppDb.syncOssEndpointKey] ?? '').trim();
+      final bucket = (settings[AppDb.syncOssBucketKey] ?? '').trim();
+      final ak = settings[AppDb.syncOssAkKey] ?? '';
       if (endpoint.isEmpty || bucket.isEmpty || ak.isEmpty) {
         developer.log(
             'skip, OSS 配置不完整不建 store, endpointEmpty: ${endpoint.isEmpty}, bucketEmpty: ${bucket.isEmpty}, akEmpty: ${ak.isEmpty}');
@@ -117,12 +120,200 @@ class SyncEngine extends ChangeNotifier {
         endpoint: endpoint,
         bucket: bucket,
         accessKeyId: ak,
-        accessKeySecret: await db.getSetting(AppDb.syncOssSkKey) ?? '',
+        accessKeySecret: settings[AppDb.syncOssSkKey] ?? '',
         prefix: OssStore.normalizePrefix(
-            await db.getSetting(AppDb.syncOssPrefixKey) ?? ''),
+            settings[AppDb.syncOssPrefixKey] ?? ''),
       );
     }
     return null;
+  }
+
+  Map<String, String> _childSyncSettings(
+      Map<String, String> parent, String spaceId) {
+    final child = <String, String>{};
+    for (final key in const [
+      AppDb.syncProtocolKey,
+      AppDb.syncWebdavUrlKey,
+      AppDb.syncWebdavUserKey,
+      AppDb.syncWebdavPassKey,
+      AppDb.syncWebdavPathKey,
+      AppDb.syncOssEndpointKey,
+      AppDb.syncOssBucketKey,
+      AppDb.syncOssAkKey,
+      AppDb.syncOssSkKey,
+      AppDb.syncOssPrefixKey,
+      AppDb.syncPollMinutesKey,
+    ]) {
+      final value = parent[key];
+      if (value != null) {
+        child[key] = value;
+      }
+    }
+    final path = parent[AppDb.syncWebdavPathKey];
+    if (path != null) {
+      child[AppDb.syncWebdavPathKey] =
+          '${WebdavStore.normalizeRoot(path)}/spaces/$spaceId';
+    }
+    final prefix = parent[AppDb.syncOssPrefixKey];
+    if (prefix != null) {
+      child[AppDb.syncOssPrefixKey] =
+          '${OssStore.normalizePrefix(prefix)}/spaces/$spaceId';
+    }
+    return child;
+  }
+
+  Future<void> provisionPrivacySpace(PrivacySpaceRef ref) async {
+    final parentSettings = await db.allSettings();
+    final child = AppDb(AppDb.openExecutor(name: AppDb.spaceDbName(ref.id)));
+    try {
+      final childLock =
+          PasswordLock.parse(await child.getSetting(AppDb.appLockKey));
+      if (childLock == null || ref.lock.updateAt > childLock.updateAt) {
+        await child.setSetting(AppDb.appLockKey, ref.lock.encode());
+      } else {
+        developer.log(
+            'skip, 子空间本地密码更新不回退, spaceId: ${ref.id}, childUpdateAt: ${childLock.updateAt}, refUpdateAt: ${ref.lock.updateAt}');
+      }
+      await child.setSetting(AppDb.spaceIdKey, ref.id);
+      await child.setSetting(
+          AppDb.spaceParentKey, parentSettings[AppDb.spaceIdKey] ?? '');
+      for (final entry
+          in _childSyncSettings(parentSettings, ref.id).entries) {
+        await child.setSetting(entry.key, entry.value);
+      }
+      developer.log(
+          'done, 隐私空间数据库已就绪, spaceId: ${ref.id}, parentSpaceId: ${parentSettings[AppDb.spaceIdKey] ?? ''}, protocol: ${parentSettings[AppDb.syncProtocolKey] ?? AppDb.syncProtocolOff}');
+    } finally {
+      await child.close();
+    }
+  }
+
+  Future<void> destroyPrivacySpaceData(String spaceId) async {
+    final parentSettings = await db.allSettings();
+    final store =
+        _storeFromSettings(_childSyncSettings(parentSettings, spaceId));
+    if (store != null) {
+      final read = await store.read(manifestFile);
+      if (!read.missing && read.object != null) {
+        final manifest = SyncManifest.decode(utf8.decode(read.object!.bytes));
+        for (final id in manifest.notes.keys) {
+          await store.remove(contentFileOf(id));
+        }
+        for (final assetId in manifest.assets) {
+          await store.remove(assetFileOf(assetId));
+        }
+        await store.remove(manifestFile);
+        developer.log(
+            'done, 远端隐私空间数据已清理, spaceId: $spaceId, notes: ${manifest.notes.length}, assets: ${manifest.assets.length}');
+      } else {
+        developer.log('skip, 远端无隐私空间 manifest 只清本地, spaceId: $spaceId');
+      }
+    } else {
+      developer.log('skip, 未配置同步远端只清本地空间, spaceId: $spaceId');
+    }
+    final child = AppDb(AppDb.openExecutor(name: AppDb.spaceDbName(spaceId)));
+    try {
+      await child.wipeSpaceData();
+    } finally {
+      await child.close();
+    }
+    developer.log('done, 隐私空间本地数据已销毁, spaceId: $spaceId');
+  }
+
+  Future<void> syncLockMarkers() async {
+    final store = _store ?? await buildStore();
+    if (store == null) {
+      developer.log('skip, 未配置同步远端锁屏直接用本地密码标记');
+      return;
+    }
+    try {
+      final cachedEtag = await db.getSetting(AppDb.syncManifestEtagKey);
+      final read = await store.read(manifestFile,
+          ifNoneMatch: cachedEtag == null || cachedEtag.isEmpty
+              ? null
+              : cachedEtag);
+      if (read.missing) {
+        developer.log('skip, 远端无 manifest 锁屏用本地密码标记');
+        return;
+      }
+      final SyncManifest remote;
+      if (read.notModified) {
+        final cachedRaw = await db.getSetting(AppDb.syncManifestCacheKey);
+        if (cachedRaw == null) {
+          developer.log('skip, manifest 304 但无缓存用本地密码标记');
+          return;
+        }
+        remote = SyncManifest.decode(cachedRaw);
+      } else {
+        remote = SyncManifest.decode(utf8.decode(read.object!.bytes));
+      }
+      await _adoptLockMarkers(
+          _newerLock(
+              PasswordLock.parse(await db.getSetting(AppDb.appLockKey)),
+              remote.appLock == null
+                  ? null
+                  : PasswordLock.fromJson(remote.appLock!)),
+          _newerPrivacy(
+              PrivacySpaceRef.parse(
+                  await db.getSetting(AppDb.privacySpaceKey)),
+              remote.privacy == null
+                  ? null
+                  : PrivacySpaceRef.fromJson(remote.privacy!)));
+      developer.log('done, 锁屏前密码标记已对齐远端');
+    } catch (err) {
+      developer.log('skip, 锁屏前拉取密码标记失败回退本地离线解锁, err: $err');
+    }
+  }
+
+  PasswordLock? _newerLock(PasswordLock? local, PasswordLock? remote) {
+    if (local == null) {
+      return remote;
+    }
+    if (remote == null) {
+      return local;
+    }
+    return remote.updateAt > local.updateAt ? remote : local;
+  }
+
+  PrivacySpaceRef? _newerPrivacy(
+      PrivacySpaceRef? local, PrivacySpaceRef? remote) {
+    if (local == null) {
+      return remote;
+    }
+    if (remote == null) {
+      return local;
+    }
+    return remote.lock.updateAt > local.lock.updateAt ? remote : local;
+  }
+
+  Future<void> _adoptLockMarkers(
+      PasswordLock? appLock, PrivacySpaceRef? privacy) async {
+    final desiredApp = appLock?.encode();
+    if (desiredApp != await db.getSetting(AppDb.appLockKey)) {
+      if (desiredApp == null) {
+        await db.deleteSetting(AppDb.appLockKey);
+      } else {
+        await db.setSetting(AppDb.appLockKey, desiredApp);
+      }
+      _stats.changedLocal = true;
+      developer.log(
+          'done, App 密码标记已随远端更新, active: ${appLock?.active ?? false}, cleared: ${appLock?.cleared ?? false}');
+    }
+    final desiredPrivacy = privacy?.encode();
+    if (desiredPrivacy == await db.getSetting(AppDb.privacySpaceKey)) {
+      return;
+    }
+    if (desiredPrivacy == null) {
+      await db.deleteSetting(AppDb.privacySpaceKey);
+    } else {
+      await db.setSetting(AppDb.privacySpaceKey, desiredPrivacy);
+    }
+    _stats.changedLocal = true;
+    if (privacy != null && privacy.active) {
+      await provisionPrivacySpace(privacy);
+    }
+    developer.log(
+        'done, 隐私空间标记已随远端更新, active: ${privacy?.active ?? false}, spaceId: ${privacy?.id ?? ''}');
   }
 
   Future<void> reloadConfig() async {
@@ -327,6 +518,7 @@ class SyncEngine extends ChangeNotifier {
         'name': notebook.name,
         'color': notebook.color,
         if (notebook.sortKey != null) 'sortKey': notebook.sortKey,
+        if (notebook.lock != null) 'lock': notebook.lock,
         'createAt': notebook.createAt,
         'updateAt': notebook.updateAt,
         'deviceId': deviceId,
@@ -340,6 +532,7 @@ class SyncEngine extends ChangeNotifier {
         'notebookId': note.notebookId,
         'title': note.title,
         if (note.sortKey != null) 'sortKey': note.sortKey,
+        if (note.lock != null) 'lock': note.lock,
         'createAt': note.createAt,
         'updateAt': note.updateAt,
         if (note.deletedAt != null) 'deletedAt': note.deletedAt,
@@ -439,7 +632,8 @@ class SyncEngine extends ChangeNotifier {
       }
       if (local == null) {
         await db.applyRemoteNotebook(entry.id, entry.name, entry.color,
-            entry.sortKey, entry.createAt, entry.updateAt);
+            entry.sortKey, entry.createAt, entry.updateAt,
+            lock: entry.lock);
         await db.setSyncState(entry.id, AppDb.syncKindNotebook, remoteJson);
         if (localTomb != null) {
           await db.removeTombstone(entry.id);
@@ -464,7 +658,8 @@ class SyncEngine extends ChangeNotifier {
       if (!localChanged ||
           (remoteChanged && entry.updateAt > local.updateAt)) {
         await db.applyRemoteNotebook(entry.id, entry.name, entry.color,
-            entry.sortKey, entry.createAt, entry.updateAt);
+            entry.sortKey, entry.createAt, entry.updateAt,
+            lock: entry.lock);
         await db.setSyncState(entry.id, AppDb.syncKindNotebook, remoteJson);
         _stats.changedLocal = true;
         developer.log(
@@ -499,7 +694,8 @@ class SyncEngine extends ChangeNotifier {
         await _downloadAssets(store, remote, entry.assets);
         await db.applyRemoteNote(entry.id, entry.notebookId, entry.title,
             content, entry.sortKey, entry.createAt, entry.updateAt,
-            entry.deletedAt);
+            entry.deletedAt,
+            lock: entry.lock);
         await db.setSyncState(
             entry.id, AppDb.syncKindNote, {...remoteMeta, 'content': content});
         if (localTomb != null) {
@@ -535,7 +731,8 @@ class SyncEngine extends ChangeNotifier {
         await _downloadAssets(store, remote, entry.assets);
         await db.applyRemoteNote(entry.id, entry.notebookId, entry.title,
             remoteContent, entry.sortKey, entry.createAt, entry.updateAt,
-            entry.deletedAt);
+            entry.deletedAt,
+            lock: entry.lock);
         await db.setSyncState(entry.id, AppDb.syncKindNote, fullRemote);
         _stats.changedLocal = true;
         _stats.downloadedNotes++;
@@ -558,7 +755,8 @@ class SyncEngine extends ChangeNotifier {
             resolvedMeta['sortKey'] as int?,
             local.createAt,
             mergedUpdateAt,
-            resolvedMeta['deletedAt'] as int?);
+            resolvedMeta['deletedAt'] as int?,
+            lock: resolvedMeta['lock'] as String?);
         await db.setSyncState(entry.id, AppDb.syncKindNote, {
           ...resolvedMeta,
           'updateAt': mergedUpdateAt,
@@ -589,6 +787,18 @@ class SyncEngine extends ChangeNotifier {
       developer.log(
           'hit, 笔记双端改动存在冲突块进入裁决面板, noteId: ${entry.id}, conflictCount: ${merge.conflictCount}');
     }
+
+    final mergedApp = _newerLock(
+        PasswordLock.parse(await db.getSetting(AppDb.appLockKey)),
+        remote.appLock == null
+            ? null
+            : PasswordLock.fromJson(remote.appLock!));
+    final mergedPrivacy = _newerPrivacy(
+        PrivacySpaceRef.parse(await db.getSetting(AppDb.privacySpaceKey)),
+        remote.privacy == null
+            ? null
+            : PrivacySpaceRef.fromJson(remote.privacy!));
+    await _adoptLockMarkers(mergedApp, mergedPrivacy);
   }
 
   Future<String> _readContent(RemoteStore store, String noteId) async {
@@ -647,6 +857,17 @@ class SyncEngine extends ChangeNotifier {
     final states = await db.syncStateMap();
     final conflicts = await db.conflictNoteIds();
     final attachments = _attachments();
+    final mergedApp = _newerLock(
+        PasswordLock.parse(await db.getSetting(AppDb.appLockKey)),
+        remote.appLock == null
+            ? null
+            : PasswordLock.fromJson(remote.appLock!));
+    final mergedPrivacy = _newerPrivacy(
+        PrivacySpaceRef.parse(await db.getSetting(AppDb.privacySpaceKey)),
+        remote.privacy == null
+            ? null
+            : PrivacySpaceRef.fromJson(remote.privacy!));
+    await _adoptLockMarkers(mergedApp, mergedPrivacy);
     final merged = SyncManifest(
       updatedAt: remote.updatedAt,
       notebooks: {...remote.notebooks},
@@ -654,6 +875,8 @@ class SyncEngine extends ChangeNotifier {
       assets: {...remote.assets},
       assetNames: {...remote.assetNames},
       tombstones: {...remote.tombstones},
+      appLock: mergedApp?.toJson(),
+      privacy: mergedPrivacy?.toJson(),
     );
     final referencedAssets = <String>{};
 
@@ -851,7 +1074,8 @@ class SyncEngine extends ChangeNotifier {
       }
       for (final entry in remote.notebooks.values) {
         await db.applyRemoteNotebook(entry.id, entry.name, entry.color,
-            entry.sortKey, entry.createAt, entry.updateAt);
+            entry.sortKey, entry.createAt, entry.updateAt,
+            lock: entry.lock);
         await db.setSyncState(
             entry.id, AppDb.syncKindNotebook, entry.toJson());
       }
@@ -860,13 +1084,21 @@ class SyncEngine extends ChangeNotifier {
         await _downloadAssets(store, remote, entry.assets);
         await db.applyRemoteNote(entry.id, entry.notebookId, entry.title,
             content, entry.sortKey, entry.createAt, entry.updateAt,
-            entry.deletedAt);
+            entry.deletedAt,
+            lock: entry.lock);
         await db.setSyncState(entry.id, AppDb.syncKindNote,
             {...entry.toJson(), 'content': content});
       }
       for (final tomb in remote.tombstones.values) {
         await db.addTombstoneAt(tomb.id, tomb.kind, tomb.deletedAt);
       }
+      await _adoptLockMarkers(
+          remote.appLock == null
+              ? null
+              : PasswordLock.fromJson(remote.appLock!),
+          remote.privacy == null
+              ? null
+              : PrivacySpaceRef.fromJson(remote.privacy!));
       await db.setSetting(AppDb.syncManifestCacheKey, raw);
       await db.setSetting(AppDb.syncManifestEtagKey, read.object!.etag ?? '');
       lastSyncAt = db.clock();

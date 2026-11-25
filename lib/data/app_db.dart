@@ -14,6 +14,7 @@ class Notebooks extends Table {
   TextColumn get name => text()();
   IntColumn get color => integer().withDefault(const Constant(0xFF9333EA))();
   IntColumn get sortKey => integer().nullable()();
+  TextColumn get lock => text().nullable()();
   IntColumn get createAt => integer()();
   IntColumn get updateAt => integer()();
 
@@ -38,6 +39,7 @@ class Notes extends Table {
   TextColumn get title => text()();
   TextColumn get content => text()();
   IntColumn get sortKey => integer().nullable()();
+  TextColumn get lock => text().nullable()();
   IntColumn get createAt => integer()();
   IntColumn get updateAt => integer()();
   IntColumn get deletedAt => integer().nullable()();
@@ -177,17 +179,31 @@ class AppDb extends _$AppDb {
   static const tombstoneRetentionDays = 90;
   static const syncRequestTimeout = Duration(seconds: 15);
   static const syncPollMinutesMax = 1440;
+  static const appLockKey = 'appLock';
+  static const privacySpaceKey = 'privacySpace';
+  static const appBackgroundLockKey = 'appBackgroundLock';
+  static const lockLeaseMinutesKey = 'lockLeaseMinutes';
+  static const lockBioKey = 'lockBio';
+  static const lockBioSpaceKey = 'lockBioSpace';
+  static const lockFailCountKey = 'lockFailCount';
+  static const lockCooldownUntilKey = 'lockCooldownUntil';
+  static const spaceIdKey = 'spaceId';
+  static const spaceParentKey = 'spaceParent';
+  static const lockFailMax = 5;
+  static const lockCooldownMs = 60000;
 
-  static QueryExecutor openExecutor() => driftDatabase(
-        name: 'onenote',
+  static QueryExecutor openExecutor({String name = 'onenote'}) => driftDatabase(
+        name: name,
         web: DriftWebOptions(
           sqlite3Wasm: Uri.parse('sqlite3.wasm'),
           driftWorker: Uri.parse('drift_worker.js'),
         ),
       );
 
+  static String spaceDbName(String spaceId) => 'onenote_space_$spaceId';
+
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -229,6 +245,10 @@ class AppDb extends _$AppDb {
             await customStatement(
                 'CREATE INDEX IF NOT EXISTS note_versions_note_id '
                 'ON note_versions (note_id)');
+          }
+          if (from < 6) {
+            await m.addColumn(notebooks, notebooks.lock);
+            await m.addColumn(notes, notes.lock);
           }
         },
       );
@@ -274,6 +294,22 @@ class AppDb extends _$AppDb {
         NotebooksCompanion(color: Value(color), updateAt: Value(clock())));
     developer.log(
         'done, 笔记本颜色已更新, notebookId: $id, old: ${row.color}, new: $color');
+  }
+
+  Future<Notebook?> findNotebook(String id) =>
+      (select(notebooks)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Future<void> setNotebookLock(String id, String? lockJson) async {
+    await (update(notebooks)..where((t) => t.id.equals(id))).write(
+        NotebooksCompanion(lock: Value(lockJson), updateAt: Value(clock())));
+    developer.log(
+        'done, 笔记本密码已更新, notebookId: $id, locked: ${lockJson != null}');
+  }
+
+  Future<void> setNoteLock(String id, String? lockJson) async {
+    await (update(notes)..where((t) => t.id.equals(id))).write(
+        NotesCompanion(lock: Value(lockJson), updateAt: Value(clock())));
+    developer.log('done, 笔记密码已更新, noteId: $id, locked: ${lockJson != null}');
   }
 
   Future<void> deleteNotebook(String id) async {
@@ -523,7 +559,8 @@ class AppDb extends _$AppDb {
       int? sortKey,
       int createAt,
       int updateAt,
-      int? deletedAt) async {
+      int? deletedAt,
+      {String? lock}) async {
     await transaction(() async {
       await into(notes).insertOnConflictUpdate(NotesCompanion.insert(
           id: id,
@@ -531,6 +568,7 @@ class AppDb extends _$AppDb {
           title: title,
           content: content,
           sortKey: Value(sortKey),
+          lock: Value(lock),
           createAt: createAt,
           updateAt: updateAt,
           deletedAt: Value(deletedAt)));
@@ -541,12 +579,14 @@ class AppDb extends _$AppDb {
   }
 
   Future<void> applyRemoteNotebook(String id, String name, int color,
-      int? sortKey, int createAt, int updateAt) async {
+      int? sortKey, int createAt, int updateAt,
+      {String? lock}) async {
     await into(notebooks).insertOnConflictUpdate(NotebooksCompanion.insert(
         id: id,
         name: name,
         color: Value(color),
         sortKey: Value(sortKey),
+        lock: Value(lock),
         createAt: createAt,
         updateAt: updateAt));
     developer.log('done, 远端笔记本已应用本地, notebookId: $id, name: $name');
@@ -705,6 +745,24 @@ class AppDb extends _$AppDb {
 
   Future<void> deleteSetting(String key) =>
       (delete(settings)..where((t) => t.key.equals(key))).go();
+
+  Future<Map<String, String>> allSettings() async {
+    final rows = await select(settings).get();
+    return {for (final row in rows) row.key: row.value};
+  }
+
+  Future<void> wipeSpaceData() async {
+    await transaction(() async {
+      await delete(noteVersions).go();
+      await delete(syncConflicts).go();
+      await delete(syncState).go();
+      await delete(tombstones).go();
+      await delete(notes).go();
+      await delete(notebooks).go();
+      await delete(settings).go();
+    });
+    developer.log('done, 空间数据库已清空');
+  }
 
   Future<void> setLastOpenNote(String scopeKey, String noteId) =>
       setSetting('$lastOpenNotePrefix$scopeKey', noteId);

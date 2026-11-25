@@ -1,0 +1,523 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../data/password_lock.dart';
+import '../state/app_state.dart';
+import '../state/lock_attempts.dart';
+import 'dialogs.dart';
+import 'theme.dart';
+import 'widgets.dart';
+
+Future<String?> promptPassword(
+  BuildContext context, {
+  required String title,
+  String? subtitle,
+  required LockAttempts attempts,
+  required PasswordLock lock,
+  String confirmLabel = '解锁',
+}) {
+  return showDialog<String>(
+    context: context,
+    builder: (context) => _PasswordDialog(
+      title: title,
+      subtitle: subtitle,
+      confirmLabel: confirmLabel,
+      onSubmit: (password) => attempts.verify(lock, password),
+      cooldownOf: attempts.cooldownRemainingMs,
+    ),
+  );
+}
+
+Future<String?> promptNewPassword(
+  BuildContext context, {
+  required String title,
+  String? subtitle,
+  String confirmLabel = '确定',
+}) {
+  return showDialog<String>(
+    context: context,
+    builder: (context) => _NewPasswordDialog(
+      title: title,
+      subtitle: subtitle,
+      confirmLabel: confirmLabel,
+    ),
+  );
+}
+
+class _PasswordField extends StatelessWidget {
+  const _PasswordField({
+    required this.controller,
+    required this.label,
+    required this.obscure,
+    required this.onToggle,
+    this.autofocus = false,
+    this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final bool obscure;
+  final VoidCallback onToggle;
+  final bool autofocus;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return TextField(
+      controller: controller,
+      autofocus: autofocus,
+      obscureText: obscure,
+      enableSuggestions: false,
+      autocorrect: false,
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: Semantics(
+          button: true,
+          label: obscure ? '显示密码' : '隐藏密码',
+          child: IconButton(
+            onPressed: onToggle,
+            style: const ButtonStyle(
+              mouseCursor:
+                  WidgetStatePropertyAll(SystemMouseCursors.click),
+            ),
+            icon: Icon(
+              obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+              size: 20,
+              color: t.inkMuted,
+            ),
+          ),
+        ),
+      ),
+      onSubmitted: onSubmitted,
+    );
+  }
+}
+
+class _PasswordDialog extends StatefulWidget {
+  const _PasswordDialog({
+    required this.title,
+    required this.subtitle,
+    required this.confirmLabel,
+    required this.onSubmit,
+    required this.cooldownOf,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String confirmLabel;
+  final Future<LockVerifyResult> Function(String password) onSubmit;
+  final Future<int> Function() cooldownOf;
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  final _controller = TextEditingController();
+  final _focus = FocusNode();
+  bool _obscure = true;
+  bool _busy = false;
+  String? _error;
+  int _cooldownMs = 0;
+  Timer? _cooldownTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshCooldown();
+  }
+
+  @override
+  void dispose() {
+    _cooldownTimer?.cancel();
+    _controller.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshCooldown() async {
+    final remaining = await widget.cooldownOf();
+    if (!mounted) {
+      return;
+    }
+    if (remaining > 0) {
+      _startCooldown(remaining);
+    }
+  }
+
+  void _startCooldown(int ms) {
+    setState(() {
+      _cooldownMs = ms;
+      _error = null;
+    });
+    _cooldownTimer?.cancel();
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _cooldownMs -= 1000;
+        if (_cooldownMs <= 0) {
+          _cooldownMs = 0;
+          timer.cancel();
+          _focus.requestFocus();
+        }
+      });
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_busy || _cooldownMs > 0) {
+      return;
+    }
+    final password = _controller.text;
+    if (password.isEmpty) {
+      setState(() => _error = '请输入密码');
+      _focus.requestFocus();
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final result = await widget.onSubmit(password);
+    if (!mounted) {
+      return;
+    }
+    if (result.ok) {
+      Navigator.of(context).pop(password);
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = result.cooldownMs > 0 ? null : '密码错误，请重试';
+    });
+    if (result.cooldownMs > 0) {
+      _startCooldown(result.cooldownMs);
+    } else {
+      _controller.clear();
+      _focus.requestFocus();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    final cooling = _cooldownMs > 0;
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.subtitle != null) ...[
+              Text(widget.subtitle!,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.inkMuted)),
+              const SizedBox(height: spaceMd),
+            ],
+            _PasswordField(
+              controller: _controller,
+              label: '密码',
+              obscure: _obscure,
+              autofocus: true,
+              onToggle: () => setState(() => _obscure = !_obscure),
+              onSubmitted: (_) => _submit(),
+            ),
+            if (cooling) ...[
+              const SizedBox(height: spaceSm),
+              Text(
+                '错误次数过多，请 ${(_cooldownMs / 1000).ceil()} 秒后重试',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: t.danger),
+              ),
+            ] else if (_error != null) ...[
+              const SizedBox(height: spaceSm),
+              Text(_error!,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.danger)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消')),
+        FilledButton(
+          onPressed: _busy || cooling ? null : _submit,
+          child: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : Text(widget.confirmLabel),
+        ),
+      ],
+    );
+  }
+}
+
+class _NewPasswordDialog extends StatefulWidget {
+  const _NewPasswordDialog({
+    required this.title,
+    required this.subtitle,
+    required this.confirmLabel,
+  });
+
+  final String title;
+  final String? subtitle;
+  final String confirmLabel;
+
+  @override
+  State<_NewPasswordDialog> createState() => _NewPasswordDialogState();
+}
+
+class _NewPasswordDialogState extends State<_NewPasswordDialog> {
+  final _first = TextEditingController();
+  final _second = TextEditingController();
+  bool _obscure = true;
+  String? _error;
+
+  @override
+  void dispose() {
+    _first.dispose();
+    _second.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final password = _first.text;
+    if (password.isEmpty) {
+      setState(() => _error = '请输入密码');
+      return;
+    }
+    if (password != _second.text) {
+      setState(() => _error = '两次输入的密码不一致');
+      return;
+    }
+    Navigator.of(context).pop(password);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.subtitle != null) ...[
+              Text(widget.subtitle!,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.inkMuted)),
+              const SizedBox(height: spaceMd),
+            ],
+            _PasswordField(
+              controller: _first,
+              label: '新密码',
+              obscure: _obscure,
+              autofocus: true,
+              onToggle: () => setState(() => _obscure = !_obscure),
+            ),
+            const SizedBox(height: spaceMd),
+            _PasswordField(
+              controller: _second,
+              label: '确认新密码',
+              obscure: _obscure,
+              onToggle: () => setState(() => _obscure = !_obscure),
+              onSubmitted: (_) => _submit(),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: spaceSm),
+              Text(_error!,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.danger)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消')),
+        FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
+      ],
+    );
+  }
+}
+
+Future<bool> unlockNotebookDialog(
+    BuildContext context, AppState state, String notebookId) async {
+  final lock = state.notebookLock(notebookId);
+  if (lock == null || !lock.active) {
+    return true;
+  }
+  final name = state.notebookName(notebookId);
+  final password = await promptPassword(
+    context,
+    title: '解锁笔记本',
+    subtitle: '「$name」已上锁，输入密码后本次会话内免密',
+    attempts: state.attempts,
+    lock: lock,
+  );
+  if (password == null) {
+    return false;
+  }
+  state.grantNotebookUnlock(notebookId);
+  return true;
+}
+
+Future<bool> unlockNoteDialog(
+    BuildContext context, AppState state, String noteId) async {
+  final note = state.noteById(noteId);
+  if (note == null) {
+    return false;
+  }
+  if (state.isNotebookLocked(note.notebookId)) {
+    final ok = await unlockNotebookDialog(context, state, note.notebookId);
+    if (!ok || !context.mounted) {
+      return false;
+    }
+  }
+  final lock = state.noteLock(noteId);
+  if (lock == null || !lock.active) {
+    return true;
+  }
+  final password = await promptPassword(
+    context,
+    title: '解锁笔记',
+    subtitle: '「${noteDisplayTitle(note)}」已上锁，输入密码后本次会话内免密',
+    attempts: state.attempts,
+    lock: lock,
+  );
+  if (password == null) {
+    return false;
+  }
+  state.grantNoteUnlock(noteId);
+  return true;
+}
+
+Future<void> setNotebookPasswordFlow(
+    BuildContext context, AppState state, String notebookId) async {
+  final existing = state.notebookLock(notebookId);
+  if (existing != null && existing.active) {
+    final current = await promptPassword(
+      context,
+      title: '验证当前密码',
+      subtitle: '修改笔记本密码前先验证',
+      attempts: state.attempts,
+      lock: existing,
+      confirmLabel: '验证',
+    );
+    if (current == null) {
+      return;
+    }
+  }
+  if (!context.mounted) {
+    return;
+  }
+  final password = await promptNewPassword(context,
+      title: existing != null && existing.active ? '修改笔记本密码' : '设置笔记本密码',
+      subtitle: '密码随同步生效，其它设备打开该笔记本也需要输入');
+  if (password != null) {
+    await state.setNotebookPassword(notebookId, password);
+  }
+}
+
+Future<void> removeNotebookPasswordFlow(
+    BuildContext context, AppState state, String notebookId) async {
+  final existing = state.notebookLock(notebookId);
+  if (existing == null || !existing.active) {
+    return;
+  }
+  final current = await promptPassword(
+    context,
+    title: '移除笔记本密码',
+    subtitle: '先验证当前密码',
+    attempts: state.attempts,
+    lock: existing,
+    confirmLabel: '验证',
+  );
+  if (current == null || !context.mounted) {
+    return;
+  }
+  final ok = await confirm(context,
+      title: '移除笔记本密码',
+      message: '移除后所有设备打开该笔记本都不再需要密码。',
+      confirmLabel: '移除');
+  if (ok) {
+    await state.removeNotebookPassword(notebookId);
+  }
+}
+
+Future<void> setNotePasswordFlow(
+    BuildContext context, AppState state, String noteId) async {
+  final existing = state.noteLock(noteId);
+  if (existing != null && existing.active) {
+    final current = await promptPassword(
+      context,
+      title: '验证当前密码',
+      subtitle: '修改笔记密码前先验证',
+      attempts: state.attempts,
+      lock: existing,
+      confirmLabel: '验证',
+    );
+    if (current == null) {
+      return;
+    }
+  }
+  if (!context.mounted) {
+    return;
+  }
+  final password = await promptNewPassword(context,
+      title: existing != null && existing.active ? '修改笔记密码' : '设置笔记密码',
+      subtitle: '密码随同步生效，其它设备打开该笔记也需要输入');
+  if (password != null) {
+    await state.setNotePassword(noteId, password);
+  }
+}
+
+Future<void> removeNotePasswordFlow(
+    BuildContext context, AppState state, String noteId) async {
+  final existing = state.noteLock(noteId);
+  if (existing == null || !existing.active) {
+    return;
+  }
+  final current = await promptPassword(
+    context,
+    title: '移除笔记密码',
+    subtitle: '先验证当前密码',
+    attempts: state.attempts,
+    lock: existing,
+    confirmLabel: '验证',
+  );
+  if (current == null || !context.mounted) {
+    return;
+  }
+  final ok = await confirm(context,
+      title: '移除笔记密码',
+      message: '移除后所有设备打开该笔记都不再需要密码。',
+      confirmLabel: '移除');
+  if (ok) {
+    await state.removeNotePassword(noteId);
+  }
+}

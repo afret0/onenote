@@ -22,6 +22,7 @@ import 'conflict_panel.dart';
 import 'dialogs.dart';
 import 'markdown_view.dart';
 import 'note_toc.dart';
+import 'password_prompts.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -56,6 +57,7 @@ class NoteViewState extends State<NoteView> {
   bool _dirty = false;
   String _saveStatus = '';
   Timer? _autosave;
+  int _lastLeaseTouch = 0;
   late final TextEditingController _titleController;
   late final TextEditingController _contentController;
   final ScrollController _renderScroll = ScrollController();
@@ -322,6 +324,7 @@ class NoteViewState extends State<NoteView> {
   }
 
   void _onRenderScroll() {
+    _touchLease();
     final show = _renderScroll.hasClients && _renderScroll.position.pixels > 0;
     final previousActive = _tocActive;
     _updateTocActive();
@@ -425,7 +428,17 @@ class NoteViewState extends State<NoteView> {
         duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
   }
 
+  void _touchLease() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastLeaseTouch < 15000) {
+      return;
+    }
+    _lastLeaseTouch = now;
+    state.touchNote(widget.noteId);
+  }
+
   void _changed() {
+    _touchLease();
     _dirty = true;
     _autosave?.cancel();
     _autosave = Timer(const Duration(milliseconds: 800), () => _save(silent: true));
@@ -1232,8 +1245,12 @@ class NoteViewState extends State<NoteView> {
         ),
       ],
     );
+    final Widget listened = Listener(
+      onPointerDown: (_) => _touchLease(),
+      child: content,
+    );
     if (!isDesktopWindow) {
-      return content;
+      return listened;
     }
     return CallbackShortcuts(
       bindings: {
@@ -1246,7 +1263,7 @@ class NoteViewState extends State<NoteView> {
         if (_replaceOpen)
           const SingleActivator(LogicalKeyboardKey.escape): _closeReplace,
       },
-      child: content,
+      child: listened,
     );
   }
 
@@ -1344,6 +1361,9 @@ class NoteViewState extends State<NoteView> {
   }
 
   Future<void> _showNoteMenu(Offset pos) async {
+    final note = _note;
+    final hasPassword =
+        note != null && state.noteLock(note.id)?.active == true;
     final value = await showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx, pos.dy),
@@ -1352,6 +1372,11 @@ class NoteViewState extends State<NoteView> {
             value: 'toc',
             child: Text(_tocVisible ? '隐藏目录' : '显示目录')),
         const PopupMenuItem(value: 'history', child: Text('版本历史')),
+        PopupMenuItem(
+            value: 'password',
+            child: Text(hasPassword ? '修改密码' : '设置密码')),
+        if (hasPassword)
+          const PopupMenuItem(value: 'removePassword', child: Text('移除密码')),
         const PopupMenuItem(value: 'trash', child: Text('移入回收站')),
       ],
     );
@@ -1362,6 +1387,14 @@ class NoteViewState extends State<NoteView> {
       _toggleTocVisible();
     } else if (value == 'history') {
       _showHistory();
+    } else if (value == 'password') {
+      if (note != null) {
+        await setNotePasswordFlow(context, state, note.id);
+      }
+    } else if (value == 'removePassword') {
+      if (note != null) {
+        await removeNotePasswordFlow(context, state, note.id);
+      }
     } else if (value == 'trash') {
       _trash();
     }

@@ -29,12 +29,15 @@ class AttachmentStore {
   static final RegExp refPattern =
       RegExp(r'onenote-asset://([0-9a-f]{64})');
 
-  static Future<AttachmentStore> open() async {
+  static Future<AttachmentStore> open({String? spaceId}) async {
     if (kIsWeb) {
       throw UnsupportedError('attachment storage is not available on web yet');
     }
     final support = await getApplicationSupportDirectory();
-    final root = Directory('${support.path}/attachments');
+    final folder = spaceId == null || spaceId.isEmpty
+        ? 'attachments'
+        : 'attachments_space_$spaceId';
+    final root = Directory('${support.path}/$folder');
     await root.create(recursive: true);
     return AttachmentStore._(root);
   }

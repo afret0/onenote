@@ -65,6 +65,7 @@ class ScopeTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.onContext,
+    this.locked = false,
   });
 
   final IconData? icon;
@@ -73,6 +74,7 @@ class ScopeTile extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final void Function(Offset globalPosition)? onContext;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +156,10 @@ class ScopeTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (locked) ...[
+                    const SizedBox(width: spaceXs),
+                    Icon(Icons.lock_outline, size: 14, color: t.inkMuted),
+                  ],
                 ],
               ),
                 ),
@@ -178,6 +184,7 @@ class NoteCard extends StatelessWidget {
     this.selected = false,
     this.dense = false,
     this.conflicted = false,
+    this.locked = false,
   });
 
   final Note note;
@@ -189,6 +196,7 @@ class NoteCard extends StatelessWidget {
   final bool selected;
   final bool dense;
   final bool conflicted;
+  final bool locked;
 
   @override
   Widget build(BuildContext context) {
@@ -237,6 +245,11 @@ class NoteCard extends StatelessWidget {
                             maxLines: 1,
                           ),
                         ),
+                        if (locked) ...[
+                          const SizedBox(width: spaceXs),
+                          Icon(Icons.lock_outline,
+                              size: 16, color: t.inkMuted),
+                        ],
                         if (conflicted) ...[
                           const SizedBox(width: spaceXs),
                           Icon(Icons.sync_problem, size: 16, color: t.danger),

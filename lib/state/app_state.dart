@@ -5,14 +5,17 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../clip/clip_server.dart';
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
+import '../data/password_lock.dart';
 import '../sync/diff3.dart';
 import '../sync/remote_store.dart';
 import '../sync/sync_engine.dart';
 import '../window_setup.dart' show isDesktopWindow;
+import 'lock_attempts.dart';
 
 enum NoteScopeKind { all, notebook, trash }
 
@@ -30,10 +33,12 @@ class NoteScope {
 }
 
 class AppState extends ChangeNotifier {
-  AppState(this.db, {RemoteStore? syncStoreOverride}) {
+  AppState(this.db, {RemoteStore? syncStoreOverride, this.spaceId, AppDb? globalDb})
+      : globalDb = globalDb ?? db {
     sync = SyncEngine(db,
         attachments: () => attachments, storeOverride: syncStoreOverride);
     sync.addListener(_onSyncChanged);
+    attempts = LockAttempts(this.globalDb);
   }
 
   static const sidebarMinWidth = 200.0;
@@ -56,9 +61,15 @@ class AppState extends ChangeNotifier {
   static const clipPortDefault = 41190;
   static const clipPortMin = 1024;
   static const clipPortMax = 65535;
+  static const lockLeasePresets = [5, 10, 15, 30, 60, 0];
+  static const lockLeaseDefaultMinutes = 10;
+  static const _leaseSweepInterval = Duration(seconds: 5);
   static const _notebookScopePrefix = 'notebook:';
 
   final AppDb db;
+  final AppDb globalDb;
+  final String? spaceId;
+  late final LockAttempts attempts;
 
   late final SyncEngine sync;
 
@@ -82,14 +93,40 @@ class AppState extends ChangeNotifier {
   String clipToken = '';
   String? clipError;
   ClipServer? _clipServer;
+  int lockLeaseMinutes = lockLeaseDefaultMinutes;
+  bool appBackgroundLock = true;
+  bool lockBio = true;
+  PasswordLock? appLock;
+  PrivacySpaceRef? privacyRef;
+  final Map<String, int> _unlockUntil = {};
+  Map<String, Note> _noteIndex = {};
+  Timer? _leaseSweep;
+  static const _leaseForever = 9007199254740991;
+  VoidCallback? lockHandler;
+  Future<void> Function()? onAppLocking;
+  Future<void> Function()? destroyChildSpaceHandler;
+
+  bool get isChildSpace => spaceId != null && spaceId!.isNotEmpty;
 
   Future<void> init() async {
     if (!kIsWeb) {
-      attachments = await AttachmentStore.open();
+      attachments = await AttachmentStore.open(spaceId: spaceId);
       await purgeAttachments();
     } else {
       developer.log('skip, web 端附件存储未启用, 原因: 附件随同步阶段支持 web');
     }
+    final savedLease =
+        int.tryParse(await db.getSetting(AppDb.lockLeaseMinutesKey) ?? '');
+    if (savedLease != null && lockLeasePresets.contains(savedLease)) {
+      lockLeaseMinutes = savedLease;
+    } else if (savedLease != null) {
+      developer.log(
+          'skip, 自动上锁时长非法回退默认, raw: $savedLease, fallback: $lockLeaseMinutes');
+    }
+    appBackgroundLock =
+        await db.getSetting(AppDb.appBackgroundLockKey) != '0';
+    lockBio = await globalDb.getSetting(AppDb.lockBioKey) != '0';
+    await reloadLockMarkers();
     notebooks = await db.listNotebooks();
     sidebarWidth = _loadedDouble(await db.getSetting(AppDb.paneWidthSidebarKey),
         sidebarDefaultWidth, sidebarMinWidth, sidebarMaxWidth);
@@ -160,12 +197,19 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> reloadLockMarkers() async {
+    appLock = PasswordLock.parse(await db.getSetting(AppDb.appLockKey));
+    privacyRef =
+        PrivacySpaceRef.parse(await db.getSetting(AppDb.privacySpaceKey));
+  }
+
   Future<void> _applyOutcome(SyncOutcome outcome) async {
     if (_disposed) {
       return;
     }
     if (outcome.changedLocal) {
       developer.log('hit, 同步改动了本地数据刷新界面, reason: 同步回调');
+      await reloadLockMarkers();
       await refresh();
     }
   }
@@ -186,6 +230,8 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _leaseSweep?.cancel();
+    _leaseSweep = null;
     unawaited(_clipServer?.stop());
     _clipServer = null;
     sync.removeListener(_onSyncChanged);
@@ -195,10 +241,28 @@ class AppState extends ChangeNotifier {
 
   Future<void> refresh() async {
     notebooks = await db.listNotebooks();
+    _noteIndex = {for (final n in await db.listAllNotes()) n.id: n};
     if (scope.kind == NoteScopeKind.notebook &&
         !notebooks.any((n) => n.id == scope.notebookId)) {
       developer.log('hit, 当前笔记本已不存在回到全部, notebookId: ${scope.notebookId}');
       scope = const NoteScope.all();
+    }
+    if (scope.kind == NoteScopeKind.notebook &&
+        isNotebookLocked(scope.notebookId!)) {
+      developer.log(
+          'hit, 当前笔记本已上锁回到全部, notebookId: ${scope.notebookId}');
+      scope = const NoteScope.all();
+    }
+    final openId = openNoteId;
+    if (openId != null) {
+      final openNote = _noteIndex[openId];
+      if (openNote == null || openNote.deletedAt != null) {
+        developer.log('hit, 打开中的笔记已不在列表关闭, noteId: $openId');
+        openNoteId = null;
+      } else if (isNoteLocked(openId)) {
+        developer.log('hit, 打开中的笔记已上锁关闭, noteId: $openId');
+        openNoteId = null;
+      }
     }
     notes = switch (scope.kind) {
       NoteScopeKind.all => await db.listNotes(),
@@ -206,6 +270,324 @@ class AppState extends ChangeNotifier {
         await db.listNotes(notebookId: scope.notebookId),
       NoteScopeKind.trash => await db.listTrash(),
     };
+    _pruneUnlocks();
+    notifyListeners();
+  }
+
+  void _pruneUnlocks() {
+    final aliveNoteIds = {for (final n in notebooks) n.id};
+    _unlockUntil.removeWhere((key, _) =>
+        key.startsWith(_notebookScopePrefix) &&
+        !aliveNoteIds.contains(key.substring(_notebookScopePrefix.length)));
+  }
+
+  PasswordLock? notebookLock(String notebookId) =>
+      PasswordLock.parse(_notebook(notebookId)?.lock);
+
+  PasswordLock? noteLock(String noteId) =>
+      PasswordLock.parse(_noteIndex[noteId]?.lock);
+
+  bool _leaseHeld(String key) {
+    final until = _unlockUntil[key];
+    if (until == null) {
+      return false;
+    }
+    if (until <= db.clock()) {
+      _unlockUntil.remove(key);
+      return false;
+    }
+    return true;
+  }
+
+  bool isNotebookLocked(String notebookId) {
+    final lock = notebookLock(notebookId);
+    if (lock == null || !lock.active) {
+      return false;
+    }
+    return !_leaseHeld('$_notebookScopePrefix$notebookId');
+  }
+
+  bool isNoteLocked(String noteId) {
+    final note = _noteIndex[noteId];
+    if (note == null) {
+      return false;
+    }
+    if (isNotebookLocked(note.notebookId)) {
+      return true;
+    }
+    final lock = PasswordLock.parse(note.lock);
+    if (lock == null || !lock.active) {
+      return false;
+    }
+    return !_leaseHeld('note:$noteId');
+  }
+
+  void grantUnlock(String key, {bool notify = true}) {
+    if (lockLeaseMinutes <= 0) {
+      _unlockUntil[key] = _leaseForever;
+    } else {
+      _unlockUntil[key] = db.clock() + lockLeaseMinutes * 60000;
+      _leaseSweep ??=
+          Timer.periodic(_leaseSweepInterval, (_) => _sweepLeases());
+    }
+    developer.log(
+        'done, 解锁租期已授予, key: $key, leaseMinutes: $lockLeaseMinutes');
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  void grantNotebookUnlock(String notebookId) =>
+      grantUnlock('$_notebookScopePrefix$notebookId');
+
+  void grantNoteUnlock(String noteId) => grantUnlock('note:$noteId');
+
+  Note? noteById(String noteId) => _noteIndex[noteId];
+
+  void touchLease(String key) {
+    if (_unlockUntil.containsKey(key)) {
+      grantUnlock(key, notify: false);
+    }
+  }
+
+  void touchNote(String noteId) {
+    if (isNoteLocked(noteId)) {
+      return;
+    }
+    touchLease('note:$noteId');
+    final note = _noteIndex[noteId];
+    if (note != null) {
+      touchLease('$_notebookScopePrefix${note.notebookId}');
+    }
+  }
+
+  void _sweepLeases() {
+    final now = db.clock();
+    final expired = [
+      for (final entry in _unlockUntil.entries)
+        if (entry.value <= now) entry.key,
+    ];
+    if (expired.isEmpty) {
+      return;
+    }
+    for (final key in expired) {
+      _unlockUntil.remove(key);
+    }
+    developer.log(
+        'hit, 解锁租期到期自动上锁, expired: ${expired.join(",")}');
+    if (expired.every((k) => k.startsWith(_notebookScopePrefix))) {
+      final openId = openNoteId;
+      final openNote = openId == null ? null : _noteIndex[openId];
+      if (openNote == null ||
+          !expired.contains('$_notebookScopePrefix${openNote.notebookId}')) {
+        notifyListeners();
+        return;
+      }
+    }
+    unawaited(_closeForRelock());
+  }
+
+  Future<void> _closeForRelock() async {
+    final openId = openNoteId;
+    if (openId != null && isNoteLocked(openId)) {
+      await onAppLocking?.call();
+      openNoteId = null;
+      developer.log('hit, 租期到期关闭打开中的笔记, noteId: $openId');
+    }
+    if (scope.kind == NoteScopeKind.notebook &&
+        isNotebookLocked(scope.notebookId!)) {
+      scope = const NoteScope.all();
+      await refresh();
+      return;
+    }
+    notifyListeners();
+  }
+
+  Future<void> lockApp() async {
+    await onAppLocking?.call();
+    _unlockUntil.clear();
+    _leaseSweep?.cancel();
+    _leaseSweep = null;
+    openNoteId = null;
+    developer.log('recv, 应用已锁定清空全部解锁租期');
+    notifyListeners();
+    lockHandler?.call();
+  }
+
+  Future<void> setLockLeaseMinutes(int minutes) async {
+    if (!lockLeasePresets.contains(minutes) || minutes == lockLeaseMinutes) {
+      return;
+    }
+    lockLeaseMinutes = minutes;
+    await db.setSetting(AppDb.lockLeaseMinutesKey, '$minutes');
+    if (minutes <= 0) {
+      _leaseSweep?.cancel();
+      _leaseSweep = null;
+      for (final key in _unlockUntil.keys.toList()) {
+        _unlockUntil[key] = _leaseForever;
+      }
+    }
+    developer.log('done, 自动上锁时长已更新, minutes: $minutes');
+    notifyListeners();
+  }
+
+  Future<void> setAppBackgroundLock(bool enabled) async {
+    if (enabled == appBackgroundLock) {
+      return;
+    }
+    appBackgroundLock = enabled;
+    await db.setSetting(AppDb.appBackgroundLockKey, enabled ? '1' : '0');
+    developer.log('done, 切后台即锁已更新, enabled: $enabled');
+    notifyListeners();
+  }
+
+  Future<void> setLockBio(bool enabled) async {
+    if (enabled == lockBio) {
+      return;
+    }
+    lockBio = enabled;
+    await globalDb.setSetting(AppDb.lockBioKey, enabled ? '1' : '0');
+    developer.log('done, 生物识别解锁已更新, enabled: $enabled');
+    notifyListeners();
+  }
+
+  Future<void> markBioSpace() async {
+    await globalDb.setSetting(AppDb.lockBioSpaceKey, spaceId ?? '');
+  }
+
+  Future<void> setNotebookPassword(String id, String password) async {
+    await _pullBeforeWrite('setNotebookPassword');
+    final lock = PasswordLock.create(password, db.clock());
+    await db.setNotebookLock(id, lock.encode());
+    await refresh();
+    grantUnlock('$_notebookScopePrefix$id');
+    _pushAfterWrite('setNotebookPassword');
+  }
+
+  Future<void> removeNotebookPassword(String id) async {
+    await _pullBeforeWrite('removeNotebookPassword');
+    await db.setNotebookLock(id, null);
+    _unlockUntil.remove('$_notebookScopePrefix$id');
+    await refresh();
+    _pushAfterWrite('removeNotebookPassword');
+  }
+
+  Future<void> setNotePassword(String id, String password) async {
+    await _pullBeforeWrite('setNotePassword');
+    final lock = PasswordLock.create(password, db.clock());
+    await db.setNoteLock(id, lock.encode());
+    await refresh();
+    grantUnlock('note:$id');
+    _pushAfterWrite('setNotePassword');
+  }
+
+  Future<void> removeNotePassword(String id) async {
+    await _pullBeforeWrite('removeNotePassword');
+    await db.setNoteLock(id, null);
+    _unlockUntil.remove('note:$id');
+    await refresh();
+    _pushAfterWrite('removeNotePassword');
+  }
+
+  Future<void> setAppPassword(String password) async {
+    await _pullBeforeWrite('setAppPassword');
+    final lock = PasswordLock.create(password, db.clock());
+    await db.setSetting(AppDb.appLockKey, lock.encode());
+    appLock = lock;
+    if (isChildSpace) {
+      await _writeBackSpaceLock(lock);
+    }
+    _pushAfterWrite('setAppPassword');
+    developer.log('done, App 密码已设置');
+    notifyListeners();
+  }
+
+  Future<void> _writeBackSpaceLock(PasswordLock lock) async {
+    final parentId = await db.getSetting(AppDb.spaceParentKey) ?? '';
+    final parentDb = parentId.isEmpty
+        ? globalDb
+        : AppDb(AppDb.openExecutor(name: AppDb.spaceDbName(parentId)));
+    try {
+      final ref = PrivacySpaceRef.parse(
+          await parentDb.getSetting(AppDb.privacySpaceKey));
+      if (ref == null || !ref.active || ref.id != spaceId) {
+        developer.log(
+            'skip, 父级注册表无本空间记录不回写, spaceId: $spaceId, parentSpaceId: $parentId');
+        return;
+      }
+      final updated = PrivacySpaceRef(
+          id: ref.id, lock: lock, createAt: ref.createAt);
+      await parentDb.setSetting(AppDb.privacySpaceKey, updated.encode());
+      developer.log(
+          'done, 子空间密码已回写父级注册表, spaceId: $spaceId, parentSpaceId: $parentId');
+    } finally {
+      if (parentId.isNotEmpty) {
+        await parentDb.close();
+      }
+    }
+  }
+
+  Future<void> removeAppPassword() async {
+    if (isChildSpace) {
+      final handler = destroyChildSpaceHandler;
+      if (handler != null) {
+        await handler();
+      }
+      return;
+    }
+    final privacy = PrivacySpaceRef.parse(
+        await db.getSetting(AppDb.privacySpaceKey));
+    if (privacy != null && privacy.active) {
+      developer.log('skip, 存在隐私空间禁止移除 App 密码');
+      throw StateError('privacy space exists');
+    }
+    await _pullBeforeWrite('removeAppPassword');
+    final cleared = PasswordLock.clearedAt(db.clock());
+    await db.setSetting(AppDb.appLockKey, cleared.encode());
+    appLock = cleared;
+    _pushAfterWrite('removeAppPassword');
+    developer.log('done, App 密码已移除');
+    notifyListeners();
+  }
+
+  Future<PrivacySpaceRef> createPrivacySpace(String password) async {
+    if (appLock == null || !appLock!.active) {
+      developer.log('skip, 未设置 App 密码不能创建隐私空间');
+      throw StateError('app password required');
+    }
+    final existing = PrivacySpaceRef.parse(
+        await db.getSetting(AppDb.privacySpaceKey));
+    if (existing != null && existing.active) {
+      developer.log('skip, 隐私空间已存在不重复创建');
+      throw StateError('privacy space exists');
+    }
+    await _pullBeforeWrite('createPrivacySpace');
+    final id = const Uuid().v4();
+    final now = db.clock();
+    final ref = PrivacySpaceRef(
+        id: id, lock: PasswordLock.create(password, now), createAt: now);
+    await sync.provisionPrivacySpace(ref);
+    await db.setSetting(AppDb.privacySpaceKey, ref.encode());
+    privacyRef = ref;
+    _pushAfterWrite('createPrivacySpace');
+    developer.log('done, 隐私空间已创建, spaceId: $id');
+    notifyListeners();
+    return ref;
+  }
+
+  Future<void> deletePrivacySpace() async {
+    final ref = PrivacySpaceRef.parse(
+        await db.getSetting(AppDb.privacySpaceKey));
+    if (ref == null || !ref.active) {
+      return;
+    }
+    await _pullBeforeWrite('deletePrivacySpace');
+    await sync.destroyPrivacySpaceData(ref.id);
+    final cleared = PrivacySpaceRef.clearedAt(db.clock());
+    await db.setSetting(AppDb.privacySpaceKey, cleared.encode());
+    privacyRef = cleared;
+    _pushAfterWrite('deletePrivacySpace');
+    developer.log('done, 隐私空间已销毁, spaceId: ${ref.id}');
     notifyListeners();
   }
 
@@ -226,10 +608,10 @@ class AppState extends ChangeNotifier {
       return;
     }
     final hit = notes.where((n) => n.id == remembered).firstOrNull;
-    if (hit == null) {
+    if (hit == null || isNoteLocked(hit.id)) {
       if (remembered != null) {
         developer.log(
-            'skip, 上次打开的笔记已不在当前列表, scope: ${scope.kind.name}, staleNoteId: $remembered');
+            'skip, 上次打开的笔记已不在列表或已上锁, scope: ${scope.kind.name}, staleNoteId: $remembered, locked: ${hit != null}');
       }
       notifyListeners();
       return;
@@ -240,10 +622,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> selectScope(NoteScope next) async {
+  Future<void> selectScope(NoteScope next, {bool verified = false}) async {
     _startupRestorePending = false;
+    if (!verified &&
+        next.kind == NoteScopeKind.notebook &&
+        isNotebookLocked(next.notebookId!)) {
+      developer.log(
+          'skip, 笔记本已上锁先解锁再进入, notebookId: ${next.notebookId}');
+      notifyListeners();
+      return;
+    }
     scope = next;
     openNoteId = null;
+    if (next.kind == NoteScopeKind.notebook) {
+      touchLease('$_notebookScopePrefix${next.notebookId}');
+    }
     await refresh();
     await _persistView();
   }
@@ -268,6 +661,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> renameNotebook(String id, String name) async {
+    if (isNotebookLocked(id)) {
+      developer.log('skip, 笔记本已上锁拦截重命名, notebookId: $id');
+      return;
+    }
     await _pullBeforeWrite('renameNotebook');
     await db.renameNotebook(id, name);
     await refresh();
@@ -275,6 +672,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> setNotebookColor(String id, int color) async {
+    if (isNotebookLocked(id)) {
+      developer.log('skip, 笔记本已上锁拦截改色, notebookId: $id');
+      return;
+    }
     await _pullBeforeWrite('setNotebookColor');
     await db.setNotebookColor(id, color);
     await refresh();
@@ -296,6 +697,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteNotebook(String id) async {
+    if (isNotebookLocked(id)) {
+      developer.log('skip, 笔记本已上锁拦截删除, notebookId: $id');
+      return;
+    }
     await _pullBeforeWrite('deleteNotebook');
     await db.deleteNotebook(id);
     lastOpenNote.remove(id);
@@ -313,6 +718,10 @@ class AppState extends ChangeNotifier {
     final target = scope.kind == NoteScopeKind.notebook
         ? scope.notebookId!
         : notebooks.first.id;
+    if (isNotebookLocked(target)) {
+      developer.log('skip, 目标笔记本已上锁无法新建, notebookId: $target');
+      return null;
+    }
     await _pullBeforeWrite('createNote');
     final note = await db.createNote(target);
     await refresh();
@@ -328,6 +737,9 @@ class AppState extends ChangeNotifier {
       String? sourceUrl}) async {
     if (!notebooks.any((n) => n.id == notebookId)) {
       throw ClipException(404, '笔记本不存在，请在插件里刷新后重选');
+    }
+    if (isNotebookLocked(notebookId)) {
+      throw ClipException(403, '笔记本已上锁，请先在应用内解锁');
     }
     final body = markdown.trim();
     final url = sourceUrl?.trim() ?? '';
@@ -425,9 +837,15 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> openNote(String id) async {
+  Future<void> openNote(String id, {bool verified = false}) async {
     _startupRestorePending = false;
+    if (!verified && isNoteLocked(id)) {
+      developer.log('skip, 笔记已上锁先解锁再打开, noteId: $id');
+      notifyListeners();
+      return;
+    }
     openNoteId = id;
+    touchNote(id);
     notifyListeners();
     final note = notes.where((n) => n.id == id).firstOrNull;
     if (note != null) {
@@ -454,7 +872,11 @@ class AppState extends ChangeNotifier {
     await _persistView();
   }
 
-  Future<void> trashNote(String id) async {
+  Future<void> trashNote(String id, {bool verified = false}) async {
+    if (!verified && isNoteLocked(id)) {
+      developer.log('skip, 笔记已上锁拦截移入回收站, noteId: $id');
+      return;
+    }
     await _pullBeforeWrite('trashNote');
     await db.softDeleteNote(id);
     if (openNoteId == id) {
@@ -465,7 +887,11 @@ class AppState extends ChangeNotifier {
     _pushAfterWrite('trashNote');
   }
 
-  Future<void> restoreNote(String id) async {
+  Future<void> restoreNote(String id, {bool verified = false}) async {
+    if (!verified && isNoteLocked(id)) {
+      developer.log('skip, 笔记已上锁拦截恢复, noteId: $id');
+      return;
+    }
     await _pullBeforeWrite('restoreNote');
     await db.restoreNote(id);
     await refresh();
@@ -473,7 +899,11 @@ class AppState extends ChangeNotifier {
     _pushAfterWrite('restoreNote');
   }
 
-  Future<void> hardDeleteNote(String id) async {
+  Future<void> hardDeleteNote(String id, {bool verified = false}) async {
+    if (!verified && isNoteLocked(id)) {
+      developer.log('skip, 笔记已上锁拦截彻底删除, noteId: $id');
+      return;
+    }
     await _pullBeforeWrite('hardDeleteNote');
     await db.hardDeleteNote(id);
     await db.addTombstone(id, AppDb.syncKindNote);
@@ -717,14 +1147,14 @@ class AppState extends ChangeNotifier {
     }
     final remembered = lastOpenNote[_lastOpenKey];
     final hit = notes.where((n) => n.id == remembered).firstOrNull;
-    if (hit != null) {
+    if (hit != null && !isNoteLocked(hit.id)) {
       return hit.id;
     }
     if (remembered != null) {
       developer.log(
-          'skip, 记忆的笔记已不在列表回退第一篇, scopeKey: $_lastOpenKey, staleNoteId: $remembered');
+          'skip, 记忆的笔记已不在列表或已上锁回退第一篇, scopeKey: $_lastOpenKey, staleNoteId: $remembered');
     }
-    return notes.first.id;
+    return notes.where((n) => !isNoteLocked(n.id)).firstOrNull?.id;
   }
 
   String get _lastOpenKey => scope.kind == NoteScopeKind.notebook
