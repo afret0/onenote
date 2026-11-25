@@ -1051,6 +1051,7 @@ class NoteViewState extends State<NoteView> {
                                     highlightActiveIndex: _matchIndex,
                                     highlightController: _highlight,
                                     tocController: _toc,
+                                    tint: tocTint,
                                   ),
                                 ],
                               ),
@@ -1063,7 +1064,7 @@ class NoteViewState extends State<NoteView> {
                               alignment: Alignment.topRight,
                               child: Padding(
                                 padding: const EdgeInsets.only(top: spaceLg),
-                                child: _editButton(t),
+                                child: _editButton(t, tocTint),
                               ),
                             ),
                           ),
@@ -1213,7 +1214,7 @@ class NoteViewState extends State<NoteView> {
     );
   }
 
-  Widget _editButton(InkTokens t) {
+  Widget _editButton(InkTokens t, Color tint) {
     return Padding(
       padding: const EdgeInsets.only(right: spaceXs),
       child: SizedBox(
@@ -1227,8 +1228,10 @@ class NoteViewState extends State<NoteView> {
               SystemMouseCursors.click,
             ),
             backgroundColor: WidgetStatePropertyAll(t.paper),
-            foregroundColor: WidgetStatePropertyAll(t.accentText),
-            overlayColor: WidgetStatePropertyAll(t.accentSoft),
+            foregroundColor:
+                WidgetStatePropertyAll(readableOn(tint, t.paper)),
+            overlayColor:
+                WidgetStatePropertyAll(tint.withValues(alpha: 0.08)),
             side: WidgetStatePropertyAll(
               BorderSide(color: t.hairline),
             ),
