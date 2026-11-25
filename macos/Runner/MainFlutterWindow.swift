@@ -14,6 +14,8 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
     _ = flutterViewController.view
     flutterViewController.viewWillAppear()
+    self.initialFirstResponder = flutterViewController.view
+    self.makeFirstResponder(flutterViewController.view)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
@@ -41,6 +43,15 @@ class MainFlutterWindow: NSWindow {
     }
 
     super.awakeFromNib()
+  }
+
+  override func becomeKey() {
+    super.becomeKey()
+    if let flutterView = contentViewController?.view,
+      firstResponder !== flutterView
+    {
+      makeFirstResponder(flutterView)
+    }
   }
 
   deinit {

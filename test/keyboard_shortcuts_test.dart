@@ -141,6 +141,53 @@ void main() {
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
   });
 
+  testWidgets('cmd+f works right after startup before any click',
+      (tester) async {
+    wide(tester);
+    NativeTransport.debugOverride = NativeTransport.testing()
+      ..invokeHandler = (call) async {
+        if (call.method == 'initialize') {
+          return {'view': (call.arguments as Map)['view']};
+        }
+        return null;
+      };
+    addTearDown(() => NativeTransport.debugOverride = null);
+    final supportDir =
+        Directory.systemTemp.createTempSync('onenote_startup_focus');
+    addTearDown(() => supportDir.deleteSync(recursive: true));
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => supportDir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      now += 1000;
+      final notebook = await db.createNotebook('work');
+      now += 1000;
+      final note =
+          await db.createNote(notebook.id, title: 't', content: 'alpha');
+      await db.setSetting(AppDb.lastViewScopeKey, 'all');
+      await db.setSetting(AppDb.lastViewNoteKey, note.id);
+    });
+    await tester.pumpWidget(
+        ListenableBuilder(listenable: state, builder: (_, _) => app(state)));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await state.init();
+    });
+    await tester.pumpAndSettle();
+    expect(state.openNoteId, isNotNull);
+
+    await press(tester, LogicalKeyboardKey.keyF, meta: true);
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
+  });
+
   testWidgets('cmd+f still works after leaving edit mode', (tester) async {
     wide(tester);
     final (state, _, _) = await seed(tester);
