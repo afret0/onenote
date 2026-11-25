@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../data/app_db.dart';
 import '../state/app_state.dart';
+import '../sync/sync_engine.dart';
 import '../window_setup.dart';
 import 'dialogs.dart';
 import 'note_view.dart';
@@ -12,6 +13,36 @@ import 'notebook_color_picker.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
+
+String syncResultMessage(SyncOutcome outcome, int remoteNotes) {
+  if (!outcome.ran) {
+    return '未配置同步，去设置页开启';
+  }
+  if (outcome.error != null) {
+    return '同步失败：${outcome.error}';
+  }
+  final changed = outcome.uploadedNotes +
+      outcome.downloadedNotes +
+      outcome.uploadedAssets +
+      outcome.downloadedAssets;
+  final base = changed == 0
+      ? '同步完成 · 无增量变化 · 远端 $remoteNotes 篇笔记与本地一致'
+      : '同步完成 · 上传 ${outcome.uploadedNotes} · 下载 ${outcome.downloadedNotes}';
+  return outcome.conflicts > 0
+      ? '$base · ${outcome.conflicts} 处冲突待裁决'
+      : base;
+}
+
+String formatSyncCaption(int ms) {
+  final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+  final now = DateTime.now();
+  final hm = formatHm(ms);
+  if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+    return hm;
+  }
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${two(dt.month)}-${two(dt.day)} $hm';
+}
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.state});
@@ -412,12 +443,7 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) {
       return;
     }
-    final message = !outcome.ran
-        ? '未配置同步，去设置页开启'
-        : outcome.error != null
-            ? '同步失败：${outcome.error}'
-            : '同步完成 · 上传 ${outcome.uploadedNotes} · 下载 ${outcome.downloadedNotes}'
-                '${outcome.conflicts > 0 ? ' · ${outcome.conflicts} 处冲突待裁决' : ''}';
+    final message = syncResultMessage(outcome, state.sync.remoteNoteCount);
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
@@ -459,6 +485,17 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
         ),
+        if (state.sync.lastSyncAt != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(spaceMd, 0, spaceMd, spaceSm),
+            child: Text(
+              '上次同步 ${formatSyncCaption(state.sync.lastSyncAt!)}',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: inkOf(context).inkMuted),
+            ),
+          ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: spaceSm),

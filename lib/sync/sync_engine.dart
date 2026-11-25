@@ -51,6 +51,8 @@ class SyncEngine extends ChangeNotifier {
   bool syncing = false;
   String? lastError;
   int? lastSyncAt;
+  int remoteNoteCount = 0;
+  int remoteNotebookCount = 0;
   int pollMinutes = 0;
   Set<String> conflictIds = {};
 
@@ -64,6 +66,16 @@ class SyncEngine extends ChangeNotifier {
   Future<void> init() async {
     conflictIds = await db.conflictNoteIds();
     lastSyncAt = int.tryParse(await db.getSetting(AppDb.syncLastAtKey) ?? '');
+    final cachedRaw = await db.getSetting(AppDb.syncManifestCacheKey);
+    if (cachedRaw != null) {
+      try {
+        final cached = SyncManifest.decode(cachedRaw);
+        remoteNoteCount = cached.notes.length;
+        remoteNotebookCount = cached.notebooks.length;
+      } catch (err) {
+        developer.log('skip, 缓存 manifest 解析失败计数保持零, err: $err');
+      }
+    }
     await reloadConfig();
     developer.log(
         'done, 同步引擎就绪, pollMinutes: $pollMinutes, conflicts: ${conflictIds.length}');
@@ -289,6 +301,9 @@ class SyncEngine extends ChangeNotifier {
       await db.setSetting(AppDb.syncManifestCacheKey, remoteRaw);
       await db.setSetting(AppDb.syncManifestEtagKey, remoteEtag ?? '');
     }
+    final shown = pushed != null ? SyncManifest.decode(pushed.raw) : remote;
+    remoteNoteCount = shown.notes.length;
+    remoteNotebookCount = shown.notebooks.length;
   }
 
   Map<String, dynamic> _decode(String raw) =>

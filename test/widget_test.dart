@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onenote/data/app_db.dart';
 import 'package:onenote/main.dart';
 import 'package:onenote/state/app_state.dart';
+import 'package:onenote/sync/sync_engine.dart';
 import 'package:onenote/ui/home_page.dart';
 import 'package:onenote/ui/markdown_view.dart';
 import 'package:onenote/ui/note_view.dart';
@@ -492,5 +493,53 @@ void main() {
       final saved = await db.getNote(note.id);
       expect(saved.content, '- [ ] todo a\n\n- [ ] todo b');
     });
+  });
+
+  test('syncResultMessage 区分零增量与有变化', () {
+    expect(syncResultMessage(const SyncOutcome(ran: false), 0),
+        '未配置同步，去设置页开启');
+    expect(
+        syncResultMessage(const SyncOutcome(ran: true, uploadedNotes: 2), 5),
+        '同步完成 · 上传 2 · 下载 0');
+    expect(syncResultMessage(const SyncOutcome(ran: true), 30),
+        '同步完成 · 无增量变化 · 远端 30 篇笔记与本地一致');
+    expect(
+        syncResultMessage(const SyncOutcome(ran: true, downloadedAssets: 1), 30),
+        '同步完成 · 上传 0 · 下载 0');
+    expect(
+        syncResultMessage(const SyncOutcome(ran: true, conflicts: 2), 30),
+        '同步完成 · 无增量变化 · 远端 30 篇笔记与本地一致 · 2 处冲突待裁决');
+  });
+
+  testWidgets('侧栏展示上次同步时间', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_sync_caption');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    final db = AppDb(NativeDatabase.memory());
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      await state.init();
+    });
+    final at = DateTime.now().subtract(const Duration(minutes: 5));
+    state.sync.lastSyncAt = at.millisecondsSinceEpoch;
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    final hm =
+        '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+    expect(find.text('上次同步 $hm'), findsOneWidget);
   });
 }

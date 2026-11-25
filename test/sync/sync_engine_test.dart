@@ -82,6 +82,18 @@ void main() {
     expect(remote.readLog, ['manifest.json']);
   });
 
+  test('零增量同步后引擎暴露远端笔记与笔记本计数', () async {
+    final a = await newDevice('计数设备');
+    final nb = await a.db.createNotebook('计数本');
+    await a.db.createNote(nb.id, title: 'n1', content: 'c1');
+    await a.engine.requestSync('seed');
+    final second = await a.engine.requestSync('zero');
+    expect(second.uploadedNotes, 0);
+    expect(second.downloadedNotes, 0);
+    expect(a.engine.remoteNoteCount, 1);
+    expect(a.engine.remoteNotebookCount, 1);
+  });
+
   test('只改一篇时只重传该篇正文与 manifest', () async {
     final a = await newDevice('device-A');
     final notebook = await a.db.createNotebook('work');
