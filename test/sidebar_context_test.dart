@@ -122,6 +122,16 @@ void main() {
           (w.decoration as BoxDecoration).shape == BoxShape.circle),
     );
     expect(dot, findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ScopeTile, '工作'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<NoteCard>(find.byType(NoteCard)).tintColor, isNull);
+    final pane = find.byWidgetPredicate((w) =>
+        w is ColoredBox &&
+        w.color ==
+            Color.alphaBlend(const Color(0xFF16A34A).withValues(alpha: 0.16),
+                const Color(0xFF1A1A1E)));
+    expect(pane, findsOneWidget);
   });
 
   testWidgets('bottom new-note button is icon-only with click cursor',

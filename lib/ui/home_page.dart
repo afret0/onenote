@@ -441,7 +441,13 @@ class _HomePageState extends State<HomePage> {
     final isTrash = state.scope.kind == NoteScopeKind.trash;
     final searching = _searchHits != null;
     final list = searching ? _searchHits! : state.notes;
-    return Column(
+    final paneTint = !searching && state.scope.kind == NoteScopeKind.notebook
+        ? notebookTint(
+            context, Color(state.notebookColor(state.scope.notebookId!)), 0)
+        : null;
+    return ColoredBox(
+      color: paneTint ?? Colors.transparent,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
@@ -565,7 +571,9 @@ class _HomePageState extends State<HomePage> {
                     }
                     return NoteCard(
                       note: note,
-                      tintColor: Color(state.notebookColor(note.notebookId)),
+                      tintColor: state.scope.kind == NoteScopeKind.notebook
+                          ? null
+                          : Color(state.notebookColor(note.notebookId)),
                       highlight: searching
                           ? _searchController.text.trim()
                           : null,
@@ -579,6 +587,7 @@ class _HomePageState extends State<HomePage> {
                 ),
         ),
       ],
+      ),
     );
   }
 
