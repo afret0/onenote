@@ -104,19 +104,19 @@ void main() {
     await tester.pumpWidget(app(state, note));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('回到顶部'), findsNothing);
+    expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
 
     final controller = renderScroll(tester).controller!;
     controller.jumpTo(controller.position.maxScrollExtent);
     await tester.pumpAndSettle();
-    expect(find.byTooltip('回到顶部'), findsOneWidget);
+    expect(find.byIcon(Icons.keyboard_arrow_up), findsOneWidget);
 
-    await tester.tap(find.byTooltip('回到顶部'));
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_up));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(controller.position.pixels, greaterThan(0));
     await tester.pumpAndSettle();
     expect(controller.position.pixels, 0);
-    expect(find.byTooltip('回到顶部'), findsNothing);
+    expect(find.byIcon(Icons.keyboard_arrow_up), findsNothing);
   });
 }

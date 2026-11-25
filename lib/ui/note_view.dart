@@ -570,8 +570,9 @@ class _NoteViewState extends State<NoteView> {
   }
 
   Widget _scrollTopButton(InkTokens t) {
-    return Tooltip(
-      message: '回到顶部',
+    return Semantics(
+      button: true,
+      label: '回到顶部',
       child: Material(
         color: t.surfaceAlt,
         shape: CircleBorder(side: BorderSide(color: t.hairline)),
