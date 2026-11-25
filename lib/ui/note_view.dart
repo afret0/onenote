@@ -7,7 +7,6 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
     show MarkdownHighlightController;
 import 'package:mime/mime.dart';
@@ -541,14 +540,14 @@ class _NoteViewState extends State<NoteView> {
     return DropTarget(
       onDrop: _onDrop,
       acceptedKinds: const {DropItemKind.file},
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyV, meta: true): () {
-            _handlePaste();
-          },
-          const SingleActivator(LogicalKeyboardKey.keyV, control: true): () {
-            _handlePaste();
-          },
+      child: Actions(
+        actions: {
+          PasteTextIntent: CallbackAction<PasteTextIntent>(
+            onInvoke: (_) {
+              _handlePaste();
+              return null;
+            },
+          ),
         },
         child: area,
       ),

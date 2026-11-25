@@ -102,6 +102,11 @@ flutter build web --release                                # web 产物在 build
   - 同步测试模式：`test/sync/fake_remote_store.dart` 内存 RemoteStore（objects/etags/writeLog/readLog/failAll），双设备 = 两个 AppDb.memory + 两个 engine 共享同一 FakeRemoteStore；零写/增量断言看 writeLog/readLog。
   - 测试字体每个 glyph 都是方块（宽=fontSize），侧栏头部按钮必须 28×28 紧凑规格，default IconButton(48) 两个并排就 RenderFlex overflow（真实教训）。
 
+- **Raycast/剪贴板管理器粘贴（flutter/flutter#184571，2026-11-25 修复）**：Raycast、Wispr Flow 等用 CGEvent 注入 ⌘V——Command 只挂在 keyDown 的 flags 上、前面没有 flagsChanged，Flutter 键盘管线会把它丢成裸「v」，物理 ⌘V 却正常。修复链路：`MainFlutterWindow` 本地监听（keyDown/keyUp/flagsChanged）跟踪「Command 是否真在事件流里出现过」，只拦截 flags-only 形状并吞掉 down+up 两半，经 `onenote/synthetic_paste` 通道 → `SyntheticPaste.install()`（main() 里装）→ 对 `focusManager.primaryFocus` 派发 `PasteTextIntent`。编辑区图片优先粘贴靠 `Actions` 覆盖 `PasteTextIntent`（EditableText 的 action 是 `Action.overridable`，祖先覆盖生效），物理/合成走同一条 `_handlePaste`；**不要再用 CallbackShortcuts 绑 ⌘V**（DefaultTextEditingShortcuts 全平台已映射 ⌘V/⌃V）。
+  - 死路别走：合成事件**不触发 performKeyEquivalent**；`FlutterTextInputPlugin.paste:` 被程序化调用时静默 no-op（上游 issue 实测）。`primaryFocus` 在 `WidgetsBinding.instance.focusManager` 上，不在 WidgetsBinding 上。
+  - 测试手法（test/synthetic_paste_test.dart）：mock `pasteboard` 通道（'image'→null）+ `SystemChannels.platform` 的 Clipboard.getData，用 `binding.defaultBinaryMessenger.handlePlatformMessage('onenote/synthetic_paste', encodeMethodCall(MethodCall('paste')))` 模拟原生派发；autofocus 后光标在 offset 0，粘贴插在最前。
+  - 真机注入验证：`CGEvent(keyboardEventSource:virtualKey:9,keyDown:true).flags=.maskCommand` + `postToPid` 可复现 Raycast 形状，但**app 必须前台且屏幕未锁**（loginwindow 前台时事件不派发，别在用户锁屏/开会时抢焦点验证）。
+
 ## 未实现（下一阶段，动工前先与用户确认边界值）
 
 加密与笔记本锁、Web 端附件（web 上 attachment store 为 null）、桥接服务与 MV3 插件（端口/token/配对方式待定）。

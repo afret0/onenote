@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 
 import 'data/app_db.dart';
 import 'state/app_state.dart';
+import 'synthetic_paste.dart';
 import 'ui/home_page.dart';
 import 'ui/theme.dart';
 import 'window_setup.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SyntheticPaste.install();
   final db = AppDb(AppDb.openExecutor());
   await db.purgeExpired();
   WindowSizeController? windowController;
