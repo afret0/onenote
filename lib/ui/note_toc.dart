@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
     show MarkdownTocEntry;
 
@@ -7,12 +8,12 @@ import 'theme.dart';
 const noteTocWidth = 240.0;
 const noteTocMaxLevel = 3;
 const noteTocRevealOffset = 96.0;
-const _rowMinHeight = 44.0;
+const _rowMinHeight = 40.0;
 
 List<MarkdownTocEntry> noteTocVisibleEntries(List<MarkdownTocEntry> entries) =>
     entries.where((e) => e.level <= noteTocMaxLevel).toList();
 
-class NoteTocPanel extends StatelessWidget {
+class NoteTocPanel extends StatefulWidget {
   const NoteTocPanel({
     super.key,
     required this.entries,
@@ -25,6 +26,72 @@ class NoteTocPanel extends StatelessWidget {
   final int activeIndex;
   final void Function(MarkdownTocEntry entry) onTap;
   final Color? tint;
+
+  @override
+  State<NoteTocPanel> createState() => _NoteTocPanelState();
+}
+
+class _NoteTocPanelState extends State<NoteTocPanel> {
+  final ScrollController _scroll = ScrollController();
+  final List<GlobalKey> _rowKeys = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _revealActive(animated: false));
+  }
+
+  @override
+  void didUpdateWidget(NoteTocPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeIndex != widget.activeIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _revealActive());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  GlobalKey _rowKey(int index) {
+    while (_rowKeys.length <= index) {
+      _rowKeys.add(GlobalKey());
+    }
+    return _rowKeys[index];
+  }
+
+  void _revealActive({bool animated = true}) {
+    if (!mounted || !_scroll.hasClients) return;
+    final index = widget.activeIndex;
+    if (index < 0 || index >= _rowKeys.length) return;
+    final rowContext = _rowKeys[index].currentContext;
+    if (rowContext == null) return;
+    final box = rowContext.findRenderObject();
+    if (box == null || !box.attached) return;
+    final position = _scroll.position;
+    final viewport = RenderAbstractViewport.of(box);
+    final revealTop = viewport.getOffsetToReveal(box, 0.0).offset;
+    final revealBottom = viewport.getOffsetToReveal(box, 1.0).offset;
+    var target = position.pixels;
+    if (revealTop < position.pixels) {
+      target = revealTop;
+    } else if (revealBottom > position.pixels) {
+      target = revealBottom;
+    }
+    target =
+        target.clamp(position.minScrollExtent, position.maxScrollExtent).toDouble();
+    if (target == position.pixels) return;
+    if (animated) {
+      position.animateTo(target,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic);
+    } else {
+      position.jumpTo(target);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,15 +110,24 @@ class NoteTocPanel extends StatelessWidget {
                   )),
         ),
         Flexible(
-          child: ListView.builder(
-            shrinkWrap: true,
+          child: SingleChildScrollView(
+            controller: _scroll,
             padding: const EdgeInsets.fromLTRB(spaceSm, 0, spaceSm, spaceMd),
-            itemCount: entries.length,
-            itemBuilder: (context, i) => NoteTocRow(
-              entry: entries[i],
-              active: i == activeIndex,
-              tint: tint,
-              onTap: () => onTap(entries[i]),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < widget.entries.length; i++)
+                  KeyedSubtree(
+                    key: _rowKey(i),
+                    child: NoteTocRow(
+                      entry: widget.entries[i],
+                      active: i == widget.activeIndex,
+                      tint: widget.tint,
+                      onTap: () => widget.onTap(widget.entries[i]),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -100,7 +176,7 @@ class NoteTocRow extends StatelessWidget {
               Container(
                 constraints: const BoxConstraints(minHeight: _rowMinHeight),
                 alignment: Alignment.centerLeft,
-                padding: EdgeInsets.fromLTRB(12.0 + (level - 1) * 14.0, 8, 12, 8),
+                padding: EdgeInsets.fromLTRB(12.0 + (level - 1) * 14.0, 6, 12, 6),
                 child: Text(
                   entry.text,
                   maxLines: 2,

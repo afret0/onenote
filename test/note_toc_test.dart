@@ -321,4 +321,111 @@ void main() {
         matching: find.text('章节一')));
     expect(text.style!.color, readableOn(const Color(0xFF16A34A), t.surfaceAlt));
   });
+
+  testWidgets('toc panel follows active changes and reveals minimally',
+      (tester) async {
+    final entries = [
+      for (var i = 0; i < 40; i++) MarkdownTocEntry(GlobalKey(), 1, 'H$i'),
+    ];
+    Widget host(int active) => MaterialApp(
+          theme: buildInkTheme(Brightness.dark),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: noteTocWidth,
+                height: 300,
+                child: NoteTocPanel(
+                    entries: entries, activeIndex: active, onTap: (_) {}),
+              ),
+            ),
+          ),
+        );
+    Finder list() => find.descendant(
+        of: find.byType(NoteTocPanel),
+        matching: find.byType(SingleChildScrollView));
+    ScrollPosition position() =>
+        tester.widget<SingleChildScrollView>(list()).controller!.position;
+
+    await tester.pumpWidget(host(0));
+    await tester.pumpAndSettle();
+    expect(position().pixels, 0);
+
+    await tester.pumpWidget(host(35));
+    await tester.pumpAndSettle();
+    expect(position().pixels, greaterThan(0));
+    final viewport = tester.getRect(list());
+    final row = tester.getRect(find.widgetWithText(NoteTocRow, 'H35'));
+    expect(row.top, greaterThanOrEqualTo(viewport.top));
+    expect(row.bottom, lessThanOrEqualTo(viewport.bottom));
+
+    final settled = position().pixels;
+    await tester.pumpWidget(host(34));
+    await tester.pumpAndSettle();
+    expect(position().pixels, settled);
+
+    await tester.pumpWidget(host(0));
+    await tester.pumpAndSettle();
+    expect(position().pixels, 0);
+  });
+
+  testWidgets('toc panel opens already scrolled to the active entry',
+      (tester) async {
+    final entries = [
+      for (var i = 0; i < 40; i++) MarkdownTocEntry(GlobalKey(), 2, 'S$i'),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: noteTocWidth,
+            height: 300,
+            child: NoteTocPanel(
+                entries: entries, activeIndex: 30, onTap: (_) {}),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final list = find.descendant(
+        of: find.byType(NoteTocPanel),
+        matching: find.byType(SingleChildScrollView));
+    final position =
+        tester.widget<SingleChildScrollView>(list).controller!.position;
+    expect(position.pixels, greaterThan(0));
+    final viewport = tester.getRect(list);
+    final row = tester.getRect(find.widgetWithText(NoteTocRow, 'S30'));
+    expect(row.top, greaterThanOrEqualTo(viewport.top));
+    expect(row.bottom, lessThanOrEqualTo(viewport.bottom));
+  });
+
+  testWidgets('long note scrolled to the end keeps toc active row in view',
+      (tester) async {
+    wide(tester);
+    final content =
+        List.generate(30, (i) => '# 章$i\n\n${filler(6)}').join('\n\n');
+    final (state, note) = await seed(tester, content);
+    await tester.pumpWidget(app(state, note));
+    await tester.pumpAndSettle();
+
+    final controller = renderScroll(tester).controller!;
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    final list = find.descendant(
+        of: find.byType(NoteTocPanel),
+        matching: find.byType(SingleChildScrollView));
+    final position =
+        tester.widget<SingleChildScrollView>(list).controller!.position;
+    expect(position.pixels, greaterThan(0));
+    final activeRow =
+        find.byWidgetPredicate((w) => w is NoteTocRow && w.active);
+    expect(activeRow, findsOneWidget);
+    final viewport = tester.getRect(list);
+    final row = tester.getRect(activeRow);
+    expect(row.top, greaterThanOrEqualTo(viewport.top));
+    expect(row.bottom, lessThanOrEqualTo(viewport.bottom));
+  });
 }
