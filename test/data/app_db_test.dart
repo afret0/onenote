@@ -200,4 +200,111 @@ void main() {
     final refs = await db.allAttachmentRefs();
     expect(refs, {idA, idB, idC});
   });
+
+  Future<List<String>> notebookIds() async =>
+      [for (final n in await db.listNotebooks()) n.id];
+
+  Future<List<String>> noteIds(String notebookId) async =>
+      [for (final n in await db.listNotes(notebookId: notebookId)) n.id];
+
+  test('notebooks keep creation order until first move then swap persists',
+      () async {
+    final a = await db.createNotebook('a');
+    now += 1000;
+    final b = await db.createNotebook('b');
+    now += 1000;
+    final c = await db.createNotebook('c');
+    expect(await notebookIds(), [a.id, b.id, c.id]);
+    await db.moveNotebook(c.id, -1);
+    expect(await notebookIds(), [a.id, c.id, b.id]);
+    await db.moveNotebook(a.id, 1);
+    expect(await notebookIds(), [c.id, a.id, b.id]);
+  });
+
+  test('new notebook appends at end once manual order is active', () async {
+    final a = await db.createNotebook('a');
+    now += 1000;
+    final b = await db.createNotebook('b');
+    await db.moveNotebook(b.id, -1);
+    expect(await notebookIds(), [b.id, a.id]);
+    now += 1000;
+    final c = await db.createNotebook('c');
+    expect(await notebookIds(), [b.id, a.id, c.id]);
+  });
+
+  test('notes keep recent-edit order until first move; edit does not repin',
+      () async {
+    final nb = await db.createNotebook('work');
+    now += 1000;
+    final one = await db.createNote(nb.id, title: 'one');
+    now += 1000;
+    final two = await db.createNote(nb.id, title: 'two');
+    expect(await noteIds(nb.id), [two.id, one.id]);
+    await db.moveNote(one.id, -1);
+    expect(await noteIds(nb.id), [one.id, two.id]);
+    now += 1000;
+    await db.saveNote(two.id, 'two', 'edited');
+    expect(await noteIds(nb.id), [one.id, two.id]);
+    expect([for (final n in await db.listNotes()) n.id], [two.id, one.id]);
+  });
+
+  test('new note goes top once notebook manual order is active', () async {
+    final nb = await db.createNotebook('work');
+    now += 1000;
+    final one = await db.createNote(nb.id, title: 'one');
+    now += 1000;
+    final two = await db.createNote(nb.id, title: 'two');
+    await db.moveNote(one.id, -1);
+    now += 1000;
+    final three = await db.createNote(nb.id, title: 'three');
+    expect(await noteIds(nb.id), [three.id, one.id, two.id]);
+  });
+
+  test('trashed note keeps its manual slot on restore', () async {
+    final nb = await db.createNotebook('work');
+    now += 1000;
+    final one = await db.createNote(nb.id, title: 'one');
+    now += 1000;
+    final two = await db.createNote(nb.id, title: 'two');
+    now += 1000;
+    final three = await db.createNote(nb.id, title: 'three');
+    await db.moveNote(one.id, -1);
+    expect(await noteIds(nb.id), [three.id, one.id, two.id]);
+    now += 1000;
+    await db.softDeleteNote(one.id);
+    expect(await noteIds(nb.id), [three.id, two.id]);
+    await db.restoreNote(one.id);
+    expect(await noteIds(nb.id), [three.id, one.id, two.id]);
+  });
+
+  test('create while all live notes trashed keeps sort keys unique', () async {
+    final nb = await db.createNotebook('work');
+    now += 1000;
+    final one = await db.createNote(nb.id, title: 'one');
+    now += 1000;
+    final two = await db.createNote(nb.id, title: 'two');
+    await db.moveNote(two.id, 1);
+    expect(await noteIds(nb.id), [one.id, two.id]);
+    now += 1000;
+    await db.softDeleteNote(one.id);
+    await db.softDeleteNote(two.id);
+    now += 1000;
+    final three = await db.createNote(nb.id, title: 'three');
+    await db.restoreNote(one.id);
+    await db.restoreNote(two.id);
+    expect(await noteIds(nb.id), [three.id, one.id, two.id]);
+  });
+
+  test('out-of-range move is a no-op and does not activate manual order',
+      () async {
+    final a = await db.createNotebook('a');
+    now += 1000;
+    final b = await db.createNotebook('b');
+    await db.moveNotebook(a.id, -1);
+    expect(await notebookIds(), [a.id, b.id]);
+    expect((await db.listNotebooks()).every((n) => n.sortKey == null), isTrue);
+    final one = await db.createNote(a.id, title: 'one');
+    await db.moveNote(one.id, -1);
+    expect((await db.listNotes(notebookId: a.id)).single.sortKey, isNull);
+  });
 }

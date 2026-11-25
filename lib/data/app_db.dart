@@ -12,6 +12,7 @@ class Notebooks extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   IntColumn get color => integer().withDefault(const Constant(0xFF9333EA))();
+  IntColumn get sortKey => integer().nullable()();
   IntColumn get createAt => integer()();
   IntColumn get updateAt => integer()();
 
@@ -35,6 +36,7 @@ class Notes extends Table {
   TextColumn get notebookId => text().references(Notebooks, #id)();
   TextColumn get title => text()();
   TextColumn get content => text()();
+  IntColumn get sortKey => integer().nullable()();
   IntColumn get createAt => integer()();
   IntColumn get updateAt => integer()();
   IntColumn get deletedAt => integer().nullable()();
@@ -60,6 +62,19 @@ class Settings extends Table {
 
   @override
   Set<Column> get primaryKey => {key};
+}
+
+int _compareSortKey(int? a, int? b) {
+  if (a == null && b == null) {
+    return 0;
+  }
+  if (a == null) {
+    return 1;
+  }
+  if (b == null) {
+    return -1;
+  }
+  return a.compareTo(b);
 }
 
 class NotebookNotEmptyException implements Exception {
@@ -107,7 +122,7 @@ class AppDb extends _$AppDb {
       );
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -138,6 +153,10 @@ class AppDb extends _$AppDb {
             developer.log(
                 'done, v3 迁移按新色板重排笔记本颜色, notebookCount: ${rows.length}');
           }
+          if (from < 4) {
+            await m.addColumn(notebooks, notebooks.sortKey);
+            await m.addColumn(notes, notes.sortKey);
+          }
         },
       );
 
@@ -146,13 +165,23 @@ class AppDb extends _$AppDb {
     final id = _uuid.v4();
     final existing = await listNotebooks();
     final color = notebookPalette[existing.length % notebookPalette.length];
+    int? sortKey;
+    if (existing.any((n) => n.sortKey != null)) {
+      sortKey = existing
+              .map((n) => n.sortKey)
+              .whereType<int>()
+              .reduce((a, b) => a > b ? a : b) +
+          1;
+    }
     await into(notebooks).insert(NotebooksCompanion.insert(
         id: id,
         name: name,
         color: Value(color),
+        sortKey: Value(sortKey),
         createAt: now,
         updateAt: now));
-    developer.log('done, 笔记本已创建, notebookId: $id, name: $name, color: $color');
+    developer.log(
+        'done, 笔记本已创建, notebookId: $id, name: $name, color: $color, sortKey: $sortKey');
     return (select(notebooks)..where((t) => t.id.equals(id))).getSingle();
   }
 
@@ -190,23 +219,71 @@ class AppDb extends _$AppDb {
     developer.log('done, 笔记本已删除, notebookId: $id');
   }
 
-  Future<List<Notebook>> listNotebooks() =>
-      (select(notebooks)..orderBy([(t) => OrderingTerm.asc(t.createAt)]))
-          .get();
+  Future<List<Notebook>> listNotebooks() async {
+    final rows = await (select(notebooks)
+          ..orderBy([(t) => OrderingTerm.asc(t.createAt)]))
+        .get();
+    if (rows.any((n) => n.sortKey != null)) {
+      rows.sort((a, b) {
+        final byKey = _compareSortKey(a.sortKey, b.sortKey);
+        return byKey != 0 ? byKey : a.createAt.compareTo(b.createAt);
+      });
+    }
+    return rows;
+  }
+
+  Future<void> moveNotebook(String id, int delta) async {
+    final rows = await listNotebooks();
+    final index = rows.indexWhere((n) => n.id == id);
+    final target = index + delta;
+    if (index < 0 || target < 0 || target >= rows.length) {
+      developer.log(
+          'skip, 笔记本移动越界, notebookId: $id, index: $index, delta: $delta, total: ${rows.length}');
+      return;
+    }
+    await transaction(() async {
+      if (rows.any((n) => n.sortKey == null)) {
+        for (var i = 0; i < rows.length; i++) {
+          await (update(notebooks)..where((t) => t.id.equals(rows[i].id)))
+              .write(NotebooksCompanion(sortKey: Value(i)));
+        }
+      }
+      final aKey = rows[index].sortKey ?? index;
+      final bKey = rows[target].sortKey ?? target;
+      await (update(notebooks)..where((t) => t.id.equals(rows[index].id)))
+          .write(NotebooksCompanion(sortKey: Value(bKey)));
+      await (update(notebooks)..where((t) => t.id.equals(rows[target].id)))
+          .write(NotebooksCompanion(sortKey: Value(aKey)));
+    });
+    developer.log('done, 笔记本已移动, notebookId: $id, from: $index, to: $target');
+  }
 
   Future<Note> createNote(String notebookId,
       {String title = '', String content = ''}) async {
     final now = clock();
     final id = _uuid.v4();
+    final siblings = await (select(notes)
+          ..where((t) => t.notebookId.equals(notebookId)))
+        .get();
+    int? sortKey;
+    if (siblings.any((n) => n.sortKey != null)) {
+      sortKey = siblings
+              .map((n) => n.sortKey)
+              .whereType<int>()
+              .reduce((a, b) => a < b ? a : b) -
+          1;
+    }
     await into(notes).insert(NotesCompanion.insert(
         id: id,
         notebookId: notebookId,
         title: title,
         content: content,
+        sortKey: Value(sortKey),
         createAt: now,
         updateAt: now));
     await _insertVersion(id, title, content, now);
-    developer.log('done, 笔记已创建, noteId: $id, notebookId: $notebookId');
+    developer.log(
+        'done, 笔记已创建, noteId: $id, notebookId: $notebookId, sortKey: $sortKey');
     return getNote(id);
   }
 
@@ -260,14 +337,59 @@ class AppDb extends _$AppDb {
     });
   }
 
-  Future<List<Note>> listNotes({String? notebookId}) {
+  Future<List<Note>> listNotes({String? notebookId}) async {
     final query = select(notes)
       ..where((t) => t.deletedAt.isNull())
       ..orderBy([(t) => OrderingTerm.desc(t.updateAt)]);
     if (notebookId != null) {
       query.where((t) => t.notebookId.equals(notebookId));
     }
-    return query.get();
+    final rows = await query.get();
+    if (notebookId != null && rows.any((n) => n.sortKey != null)) {
+      rows.sort((a, b) {
+        final byKey = _compareSortKey(a.sortKey, b.sortKey);
+        return byKey != 0 ? byKey : b.updateAt.compareTo(a.updateAt);
+      });
+    }
+    return rows;
+  }
+
+  Future<void> moveNote(String id, int delta) async {
+    final note = await getNote(id);
+    final rows = await listNotes(notebookId: note.notebookId);
+    final index = rows.indexWhere((n) => n.id == id);
+    final target = index + delta;
+    if (index < 0 || target < 0 || target >= rows.length) {
+      developer.log(
+          'skip, 笔记移动越界, noteId: $id, index: $index, delta: $delta, total: ${rows.length}');
+      return;
+    }
+    await transaction(() async {
+      if (rows.any((n) => n.sortKey == null)) {
+        for (var i = 0; i < rows.length; i++) {
+          await (update(notes)..where((t) => t.id.equals(rows[i].id)))
+              .write(NotesCompanion(sortKey: Value(i)));
+        }
+        final trashed = await (select(notes)
+              ..where((t) =>
+                  t.notebookId.equals(note.notebookId) &
+                  t.deletedAt.isNotNull())
+              ..orderBy([(t) => OrderingTerm.desc(t.deletedAt)]))
+            .get();
+        for (var i = 0; i < trashed.length; i++) {
+          await (update(notes)..where((t) => t.id.equals(trashed[i].id)))
+              .write(NotesCompanion(sortKey: Value(rows.length + i)));
+        }
+      }
+      final aKey = rows[index].sortKey ?? index;
+      final bKey = rows[target].sortKey ?? target;
+      await (update(notes)..where((t) => t.id.equals(rows[index].id)))
+          .write(NotesCompanion(sortKey: Value(bKey)));
+      await (update(notes)..where((t) => t.id.equals(rows[target].id)))
+          .write(NotesCompanion(sortKey: Value(aKey)));
+    });
+    developer.log(
+        'done, 笔记已移动, noteId: $id, notebookId: ${note.notebookId}, from: $index, to: $target');
   }
 
   Future<List<Note>> listTrash() => (select(notes)

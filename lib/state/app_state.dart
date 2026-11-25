@@ -194,6 +194,16 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
+  Future<void> moveNotebook(String id, int delta) async {
+    await db.moveNotebook(id, delta);
+    await refresh();
+  }
+
+  Future<void> moveNote(String id, int delta) async {
+    await db.moveNote(id, delta);
+    await refresh();
+  }
+
   Future<void> deleteNotebook(String id) async {
     await db.deleteNotebook(id);
     lastOpenNote.remove(id);

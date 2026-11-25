@@ -51,22 +51,35 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _notebookContext(Notebook notebook, Offset position) async {
+    final index = state.notebooks.indexWhere((n) => n.id == notebook.id);
     final value = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
         position & Size.zero,
         Offset.zero & MediaQuery.sizeOf(context),
       ),
-      items: const [
-        PopupMenuItem(value: 'rename', child: Text('重命名')),
-        PopupMenuItem(value: 'color', child: Text('自定义背景色')),
-        PopupMenuItem(value: 'delete', child: Text('删除')),
+      items: [
+        PopupMenuItem(
+            value: 'up',
+            enabled: index > 0,
+            child: const Text('上移')),
+        PopupMenuItem(
+            value: 'down',
+            enabled: index >= 0 && index < state.notebooks.length - 1,
+            child: const Text('下移')),
+        const PopupMenuItem(value: 'rename', child: Text('重命名')),
+        const PopupMenuItem(value: 'color', child: Text('自定义背景色')),
+        const PopupMenuItem(value: 'delete', child: Text('删除')),
       ],
     );
     if (!mounted || value == null) {
       return;
     }
-    if (value == 'rename') {
+    if (value == 'up') {
+      await state.moveNotebook(notebook.id, -1);
+    } else if (value == 'down') {
+      await state.moveNotebook(notebook.id, 1);
+    } else if (value == 'rename') {
       await _renameNotebook(notebook);
     } else if (value == 'color') {
       await _customizeNotebookColor(notebook);
@@ -119,22 +132,36 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _noteContext(Note note, Offset position) async {
+  Future<void> _noteContext(Note note, Offset position,
+      {bool canReorder = false}) async {
+    final index = state.notes.indexWhere((n) => n.id == note.id);
     final value = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
         position & Size.zero,
         Offset.zero & MediaQuery.sizeOf(context),
       ),
-      items: const [
-        PopupMenuItem(value: 'history', child: Text('版本历史')),
-        PopupMenuItem(value: 'trash', child: Text('移入回收站')),
+      items: [
+        PopupMenuItem(
+            value: 'up',
+            enabled: canReorder && index > 0,
+            child: const Text('上移')),
+        PopupMenuItem(
+            value: 'down',
+            enabled: canReorder && index >= 0 && index < state.notes.length - 1,
+            child: const Text('下移')),
+        const PopupMenuItem(value: 'history', child: Text('版本历史')),
+        const PopupMenuItem(value: 'trash', child: Text('移入回收站')),
       ],
     );
     if (!mounted || value == null) {
       return;
     }
-    if (value == 'history') {
+    if (value == 'up') {
+      await state.moveNote(note.id, -1);
+    } else if (value == 'down') {
+      await state.moveNote(note.id, 1);
+    } else if (value == 'history') {
       await showNoteHistory(context, state: state, noteId: note.id);
     } else if (value == 'trash') {
       await _trashFromList(note);
@@ -574,7 +601,9 @@ class _HomePageState extends State<HomePage> {
                       dense: dense,
                       onTap: () =>
                           searching ? _openHit(note) : state.openNote(note.id),
-                      onContext: (position) => _noteContext(note, position),
+                      onContext: (position) => _noteContext(note, position,
+                          canReorder:
+                              state.scope.kind == NoteScopeKind.notebook),
                     );
                   },
                 ),
