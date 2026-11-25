@@ -8,7 +8,8 @@ String noteDisplayTitle(Note note) =>
     note.title.trim().isEmpty ? '无标题' : note.title.trim();
 
 String formatDateTime(int ms) =>
-    DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(ms));
+    DateFormat('yyyy-MM-dd HH:mm')
+        .format(DateTime.fromMillisecondsSinceEpoch(ms));
 
 String formatRelative(int ms) {
   final diff = DateTime.now().millisecondsSinceEpoch - ms;
@@ -24,7 +25,8 @@ String formatRelative(int ms) {
   if (diff < 7 * 86400000) {
     return '${diff ~/ 86400000} 天前';
   }
-  return DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(ms));
+  return DateFormat('yyyy-MM-dd')
+      .format(DateTime.fromMillisecondsSinceEpoch(ms));
 }
 
 String notePreview(String content) {
@@ -44,8 +46,12 @@ class BrandMark extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(size * 0.22),
-      child: Image.asset('assets/images/logo.png',
-          width: size, height: size, filterQuality: FilterQuality.medium),
+      child: Image.asset(
+        'assets/images/logo.png',
+        width: size,
+        height: size,
+        filterQuality: FilterQuality.medium,
+      ),
     );
   }
 }
@@ -58,7 +64,7 @@ class ScopeTile extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
-    this.trailing,
+    this.onContext,
   });
 
   final IconData? icon;
@@ -66,7 +72,7 @@ class ScopeTile extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  final Widget? trailing;
+  final void Function(Offset globalPosition)? onContext;
 
   @override
   Widget build(BuildContext context) {
@@ -79,42 +85,54 @@ class ScopeTile extends StatelessWidget {
         color: selected ? t.accentSoft : Colors.transparent,
         borderRadius: BorderRadius.circular(radiusMd),
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(radiusMd),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-            child: Row(
-              children: [
-                if (dotColor != null)
-                  Container(
-                    width: 10,
-                    height: 10,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                        color: dotColor, shape: BoxShape.circle),
-                  )
-                else
-                  Icon(icon,
+      child: GestureDetector(
+        onLongPressStart: onContext == null
+            ? null
+            : (details) => onContext!(details.globalPosition),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(radiusMd),
+            onTap: onTap,
+            onSecondaryTapUp: onContext == null
+                ? null
+                : (details) => onContext!(details.globalPosition),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Row(
+                children: [
+                  if (dotColor != null)
+                    Container(
+                      width: 10,
+                      height: 10,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                  else
+                    Icon(
+                      icon,
                       size: 18,
-                      color: selected ? t.accent : t.inkMuted),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w400,
-                          color: selected ? t.ink : t.inkMuted,
-                        ),
+                      color: selected ? t.accent : t.inkMuted,
+                    ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: selected ? t.ink : t.inkMuted,
+                      ),
+                    ),
                   ),
-                ),
-                ?trailing,
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -160,9 +178,7 @@ class NoteCard extends StatelessWidget {
           child: _HighlightText(
             text: title,
             needle: highlight,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
+            style: Theme.of(context).textTheme.titleMedium
                 ?.copyWith(letterSpacing: -0.1),
             maxLines: 1,
           ),
@@ -190,8 +206,12 @@ class _HighlightText extends StatelessWidget {
     final t = inkOf(context);
     final query = needle?.toLowerCase() ?? '';
     if (query.isEmpty) {
-      return Text(text,
-          maxLines: maxLines, overflow: TextOverflow.ellipsis, style: style);
+      return Text(
+        text,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+      );
     }
     final spans = <TextSpan>[];
     final lower = text.toLowerCase();
@@ -205,17 +225,24 @@ class _HighlightText extends StatelessWidget {
       if (index > start) {
         spans.add(TextSpan(text: text.substring(start, index)));
       }
-      spans.add(TextSpan(
-        text: text.substring(index, index + query.length),
-        style: TextStyle(
+      spans.add(
+        TextSpan(
+          text: text.substring(index, index + query.length),
+          style: TextStyle(
             color: t.accentText,
             fontWeight: FontWeight.w700,
-            backgroundColor: t.accentSoft),
-      ));
+            backgroundColor: t.accentSoft,
+          ),
+        ),
+      );
       start = index + query.length;
     }
-    return Text.rich(TextSpan(children: spans),
-        maxLines: maxLines, overflow: TextOverflow.ellipsis, style: style);
+    return Text.rich(
+      TextSpan(children: spans),
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: style,
+    );
   }
 }
 
@@ -237,23 +264,27 @@ class EmptyState extends StatelessWidget {
     final message = searching
         ? '没有匹配的笔记'
         : isTrash
-            ? '回收站是空的'
-            : '还没有笔记，写下第一条吧';
+        ? '回收站是空的'
+        : '还没有笔记，写下第一条吧';
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Opacity(
             opacity: 0.9,
-            child: Image.asset('assets/images/logo.png',
-                width: 72, height: 72, filterQuality: FilterQuality.medium),
+            child: Image.asset(
+              'assets/images/logo.png',
+              width: 72,
+              height: 72,
+              filterQuality: FilterQuality.medium,
+            ),
           ),
           const SizedBox(height: spaceMd),
-          Text(message,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: t.inkMuted)),
+          Text(
+            message,
+            style: Theme.of(context).textTheme.bodyMedium
+                ?.copyWith(color: t.inkMuted),
+          ),
           if (!searching && !isTrash) ...[
             const SizedBox(height: spaceMd),
             FilledButton.icon(

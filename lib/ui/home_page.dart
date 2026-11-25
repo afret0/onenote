@@ -33,31 +33,64 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _snack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _newNotebook() async {
-    final name = await promptText(context,
-        title: '新建笔记本', label: '名称', hint: '例如：工作随笔');
+    final name = await promptText(
+      context,
+      title: '新建笔记本',
+      label: '名称',
+      hint: '例如：工作随笔',
+    );
     if (name != null && name.isNotEmpty) {
       await state.createNotebook(name);
     }
   }
 
+  Future<void> _notebookContext(Notebook notebook, Offset position) async {
+    final value = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & Size.zero,
+        Offset.zero & MediaQuery.sizeOf(context),
+      ),
+      items: const [
+        PopupMenuItem(value: 'rename', child: Text('重命名')),
+        PopupMenuItem(value: 'delete', child: Text('删除')),
+      ],
+    );
+    if (!mounted || value == null) {
+      return;
+    }
+    if (value == 'rename') {
+      await _renameNotebook(notebook);
+    } else if (value == 'delete') {
+      await _deleteNotebook(notebook);
+    }
+  }
+
   Future<void> _renameNotebook(Notebook notebook) async {
-    final name = await promptText(context,
-        title: '重命名笔记本', label: '名称', initial: notebook.name);
+    final name = await promptText(
+      context,
+      title: '重命名笔记本',
+      label: '名称',
+      initial: notebook.name,
+    );
     if (name != null && name.isNotEmpty) {
       await state.renameNotebook(notebook.id, name);
     }
   }
 
   Future<void> _deleteNotebook(Notebook notebook) async {
-    final ok = await confirm(context,
-        title: '删除笔记本',
-        message: '删除「${notebook.name}」？',
-        confirmLabel: '删除',
-        danger: true);
+    final ok = await confirm(
+      context,
+      title: '删除笔记本',
+      message: '删除「${notebook.name}」？',
+      confirmLabel: '删除',
+      danger: true,
+    );
     if (!ok) {
       return;
     }
@@ -105,8 +138,7 @@ class _HomePageState extends State<HomePage> {
         final openId = state.openNoteId;
         final windowWidth = MediaQuery.sizeOf(context).width;
         final isWide = windowWidth >= 900;
-        final panes =
-            isWide ? _paneWidths(windowWidth) : (0.0, 0.0);
+        final panes = isWide ? _paneWidths(windowWidth) : (0.0, 0.0);
         final drawerNeeded = !isWide && openId != null;
         final searching = _searchHits != null;
         if (isWide &&
@@ -128,7 +160,8 @@ class _HomePageState extends State<HomePage> {
                   backgroundColor: inkOf(context).surface,
                   child: SafeArea(child: _sidebar(compact: true)),
                 ),
-          floatingActionButton: !isWide &&
+          floatingActionButton:
+              !isWide &&
                   openId == null &&
                   !searching &&
                   state.scope.kind != NoteScopeKind.trash
@@ -144,21 +177,22 @@ class _HomePageState extends State<HomePage> {
             child: Row(
               children: [
                 if (isWide)
-                  SizedBox(
-                    width: panes.$1,
-                    child: _sidebar(compact: false),
-                  ),
+                  SizedBox(width: panes.$1, child: _sidebar(compact: false)),
                 if (isWide)
                   _PaneDivider(
                     key: const Key('paneDivider:sidebar'),
-                    onDelta: (delta) => state.updateSidebarWidth((panes.$1 +
-                            delta)
-                        .clamp(AppState.sidebarMinWidth, math.min(
-                            AppState.sidebarMaxWidth,
-                            windowWidth -
-                                _PaneDivider.hitWidth * 2 -
-                                AppState.contentMinWidth -
-                                panes.$2))),
+                    onDelta: (delta) => state.updateSidebarWidth(
+                      (panes.$1 + delta).clamp(
+                        AppState.sidebarMinWidth,
+                        math.min(
+                          AppState.sidebarMaxWidth,
+                          windowWidth -
+                              _PaneDivider.hitWidth * 2 -
+                              AppState.contentMinWidth -
+                              panes.$2,
+                        ),
+                      ),
+                    ),
                     onDragEnd: state.persistPaneWidths,
                   ),
                 if (isWide)
@@ -168,14 +202,18 @@ class _HomePageState extends State<HomePage> {
                 if (isWide)
                   _PaneDivider(
                     key: const Key('paneDivider:list'),
-                    onDelta: (delta) => state.updateListWidth((panes.$2 +
-                            delta)
-                        .clamp(AppState.listMinWidth, math.min(
-                            AppState.listMaxWidth,
-                            windowWidth -
-                                _PaneDivider.hitWidth * 2 -
-                                AppState.contentMinWidth -
-                                panes.$1))),
+                    onDelta: (delta) => state.updateListWidth(
+                      (panes.$2 + delta).clamp(
+                        AppState.listMinWidth,
+                        math.min(
+                          AppState.listMaxWidth,
+                          windowWidth -
+                              _PaneDivider.hitWidth * 2 -
+                              AppState.contentMinWidth -
+                              panes.$1,
+                        ),
+                      ),
+                    ),
                     onDragEnd: state.persistPaneWidths,
                   ),
                 if (isWide || openId != null)
@@ -201,37 +239,43 @@ class _HomePageState extends State<HomePage> {
   (double, double) _paneWidths(double windowWidth) {
     final available =
         windowWidth - _PaneDivider.hitWidth * 2 - AppState.contentMinWidth;
-    final sidebar = state.sidebarWidth.clamp(AppState.sidebarMinWidth,
-        math.min(AppState.sidebarMaxWidth, available - AppState.listMinWidth));
+    final sidebar = state.sidebarWidth.clamp(
+      AppState.sidebarMinWidth,
+      math.min(AppState.sidebarMaxWidth, available - AppState.listMinWidth),
+    );
     final list = state.listWidth.clamp(
-        AppState.listMinWidth, math.min(AppState.listMaxWidth, available - sidebar));
+      AppState.listMinWidth,
+      math.min(AppState.listMaxWidth, available - sidebar),
+    );
     return (sidebar.toDouble(), list.toDouble());
   }
 
   Widget _sidebar({required bool compact}) {
-    final t = inkOf(context);
     final scope = state.scope;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(spaceMd, spaceMd, spaceMd, spaceSm),
+          padding: const EdgeInsets.fromLTRB(
+            spaceMd,
+            spaceMd,
+            spaceMd,
+            spaceSm,
+          ),
           child: Row(
             children: [
               const BrandMark(),
               const SizedBox(width: 10),
-              Text('onenote',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(letterSpacing: -0.2)),
+              Text(
+                'onenote',
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(letterSpacing: -0.2),
+              ),
               const Spacer(),
               IconButton(
                 tooltip: '设置',
                 onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SettingsPage(state: state),
-                  ),
+                  MaterialPageRoute(builder: (_) => SettingsPage(state: state)),
                 ),
                 icon: const Icon(Icons.tune),
               ),
@@ -252,11 +296,15 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(spaceMd, spaceMd, spaceSm, spaceXs),
+                padding: const EdgeInsets.fromLTRB(
+                  spaceMd,
+                  spaceMd,
+                  spaceSm,
+                  spaceXs,
+                ),
                 child: Row(
                   children: [
-                    Text('笔记本',
-                        style: Theme.of(context).textTheme.labelSmall),
+                    Text('笔记本', style: Theme.of(context).textTheme.labelSmall),
                     const Spacer(),
                     SizedBox(
                       width: 28,
@@ -276,27 +324,14 @@ class _HomePageState extends State<HomePage> {
                 ScopeTile(
                   dotColor: Color(notebook.color),
                   label: notebook.name,
-                  selected: scope.kind == NoteScopeKind.notebook &&
+                  selected:
+                      scope.kind == NoteScopeKind.notebook &&
                       scope.notebookId == notebook.id,
                   onTap: () {
                     state.selectScope(NoteScope.notebook(notebook.id));
                     if (compact) Navigator.of(context).pop();
                   },
-                  trailing: PopupMenuButton<String>(
-                    tooltip: '笔记本操作',
-                    icon: Icon(Icons.more_horiz, size: 18, color: t.inkFaint),
-                    onSelected: (value) {
-                      if (value == 'rename') {
-                        _renameNotebook(notebook);
-                      } else if (value == 'delete') {
-                        _deleteNotebook(notebook);
-                      }
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'rename', child: Text('重命名')),
-                      PopupMenuItem(value: 'delete', child: Text('删除')),
-                    ],
-                  ),
+                  onContext: (position) => _notebookContext(notebook, position),
                 ),
               const SizedBox(height: spaceSm),
               ScopeTile(
@@ -324,15 +359,17 @@ class _HomePageState extends State<HomePage> {
         children: [
           Opacity(
             opacity: 0.9,
-            child: Image.asset('assets/images/logo.png',
-                width: 72, height: 72, filterQuality: FilterQuality.medium),
+            child: Image.asset(
+              'assets/images/logo.png',
+              width: 72,
+              height: 72,
+              filterQuality: FilterQuality.medium,
+            ),
           ),
           const SizedBox(height: spaceMd),
           Text(
             isTrash ? '回收站中的笔记可恢复或彻底删除' : '没有可显示的笔记',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
+            style: Theme.of(context).textTheme.bodyMedium
                 ?.copyWith(color: t.inkMuted),
           ),
           if (!isTrash && _searchHits == null) ...[
@@ -357,7 +394,12 @@ class _HomePageState extends State<HomePage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(spaceMd, spaceMd, spaceMd, spaceSm),
+          padding: const EdgeInsets.fromLTRB(
+            spaceMd,
+            spaceMd,
+            spaceMd,
+            spaceSm,
+          ),
           child: Row(
             children: [
               if (!dense && MediaQuery.sizeOf(context).width < 900)
@@ -390,7 +432,12 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(spaceLg, spaceXs, spaceMd, spaceSm),
+          padding: const EdgeInsets.fromLTRB(
+            spaceLg,
+            spaceXs,
+            spaceMd,
+            spaceSm,
+          ),
           child: Row(
             children: [
               Flexible(
@@ -398,52 +445,56 @@ class _HomePageState extends State<HomePage> {
                   searching ? '搜索结果' : _scopeTitle(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
+                  style: Theme.of(context).textTheme.titleLarge
                       ?.copyWith(letterSpacing: -0.3),
                 ),
               ),
               const SizedBox(width: spaceSm),
-              Text('${list.length}',
-                  style: Theme.of(context).textTheme.labelSmall),
+              Text(
+                '${list.length}',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
             ],
           ),
         ),
         Expanded(
           child: list.isEmpty
               ? EmptyState(
-                  searching: searching, isTrash: isTrash, onNew: _newNote)
+                  searching: searching,
+                  isTrash: isTrash,
+                  onNew: _newNote,
+                )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(spaceMd, 0, spaceMd, 96),
                   itemCount: list.length + (!searching && !isTrash ? 1 : 0),
                   separatorBuilder: (_, _) => const SizedBox(height: spaceSm),
                   itemBuilder: (context, index) {
                     if (index == list.length) {
-                      return OutlinedButton.icon(
-                        onPressed: _newNote,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('笔记'),
-                        style: ButtonStyle(
-                          foregroundColor:
-                              WidgetStatePropertyAll(t.accentText),
-                          overlayColor:
-                              WidgetStatePropertyAll(t.accentSoft),
-                          side: WidgetStatePropertyAll(
-                              BorderSide(color: t.hairline)),
-                          minimumSize:
-                              const WidgetStatePropertyAll(Size(0, 44)),
-                          shape: WidgetStatePropertyAll(
-                            RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(radiusMd)),
+                      return Tooltip(
+                        message: '新建笔记',
+                        child: OutlinedButton(
+                          onPressed: _newNote,
+                          style: ButtonStyle(
+                            mouseCursor: const WidgetStatePropertyAll(
+                              SystemMouseCursors.click,
+                            ),
+                            foregroundColor: WidgetStatePropertyAll(
+                              t.accentText,
+                            ),
+                            overlayColor: WidgetStatePropertyAll(t.accentSoft),
+                            side: WidgetStatePropertyAll(
+                              BorderSide(color: t.hairline),
+                            ),
+                            minimumSize: const WidgetStatePropertyAll(
+                              Size(0, 44),
+                            ),
+                            shape: WidgetStatePropertyAll(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(radiusMd),
+                              ),
+                            ),
                           ),
-                          textStyle: const WidgetStatePropertyAll(
-                            TextStyle(
-                                fontFamily: sansFamily,
-                                fontFamilyFallback: cjkSansFallback,
-                                fontWeight: FontWeight.w600),
-                          ),
+                          child: const Icon(Icons.add, size: 18),
                         ),
                       );
                     }
@@ -453,10 +504,13 @@ class _HomePageState extends State<HomePage> {
                     }
                     return NoteCard(
                       note: note,
-                      highlight: searching ? _searchController.text.trim() : null,
+                      highlight: searching
+                          ? _searchController.text.trim()
+                          : null,
                       selected: dense && note.id == state.openNoteId,
                       dense: dense,
-                      onTap: () => searching ? _openHit(note) : state.openNote(note.id),
+                      onTap: () =>
+                          searching ? _openHit(note) : state.openNote(note.id),
                     );
                   },
                 ),
@@ -466,10 +520,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   String _scopeTitle() => switch (state.scope.kind) {
-        NoteScopeKind.all => '全部',
-        NoteScopeKind.trash => '回收站',
-        NoteScopeKind.notebook => state.notebookName(state.scope.notebookId!),
-      };
+    NoteScopeKind.all => '全部',
+    NoteScopeKind.trash => '回收站',
+    NoteScopeKind.notebook => state.notebookName(state.scope.notebookId!),
+  };
 
   Widget _trashCard(Note note) {
     final t = inkOf(context);
@@ -486,13 +540,13 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(noteDisplayTitle(note),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(color: t.inkMuted)),
+                Text(
+                  noteDisplayTitle(note),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(color: t.inkMuted),
+                ),
                 const SizedBox(height: spaceXs),
                 Text(
                   '${state.notebookName(note.notebookId)} · ${note.deletedAt == null ? '' : formatDateTime(note.deletedAt!)}',
@@ -507,11 +561,13 @@ class _HomePageState extends State<HomePage> {
           ),
           TextButton(
             onPressed: () async {
-              final ok = await confirm(context,
-                  title: '彻底删除',
-                  message: '「${noteDisplayTitle(note)}」及其全部版本将被删除，不可恢复。',
-                  confirmLabel: '彻底删除',
-                  danger: true);
+              final ok = await confirm(
+                context,
+                title: '彻底删除',
+                message: '「${noteDisplayTitle(note)}」及其全部版本将被删除，不可恢复。',
+                confirmLabel: '彻底删除',
+                danger: true,
+              );
               if (ok) {
                 await state.hardDeleteNote(note.id);
               }
@@ -524,8 +580,13 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
 class _PaneDivider extends StatefulWidget {
-  const _PaneDivider({super.key, required this.onDelta, required this.onDragEnd});
+  const _PaneDivider({
+    super.key,
+    required this.onDelta,
+    required this.onDragEnd,
+  });
 
   static const hitWidth = 8.0;
 
@@ -562,10 +623,7 @@ class _PaneDividerState extends State<_PaneDivider> {
         child: SizedBox(
           width: _PaneDivider.hitWidth,
           child: Center(
-            child: Container(
-              width: 1,
-              color: active ? t.accent : t.hairline,
-            ),
+            child: Container(width: 1, color: active ? t.accent : t.hairline),
           ),
         ),
       ),
