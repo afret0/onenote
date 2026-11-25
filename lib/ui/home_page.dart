@@ -108,6 +108,41 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _noteContext(Note note, Offset position) async {
+    final value = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & Size.zero,
+        Offset.zero & MediaQuery.sizeOf(context),
+      ),
+      items: const [
+        PopupMenuItem(value: 'history', child: Text('版本历史')),
+        PopupMenuItem(value: 'trash', child: Text('移入回收站')),
+      ],
+    );
+    if (!mounted || value == null) {
+      return;
+    }
+    if (value == 'history') {
+      await showNoteHistory(context, state: state, noteId: note.id);
+    } else if (value == 'trash') {
+      await _trashFromList(note);
+    }
+  }
+
+  Future<void> _trashFromList(Note note) async {
+    final days = await state.db.retentionDays(AppDb.trashRetentionKey);
+    if (!mounted) {
+      return;
+    }
+    final ok = await confirm(context,
+        title: '移入回收站',
+        message: '「${noteDisplayTitle(note)}」将保留 $days 天，可随时恢复。');
+    if (ok) {
+      await state.trashNote(note.id);
+    }
+  }
+
   Future<void> _searchChanged(String value) async {
     final query = value.trim();
     final hits = query.isEmpty ? null : await state.search(query);
@@ -526,6 +561,7 @@ class _HomePageState extends State<HomePage> {
                       dense: dense,
                       onTap: () =>
                           searching ? _openHit(note) : state.openNote(note.id),
+                      onContext: (position) => _noteContext(note, position),
                     );
                   },
                 ),
@@ -596,6 +632,7 @@ class _HomePageState extends State<HomePage> {
           selected: dense && note.id == state.openNoteId,
           dense: dense,
           onTap: () => _openHit(note),
+          onContext: (position) => _noteContext(note, position),
         );
       },
     );

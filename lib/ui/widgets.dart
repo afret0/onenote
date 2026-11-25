@@ -146,6 +146,7 @@ class NoteCard extends StatelessWidget {
     super.key,
     required this.note,
     required this.onTap,
+    this.onContext,
     this.highlight,
     this.selected = false,
     this.dense = false,
@@ -153,6 +154,7 @@ class NoteCard extends StatelessWidget {
 
   final Note note;
   final VoidCallback onTap;
+  final void Function(Offset globalPosition)? onContext;
   final String? highlight;
   final bool selected;
   final bool dense;
@@ -161,26 +163,34 @@ class NoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = inkOf(context);
     final title = note.title.trim().isEmpty ? '无标题' : note.title.trim();
-    return Material(
-      color: selected ? t.accentSoft : t.surface,
-      borderRadius: BorderRadius.circular(radiusMd),
-      child: InkWell(
+    return GestureDetector(
+      onLongPressStart: onContext == null
+          ? null
+          : (details) => onContext!(details.globalPosition),
+      child: Material(
+        color: selected ? t.accentSoft : t.surface,
         borderRadius: BorderRadius.circular(radiusMd),
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radiusMd),
-            border: Border.all(color: selected ? t.accent : t.hairline),
-          ),
-          padding: dense
-              ? const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm)
-              : const EdgeInsets.all(spaceMd),
-          child: HighlightText(
-            text: title,
-            needle: highlight,
-            style: Theme.of(context).textTheme.titleMedium
-                ?.copyWith(letterSpacing: -0.1),
-            maxLines: 1,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(radiusMd),
+          onTap: onTap,
+          onSecondaryTapUp: onContext == null
+              ? null
+              : (details) => onContext!(details.globalPosition),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radiusMd),
+              border: Border.all(color: selected ? t.accent : t.hairline),
+            ),
+            padding: dense
+                ? const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm)
+                : const EdgeInsets.all(spaceMd),
+            child: HighlightText(
+              text: title,
+              needle: highlight,
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(letterSpacing: -0.1),
+              maxLines: 1,
+            ),
           ),
         ),
       ),

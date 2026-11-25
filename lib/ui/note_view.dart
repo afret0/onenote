@@ -66,6 +66,7 @@ class _NoteViewState extends State<NoteView> {
     _contentController = TextEditingController();
     _renderScroll.addListener(_onRenderScroll);
     _highlight.addListener(_onHighlightChanged);
+    state.addListener(_reloadIfIdle);
     _load();
   }
 
@@ -145,12 +146,20 @@ class _NoteViewState extends State<NoteView> {
   @override
   void dispose() {
     _autosave?.cancel();
+    state.removeListener(_reloadIfIdle);
     _titleController.dispose();
     _contentController.dispose();
     _renderScroll.dispose();
     _editScroll.dispose();
     _highlight.removeListener(_onHighlightChanged);
     super.dispose();
+  }
+
+  void _reloadIfIdle() {
+    if (_editing || _dirty || _note == null) {
+      return;
+    }
+    _load();
   }
 
   void _enterEdit() {
@@ -456,20 +465,14 @@ class _NoteViewState extends State<NoteView> {
     if (note == null) {
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: inkOf(context).surface,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheetContext) => _HistorySheet(
-        state: state,
-        noteId: note.id,
-        onRestored: () async {
-          Navigator.of(sheetContext).pop();
-          setState(() => _editing = false);
-          await _load();
-        },
-      ),
+    await showNoteHistory(
+      context,
+      state: state,
+      noteId: note.id,
+      onRestored: () async {
+        setState(() => _editing = false);
+        await _load();
+      },
     );
     if (mounted) {
       setState(() {});
@@ -790,6 +793,28 @@ String formatHm(int ms) {
   final dt = DateTime.fromMillisecondsSinceEpoch(ms);
   String two(int v) => v.toString().padLeft(2, '0');
   return '${two(dt.hour)}:${two(dt.minute)}';
+}
+
+Future<void> showNoteHistory(
+  BuildContext context, {
+  required AppState state,
+  required String noteId,
+  Future<void> Function()? onRestored,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: inkOf(context).surface,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => _HistorySheet(
+      state: state,
+      noteId: noteId,
+      onRestored: () async {
+        Navigator.of(sheetContext).pop();
+        await onRestored?.call();
+      },
+    ),
+  );
 }
 
 class _HistorySheet extends StatefulWidget {
