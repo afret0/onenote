@@ -98,15 +98,20 @@ void main() {
       ));
       final t = inkOf(captured);
       for (final value in notebookPalette) {
-        for (var level = 0.0; level <= 2; level += 1) {
-          final bg = notebookTint(captured, Color(value), level).computeLuminance();
+        final backgrounds = [
+          notebookPaneTint(captured, Color(value)),
+          for (var level = 0.0; level <= 2; level += 1)
+            notebookTint(captured, Color(value), level),
+        ];
+        for (final background in backgrounds) {
+          final bg = background.computeLuminance();
           for (final text in [t.ink, t.inkMuted]) {
             final fg = text.computeLuminance();
             final ratio = (fg > bg ? fg + 0.05 : bg + 0.05) /
                 (fg > bg ? bg + 0.05 : fg + 0.05);
             expect(ratio, greaterThanOrEqualTo(4.5),
                 reason:
-                    'brightness: $brightness, color: ${value.toRadixString(16)}, level: $level');
+                    'brightness: $brightness, color: ${value.toRadixString(16)}, background: $background');
           }
         }
       }

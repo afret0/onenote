@@ -442,8 +442,8 @@ class _HomePageState extends State<HomePage> {
     final searching = _searchHits != null;
     final list = searching ? _searchHits! : state.notes;
     final paneTint = !searching && state.scope.kind == NoteScopeKind.notebook
-        ? notebookTint(
-            context, Color(state.notebookColor(state.scope.notebookId!)), 0)
+        ? notebookPaneTint(
+            context, Color(state.notebookColor(state.scope.notebookId!)))
         : null;
     return ColoredBox(
       color: paneTint ?? Colors.transparent,
@@ -571,9 +571,8 @@ class _HomePageState extends State<HomePage> {
                     }
                     return NoteCard(
                       note: note,
-                      tintColor: state.scope.kind == NoteScopeKind.notebook
-                          ? null
-                          : Color(state.notebookColor(note.notebookId)),
+                      tintColor: Color(state.notebookColor(note.notebookId)),
+                      tinted: state.scope.kind != NoteScopeKind.notebook,
                       highlight: searching
                           ? _searchController.text.trim()
                           : null,
