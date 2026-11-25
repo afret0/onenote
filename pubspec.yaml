@@ -69,6 +69,8 @@ dev_dependencies:
 dependency_overrides:
   flutter_markdown_plus:
     path: third_party/flutter_markdown_plus
+  file_picker:
+    path: third_party/file_picker
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
