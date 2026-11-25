@@ -420,10 +420,31 @@ class _HomePageState extends State<HomePage> {
                   separatorBuilder: (_, _) => const SizedBox(height: spaceSm),
                   itemBuilder: (context, index) {
                     if (index == list.length) {
-                      return FilledButton.icon(
+                      return OutlinedButton.icon(
                         onPressed: _newNote,
                         icon: const Icon(Icons.add, size: 18),
                         label: const Text('笔记'),
+                        style: ButtonStyle(
+                          foregroundColor:
+                              WidgetStatePropertyAll(t.accentText),
+                          overlayColor:
+                              WidgetStatePropertyAll(t.accentSoft),
+                          side: WidgetStatePropertyAll(
+                              BorderSide(color: t.hairline)),
+                          minimumSize:
+                              const WidgetStatePropertyAll(Size(0, 44)),
+                          shape: WidgetStatePropertyAll(
+                            RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(radiusMd)),
+                          ),
+                          textStyle: const WidgetStatePropertyAll(
+                            TextStyle(
+                                fontFamily: sansFamily,
+                                fontFamilyFallback: cjkSansFallback,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
                       );
                     }
                     final note = list[index];
