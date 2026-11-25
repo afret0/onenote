@@ -2,10 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:onenote/data/app_db.dart';
 import 'package:onenote/ui/notebook_color_picker.dart';
 import 'package:onenote/ui/theme.dart';
-import 'package:onenote/ui/widgets.dart';
 
 void main() {
   Future<Future<int?>> openPicker(WidgetTester tester,
@@ -85,7 +83,7 @@ void main() {
     expect(await result, isNull);
   });
 
-  testWidgets('notebook tints keep 4.5:1 text contrast in both themes',
+  testWidgets('neutral surfaces keep 4.5:1 text contrast in both themes',
       (tester) async {
     for (final brightness in Brightness.values) {
       late BuildContext captured;
@@ -97,22 +95,15 @@ void main() {
         }),
       ));
       final t = inkOf(captured);
-      for (final value in notebookPalette) {
-        final backgrounds = [
-          notebookPaneTint(captured, Color(value)),
-          for (var level = 0.0; level <= 2; level += 1)
-            notebookTint(captured, Color(value), level),
-        ];
-        for (final background in backgrounds) {
-          final bg = background.computeLuminance();
-          for (final text in [t.ink, t.inkMuted]) {
-            final fg = text.computeLuminance();
-            final ratio = (fg > bg ? fg + 0.05 : bg + 0.05) /
-                (fg > bg ? bg + 0.05 : fg + 0.05);
-            expect(ratio, greaterThanOrEqualTo(4.5),
-                reason:
-                    'brightness: $brightness, color: ${value.toRadixString(16)}, background: $background');
-          }
+      for (final background in [t.paper, t.surface, t.surfaceAlt]) {
+        final bg = background.computeLuminance();
+        for (final text in [t.ink, t.inkMuted]) {
+          final fg = text.computeLuminance();
+          final ratio = (fg > bg ? fg + 0.05 : bg + 0.05) /
+              (fg > bg ? bg + 0.05 : fg + 0.05);
+          expect(ratio, greaterThanOrEqualTo(4.5),
+              reason:
+                  'brightness: $brightness, background: $background, text: $text');
         }
       }
     }

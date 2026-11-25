@@ -37,25 +37,6 @@ String notePreview(String content) {
   return lines.take(3).join(' ');
 }
 
-Color notebookTint(BuildContext context, Color color, double level) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  final alpha = dark ? 0.10 + 0.06 * level : 0.08 + 0.05 * level;
-  return Color.alphaBlend(
-      color.withValues(alpha: alpha), inkOf(context).surface);
-}
-
-Color notebookPaneTint(BuildContext context, Color color) {
-  final t = inkOf(context);
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return Color.alphaBlend(
-      color.withValues(alpha: dark ? 0.06 : 0.05), t.paper);
-}
-
-Color notebookTintBorder(BuildContext context, Color color, double level) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return color.withValues(alpha: (dark ? 0.35 : 0.30) + 0.25 * level);
-}
-
 class BrandMark extends StatelessWidget {
   const BrandMark({super.key, this.size = 32});
 
@@ -96,19 +77,15 @@ class ScopeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
-    final base = dotColor == null
-        ? null
-        : notebookTint(context, dotColor!, selected ? 2 : 0);
     return AnimatedContainer(
       duration: motionFast,
       curve: motionCurve,
       margin: const EdgeInsets.only(bottom: 2),
       decoration: BoxDecoration(
-        color: base ?? (selected ? t.accentSoft : Colors.transparent),
+        color: selected
+            ? (dotColor == null ? t.accentSoft : t.surfaceAlt)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(radiusMd),
-        border: dotColor != null && selected
-            ? Border.all(color: notebookTintBorder(context, dotColor!, 1))
-            : null,
       ),
       child: GestureDetector(
         onLongPressStart: onContext == null
@@ -120,13 +97,30 @@ class ScopeTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(radiusMd),
             overlayColor: dotColor == null
                 ? null
-                : WidgetStatePropertyAll(
-                    dotColor!.withValues(alpha: 0.08)),
+                : WidgetStatePropertyAll(t.ink.withValues(alpha: 0.05)),
             onTap: onTap,
             onSecondaryTapUp: onContext == null
                 ? null
                 : (details) => onContext!(details.globalPosition),
-            child: Padding(
+            child: Stack(
+              children: [
+                if (dotColor != null && selected)
+                  Positioned(
+                    left: 4,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: Container(
+                        width: 3,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: dotColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Row(
                 children: [
@@ -162,6 +156,8 @@ class ScopeTile extends StatelessWidget {
                   ),
                 ],
               ),
+                ),
+              ],
             ),
           ),
         ),
@@ -177,7 +173,7 @@ class NoteCard extends StatelessWidget {
     required this.onTap,
     this.onContext,
     this.tintColor,
-    this.tinted = true,
+    this.striped = true,
     this.highlight,
     this.selected = false,
     this.dense = false,
@@ -187,7 +183,7 @@ class NoteCard extends StatelessWidget {
   final VoidCallback onTap;
   final void Function(Offset globalPosition)? onContext;
   final Color? tintColor;
-  final bool tinted;
+  final bool striped;
   final String? highlight;
   final bool selected;
   final bool dense;
@@ -196,50 +192,55 @@ class NoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = inkOf(context);
     final title = note.title.trim().isEmpty ? '无标题' : note.title.trim();
-    final fill = tintColor == null
-        ? (selected ? t.accentSoft : t.surface)
-        : selected
-            ? notebookTint(context, tintColor!, 1)
-            : tinted
-                ? notebookTint(context, tintColor!, 0)
-                : t.surface;
     return GestureDetector(
       onLongPressStart: onContext == null
           ? null
           : (details) => onContext!(details.globalPosition),
       child: Material(
-        color: fill,
+        color: selected ? t.surfaceAlt : t.surface,
         borderRadius: BorderRadius.circular(radiusMd),
         child: InkWell(
           borderRadius: BorderRadius.circular(radiusMd),
-          overlayColor: tintColor == null
-              ? null
-              : WidgetStatePropertyAll(
-                  tintColor!.withValues(alpha: 0.08)),
+          overlayColor: WidgetStatePropertyAll(t.ink.withValues(alpha: 0.05)),
           onTap: onTap,
           onSecondaryTapUp: onContext == null
               ? null
               : (details) => onContext!(details.globalPosition),
           child: Container(
-            decoration: BoxDecoration(
+            foregroundDecoration: BoxDecoration(
               borderRadius: BorderRadius.circular(radiusMd),
               border: Border.all(
-                color: tintColor != null
-                    ? notebookTintBorder(context, tintColor!, selected ? 1 : 0)
-                    : selected
-                        ? t.accent
-                        : t.hairline,
+                color: selected
+                    ? (tintColor ?? t.accent)
+                    : t.hairline,
               ),
             ),
-            padding: dense
-                ? const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm)
-                : const EdgeInsets.all(spaceMd),
-            child: HighlightText(
-              text: title,
-              needle: highlight,
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(letterSpacing: -0.1),
-              maxLines: 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(radiusMd - 1),
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: dense
+                        ? const EdgeInsets.fromLTRB(
+                            spaceMd, spaceSm, spaceMd, spaceSm)
+                        : const EdgeInsets.all(spaceMd),
+                    child: HighlightText(
+                      text: title,
+                      needle: highlight,
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(letterSpacing: -0.1),
+                      maxLines: 1,
+                    ),
+                  ),
+                  if (striped && tintColor != null)
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(width: 3, color: tintColor),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

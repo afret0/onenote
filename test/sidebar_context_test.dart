@@ -127,13 +127,24 @@ void main() {
     await tester.pumpAndSettle();
     final card = tester.widget<NoteCard>(find.byType(NoteCard));
     expect(card.tintColor, const Color(0xFF16A34A));
-    expect(card.tinted, isFalse);
-    final pane = find.byWidgetPredicate((w) =>
-        w is ColoredBox &&
-        w.color ==
-            Color.alphaBlend(const Color(0xFF16A34A).withValues(alpha: 0.06),
-                const Color(0xFF111113)));
-    expect(pane, findsOneWidget);
+    expect(card.striped, isFalse);
+    expect(
+        find.byWidgetPredicate((w) =>
+            w is ColoredBox &&
+            w.color ==
+                Color.alphaBlend(
+                    const Color(0xFF16A34A).withValues(alpha: 0.06),
+                    const Color(0xFF111113))),
+        findsNothing);
+    final bar = find.descendant(
+      of: find.widgetWithText(ScopeTile, '工作'),
+      matching: find.byWidgetPredicate((w) =>
+          w is Container &&
+          w.constraints?.maxWidth == 3 &&
+          w.decoration is BoxDecoration &&
+          (w.decoration as BoxDecoration).color == const Color(0xFF16A34A)),
+    );
+    expect(bar, findsOneWidget);
   });
 
   testWidgets('bottom new-note button is icon-only with click cursor',

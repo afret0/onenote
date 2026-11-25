@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../data/app_db.dart';
 import 'theme.dart';
-import 'widgets.dart';
 
 Future<int?> pickNotebookColor(BuildContext context, {required int initial}) =>
     showDialog<int>(
@@ -114,11 +113,20 @@ class _NotebookColorPickerState extends State<_NotebookColorPicker> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: notebookTint(context, _color, 0),
+                      color: t.surfaceAlt,
                       borderRadius: BorderRadius.circular(radiusMd),
                     ),
                     child: Row(
                       children: [
+                        Container(
+                          width: 3,
+                          height: 20,
+                          margin: const EdgeInsets.only(right: 9),
+                          decoration: BoxDecoration(
+                            color: _color,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
                         Container(
                           width: 10,
                           height: 10,
