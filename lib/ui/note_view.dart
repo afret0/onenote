@@ -58,7 +58,7 @@ class _NoteViewState extends State<NoteView> {
   final MarkdownHighlightController _highlight = MarkdownHighlightController();
   final GlobalKey _renderViewportKey = GlobalKey();
   final GlobalKey _navKey = GlobalKey();
-  Size _navSize = const Size(168, 44);
+  Size _navSize = const Size(200, 52);
   Offset? _navPos;
   int _matchIndex = 0;
 
@@ -805,7 +805,7 @@ class _NoteViewState extends State<NoteView> {
     final count = _highlight.matches.length;
     return MouseRegion(
       key: _navKey,
-      cursor: SystemMouseCursors.move,
+      cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onPanUpdate: (d) => _dragNav(d.delta),
         onPanEnd: (_) => _saveNavPos(),
@@ -816,33 +816,41 @@ class _NoteViewState extends State<NoteView> {
           elevation: 4,
           shadowColor: Colors.black54,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: spaceXs),
+            padding: const EdgeInsets.symmetric(
+                horizontal: spaceSm, vertical: spaceXs),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.drag_indicator, size: 14, color: t.inkFaint),
+                Padding(
+                  padding:
+                      const EdgeInsets.only(left: spaceXs, right: spaceSm),
+                  child: Icon(Icons.drag_indicator, size: 16, color: t.inkMuted),
+                ),
                 Text('${_matchIndex + 1}/$count',
-                    style: Theme.of(context).textTheme.labelSmall),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: t.ink,
+                          fontSize: 14 * t.fontScale,
+                          fontWeight: FontWeight.w600,
+                        )),
+                const SizedBox(width: spaceSm),
                 Semantics(
                   button: true,
                   label: '上一个命中',
                   child: IconButton(
-                    visualDensity: VisualDensity.compact,
                     onPressed: _matchIndex > 0
                         ? () => _jumpToMatch(_matchIndex - 1)
                         : null,
-                    icon: const Icon(Icons.keyboard_arrow_up, size: 18),
+                    icon: const Icon(Icons.keyboard_arrow_up, size: 20),
                   ),
                 ),
                 Semantics(
                   button: true,
                   label: '下一个命中',
                   child: IconButton(
-                    visualDensity: VisualDensity.compact,
                     onPressed: _matchIndex < count - 1
                         ? () => _jumpToMatch(_matchIndex + 1)
                         : null,
-                    icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+                    icon: const Icon(Icons.keyboard_arrow_down, size: 20),
                   ),
                 ),
               ],
