@@ -244,7 +244,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(noteContent('alpha content'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('返回列表'));
+    await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
     expect(find.byType(NoteView), findsNothing);
     expect(find.widgetWithText(NoteCard, 'second'), findsOneWidget);

@@ -364,7 +364,6 @@ class _NoteViewState extends State<NoteView> {
             children: [
               if (widget.showBack)
                 IconButton(
-                  tooltip: '返回列表',
                   onPressed: () async {
                     await _save(silent: true);
                     widget.onBack();
@@ -405,27 +404,30 @@ class _NoteViewState extends State<NoteView> {
                 ),
               if (_editing) ...[
                 IconButton(
-                  tooltip: '插入图片',
                   onPressed: () => _pickFiles(image: true),
                   icon: const Icon(Icons.image_outlined),
                 ),
                 IconButton(
-                  tooltip: '插入文件',
                   onPressed: () => _pickFiles(image: false),
                   icon: const Icon(Icons.attach_file),
                 ),
               ],
-              IconButton(
-                tooltip: '版本历史',
-                onPressed: _showHistory,
-                icon: const Icon(Icons.history),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_horiz),
+                onSelected: (value) {
+                  if (value == 'history') {
+                    _showHistory();
+                  } else if (value == 'trash') {
+                    _trash();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'history', child: Text('版本历史')),
+                  if (!_editing)
+                    const PopupMenuItem(
+                        value: 'trash', child: Text('移入回收站')),
+                ],
               ),
-              if (!_editing)
-                IconButton(
-                  tooltip: '移入回收站',
-                  onPressed: _trash,
-                  icon: const Icon(Icons.delete_outline),
-                ),
               const SizedBox(width: spaceXs),
               _editing
                   ? FilledButton.icon(
@@ -433,10 +435,31 @@ class _NoteViewState extends State<NoteView> {
                       icon: const Icon(Icons.check, size: 18),
                       label: const Text('完成'),
                     )
-                  : FilledButton.icon(
-                      onPressed: _enterEdit,
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      label: const Text('编辑'),
+                  : SizedBox(
+                      height: 40,
+                      width: 40,
+                      child: OutlinedButton(
+                        onPressed: _enterEdit,
+                        style: ButtonStyle(
+                          padding:
+                              const WidgetStatePropertyAll(EdgeInsets.zero),
+                          mouseCursor: const WidgetStatePropertyAll(
+                            SystemMouseCursors.click,
+                          ),
+                          foregroundColor:
+                              WidgetStatePropertyAll(t.accentText),
+                          overlayColor: WidgetStatePropertyAll(t.accentSoft),
+                          side: WidgetStatePropertyAll(
+                            BorderSide(color: t.hairline),
+                          ),
+                          shape: WidgetStatePropertyAll(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(radiusMd),
+                            ),
+                          ),
+                        ),
+                        child: const Icon(Icons.edit_outlined, size: 18),
+                      ),
                     ),
             ],
           ),
@@ -471,7 +494,7 @@ class _NoteViewState extends State<NoteView> {
                                     style:
                                         Theme.of(context).textTheme.labelSmall),
                                 const SizedBox(width: spaceMd),
-                                Text('更新于 ${formatRelative(note.updateAt)}',
+                                Text(formatDateTime(note.updateAt),
                                     style:
                                         Theme.of(context).textTheme.labelSmall),
                               ],
