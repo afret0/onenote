@@ -199,6 +199,7 @@ class MarkdownBuilder implements md.NodeVisitor {
   final List<_TableElement> _tables = <_TableElement>[];
   final List<_InlineElement> _inlines = <_InlineElement>[];
   final List<GestureRecognizer> _linkHandlers = <GestureRecognizer>[];
+  int _highlightParagraphOrdinal = 0;
   String? _currentBlockTag;
   String? _lastVisitedTag;
   bool _isInBlockquote = false;
@@ -213,6 +214,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     _inlines.clear();
     _linkHandlers.clear();
     _isInBlockquote = false;
+    _highlightParagraphOrdinal = 0;
     highlightController?.reset();
 
     builders.forEach((String key, MarkdownElementBuilder value) {
@@ -1232,7 +1234,11 @@ class MarkdownBuilder implements md.NodeVisitor {
         highlightQuery != null &&
         highlightQuery!.isNotEmpty &&
         highlightColor != null;
-    final GlobalKey? highlightKey = doHighlight ? GlobalKey() : null;
+    final GlobalKey? highlightKey = doHighlight
+        ? (highlightController == null
+            ? GlobalKey()
+            : highlightController!.paragraphKey(_highlightParagraphOrdinal++))
+        : null;
     final Key k = highlightKey ?? (key == null ? UniqueKey() : Key(key));
     if (doHighlight) {
       text = _applyHighlight(text);

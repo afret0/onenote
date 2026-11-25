@@ -61,6 +61,7 @@ class _NoteViewState extends State<NoteView> {
   Size _navSize = const Size(200, 52);
   Offset? _navPos;
   int _matchIndex = 0;
+  int _matchCount = 0;
 
   AppState get state => widget.state;
 
@@ -131,9 +132,14 @@ class _NoteViewState extends State<NoteView> {
       if (!mounted) {
         return;
       }
+      final count = _highlight.matches.length;
+      final next = count == 0 ? 0 : _matchIndex.clamp(0, count - 1);
+      if (count == _matchCount && next == _matchIndex) {
+        return;
+      }
       setState(() {
-        final count = _highlight.matches.length;
-        _matchIndex = count == 0 ? 0 : _matchIndex.clamp(0, count - 1);
+        _matchCount = count;
+        _matchIndex = next;
       });
     });
   }

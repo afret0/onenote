@@ -370,6 +370,11 @@ abstract class MarkdownWidget extends StatefulWidget {
 
 class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuilderDelegate {
   List<Widget>? _children;
+  String? _cachedData;
+  List<md.Node>? _cachedAst;
+  List<md.BlockSyntax>? _cachedBlockSyntaxes;
+  List<md.InlineSyntax>? _cachedInlineSyntaxes;
+  md.ExtensionSet? _cachedExtensionSet;
   final List<GestureRecognizer> _recognizers = <GestureRecognizer>[];
 
   @override
@@ -405,16 +410,27 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
 
     _disposeRecognizers();
 
-    final md.Document document = md.Document(
-      blockSyntaxes: widget.blockSyntaxes,
-      inlineSyntaxes: widget.inlineSyntaxes,
-      extensionSet: widget.extensionSet ?? md.ExtensionSet.gitHubFlavored,
-      encodeHtml: false,
-    );
-
-    // Parse the source Markdown data into nodes of an Abstract Syntax Tree.
-    final List<String> lines = const LineSplitter().convert(widget.data);
-    final List<md.Node> astNodes = document.parseLines(lines);
+    final md.ExtensionSet extensionSet =
+        widget.extensionSet ?? md.ExtensionSet.gitHubFlavored;
+    if (_cachedAst == null ||
+        _cachedData != widget.data ||
+        !identical(_cachedBlockSyntaxes, widget.blockSyntaxes) ||
+        !identical(_cachedInlineSyntaxes, widget.inlineSyntaxes) ||
+        !identical(_cachedExtensionSet, extensionSet)) {
+      final md.Document document = md.Document(
+        blockSyntaxes: widget.blockSyntaxes,
+        inlineSyntaxes: widget.inlineSyntaxes,
+        extensionSet: extensionSet,
+        encodeHtml: false,
+      );
+      _cachedAst =
+          document.parseLines(const LineSplitter().convert(widget.data));
+      _cachedData = widget.data;
+      _cachedBlockSyntaxes = widget.blockSyntaxes;
+      _cachedInlineSyntaxes = widget.inlineSyntaxes;
+      _cachedExtensionSet = extensionSet;
+    }
+    final List<md.Node> astNodes = _cachedAst!;
 
     // Configure a Markdown widget builder to traverse the AST nodes and
     // create a widget tree based on the elements.

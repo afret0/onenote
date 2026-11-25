@@ -368,4 +368,52 @@ void main() {
     expect(restored.left, closeTo(after.left, 1));
     expect(restored.top, closeTo(after.top, 1));
   });
+
+  testWidgets('jumping between matches reuses paragraph elements',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_match_reuse');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      final nb = await db.createNotebook('甲');
+      now += 1000;
+      await db.createNote(nb.id,
+          title: 't', content: 'buffer one buffer two buffer three');
+      now += 1000;
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'buffer');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(NoteCard).first);
+    await tester.pumpAndSettle();
+
+    final paragraph = find.descendant(
+        of: find.byType(MarkdownView), matching: find.byType(SelectableText));
+    final elementsBefore = tester.elementList(paragraph).toList();
+    expect(elementsBefore, isNotEmpty);
+    final nav = find.byKey(const ValueKey('matchNav'));
+    await tester.tap(find.descendant(
+        of: nav, matching: find.byIcon(Icons.keyboard_arrow_down)));
+    await tester.pumpAndSettle();
+    expect(tester.elementList(paragraph).toList(), elementsBefore);
+  });
 }

@@ -6,7 +6,7 @@ import '../data/markdown_tasks.dart';
 import 'attachment_image.dart';
 import 'theme.dart';
 
-class MarkdownView extends StatelessWidget {
+class MarkdownView extends StatefulWidget {
   const MarkdownView({
     super.key,
     required this.content,
@@ -27,8 +27,20 @@ class MarkdownView extends StatelessWidget {
   final MarkdownHighlightController? highlightController;
 
   @override
+  State<MarkdownView> createState() => _MarkdownViewState();
+}
+
+class _MarkdownViewState extends State<MarkdownView> {
+  MarkdownStyleSheet? _sheet;
+  InkTokens? _sheetTokens;
+  double _sheetScale = -1;
+  String? _taskContent;
+  List<bool> _taskStates = const [];
+
+  @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
+    final content = widget.content;
     if (content.trim().isEmpty) {
       return Text('这篇笔记还没有内容，点「编辑」开始书写。',
           style: Theme.of(context)
@@ -36,59 +48,32 @@ class MarkdownView extends StatelessWidget {
               .bodyMedium
               ?.copyWith(color: t.inkFaint));
     }
-    final headingSerif = TextStyle(
-      fontFamily: serifFamily,
-      fontFamilyFallback: cjkSerifFallback,
-      color: t.ink,
-      fontWeight: FontWeight.w700,
-      letterSpacing: -0.3,
-    );
     final contentScale = t.noteFontSize * t.fontScale / 16;
-    final body = TextStyle(
-      fontFamily: t.sans,
-      fontFamilyFallback: cjkSansFallback,
-      fontSize: 16 * contentScale,
-      height: 1.8,
-      color: t.ink,
-    );
-    final mono = TextStyle(
-      fontFamily: monoFamily,
-      fontFamilyFallback: cjkMonoFallback,
-      fontSize: 13.5 * contentScale,
-      height: 1.6,
-      color: t.ink,
-    );
-    final store = attachments;
-    final toggle = onToggleTask;
-    final taskCount = toggle == null ? 0 : markdownTaskStates(content).length;
-    final lineHeight = body.fontSize! * body.height!;
-    var checkboxCalls = 0;
-    return MarkdownBody(
-      data: content,
-      selectable: true,
-      highlightQuery: highlightQuery,
-      highlightColor: highlightQuery == null ? null : t.searchMark,
-      highlightActiveIndex: highlightActiveIndex,
-      highlightActiveColor: highlightQuery == null ? null : t.searchActive,
-      highlightActiveInk: highlightQuery == null ? null : t.searchActiveInk,
-      highlightController: highlightController,
-      blockSyntaxes: markdownTaskBlockSyntaxes,
-      listItemCrossAxisAlignment: MarkdownListItemCrossAxisAlignment.start,
-      checkboxBuilder: (checked) {
-        if (toggle == null || taskCount == 0) {
-          return _TaskCheckbox(checked: checked, lineHeight: lineHeight);
-        }
-        final ordinal = checkboxCalls++ % taskCount;
-        return _TaskCheckbox(
-          checked: checked,
-          lineHeight: lineHeight,
-          onTap: () => toggle(ordinal),
-        );
-      },
-      builders: store == null
-          ? const {}
-          : {'img': AttachmentImageBuilder(store)},
-      styleSheet: MarkdownStyleSheet(
+    if (_sheet == null ||
+        !identical(_sheetTokens, t) ||
+        _sheetScale != contentScale) {
+      final headingSerif = TextStyle(
+        fontFamily: serifFamily,
+        fontFamilyFallback: cjkSerifFallback,
+        color: t.ink,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.3,
+      );
+      final body = TextStyle(
+        fontFamily: t.sans,
+        fontFamilyFallback: cjkSansFallback,
+        fontSize: 16 * contentScale,
+        height: 1.8,
+        color: t.ink,
+      );
+      final mono = TextStyle(
+        fontFamily: monoFamily,
+        fontFamilyFallback: cjkMonoFallback,
+        fontSize: 13.5 * contentScale,
+        height: 1.6,
+        color: t.ink,
+      );
+      _sheet = MarkdownStyleSheet(
         p: body,
         h1: headingSerif.copyWith(fontSize: 30 * contentScale, height: 1.3),
         h2: headingSerif.copyWith(fontSize: 24 * contentScale, height: 1.35),
@@ -129,14 +114,55 @@ class MarkdownView extends StatelessWidget {
             horizontal: spaceSm + 4, vertical: spaceSm),
         tableCellsDecoration: BoxDecoration(color: t.surface),
         checkbox: body.copyWith(color: t.accent),
-      ),
+      );
+      _sheetTokens = t;
+      _sheetScale = contentScale;
+    }
+    final sheet = _sheet!;
+    if (!identical(_taskContent, content)) {
+      _taskStates = markdownTaskStates(content);
+      _taskContent = content;
+    }
+    final store = widget.attachments;
+    final toggle = widget.onToggleTask;
+    final taskCount = toggle == null ? 0 : _taskStates.length;
+    final lineHeight = sheet.p!.fontSize! * sheet.p!.height!;
+    var checkboxCalls = 0;
+    return MarkdownBody(
+      data: content,
+      selectable: true,
+      highlightQuery: widget.highlightQuery,
+      highlightColor: widget.highlightQuery == null ? null : t.searchMark,
+      highlightActiveIndex: widget.highlightActiveIndex,
+      highlightActiveColor:
+          widget.highlightQuery == null ? null : t.searchActive,
+      highlightActiveInk:
+          widget.highlightQuery == null ? null : t.searchActiveInk,
+      highlightController: widget.highlightController,
+      blockSyntaxes: markdownTaskBlockSyntaxes,
+      listItemCrossAxisAlignment: MarkdownListItemCrossAxisAlignment.start,
+      checkboxBuilder: (checked) {
+        if (toggle == null || taskCount == 0) {
+          return _TaskCheckbox(checked: checked, lineHeight: lineHeight);
+        }
+        final ordinal = checkboxCalls++ % taskCount;
+        return _TaskCheckbox(
+          checked: checked,
+          lineHeight: lineHeight,
+          onTap: () => toggle(ordinal),
+        );
+      },
+      builders: store == null
+          ? const {}
+          : {'img': AttachmentImageBuilder(store)},
+      styleSheet: sheet,
       onTapLink: (text, href, title) {
         if (href == null) {
           return;
         }
         final match = AttachmentStore.refPattern.firstMatch(href);
         if (match != null) {
-          onAttachmentLink?.call(match.group(1)!);
+          widget.onAttachmentLink?.call(match.group(1)!);
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));
