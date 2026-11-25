@@ -127,8 +127,6 @@ class NoteCard extends StatelessWidget {
   const NoteCard({
     super.key,
     required this.note,
-    required this.notebookName,
-    required this.notebookColor,
     required this.onTap,
     this.highlight,
     this.selected = false,
@@ -136,8 +134,6 @@ class NoteCard extends StatelessWidget {
   });
 
   final Note note;
-  final String notebookName;
-  final Color notebookColor;
   final VoidCallback onTap;
   final String? highlight;
   final bool selected;
@@ -147,7 +143,6 @@ class NoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = inkOf(context);
     final title = note.title.trim().isEmpty ? '无标题' : note.title.trim();
-    final preview = notePreview(note.content);
     return Material(
       color: selected ? t.accentSoft : t.surface,
       borderRadius: BorderRadius.circular(radiusMd),
@@ -162,52 +157,14 @@ class NoteCard extends StatelessWidget {
           padding: dense
               ? const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm)
               : const EdgeInsets.all(spaceMd),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _HighlightText(
-                text: title,
-                needle: highlight,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(letterSpacing: -0.1),
-                maxLines: 1,
-              ),
-              if (preview.isNotEmpty) ...[
-                const SizedBox(height: spaceXs),
-                _HighlightText(
-                  text: preview,
-                  needle: highlight,
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: t.inkMuted),
-                  maxLines: dense ? 1 : 2,
-                ),
-              ],
-              SizedBox(height: dense ? 6 : 10),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                        color: notebookColor, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(notebookName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall),
-                  ),
-                  const Spacer(),
-                  Text(formatRelative(note.updateAt),
-                      style: Theme.of(context).textTheme.labelSmall),
-                ],
-              ),
-            ],
+          child: _HighlightText(
+            text: title,
+            needle: highlight,
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(letterSpacing: -0.1),
+            maxLines: 1,
           ),
         ),
       ),

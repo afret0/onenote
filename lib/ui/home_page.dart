@@ -407,13 +407,6 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: spaceSm),
               Text('${list.length}',
                   style: Theme.of(context).textTheme.labelSmall),
-              const Spacer(),
-              if (!searching && !isTrash)
-                FilledButton.icon(
-                  onPressed: _newNote,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('笔记'),
-                ),
             ],
           ),
         ),
@@ -423,17 +416,22 @@ class _HomePageState extends State<HomePage> {
                   searching: searching, isTrash: isTrash, onNew: _newNote)
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(spaceMd, 0, spaceMd, 96),
-                  itemCount: list.length,
+                  itemCount: list.length + (!searching && !isTrash ? 1 : 0),
                   separatorBuilder: (_, _) => const SizedBox(height: spaceSm),
                   itemBuilder: (context, index) {
+                    if (index == list.length) {
+                      return FilledButton.icon(
+                        onPressed: _newNote,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('笔记'),
+                      );
+                    }
                     final note = list[index];
                     if (isTrash) {
                       return _trashCard(note);
                     }
                     return NoteCard(
                       note: note,
-                      notebookName: state.notebookName(note.notebookId),
-                      notebookColor: Color(state.notebookColor(note.notebookId)),
                       highlight: searching ? _searchController.text.trim() : null,
                       selected: dense && note.id == state.openNoteId,
                       dense: dense,
