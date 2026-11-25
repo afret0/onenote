@@ -8,6 +8,7 @@ import 'package:onenote/data/app_db.dart';
 import 'package:onenote/main.dart';
 import 'package:onenote/state/app_state.dart';
 import 'package:onenote/ui/home_page.dart';
+import 'package:onenote/ui/markdown_view.dart';
 import 'package:onenote/ui/note_view.dart';
 import 'package:onenote/ui/theme.dart';
 import 'package:onenote/ui/widgets.dart';
@@ -290,5 +291,85 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(sidebarDivider).dx, 400);
     expect(tester.getTopLeft(listDivider).dx - 400 - 8, 480);
+  });
+
+  testWidgets('task list renders checkboxes and taps report post-order ordinals',
+      (WidgetTester tester) async {
+    final ordinals = <int>[];
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: Scaffold(
+        body: MarkdownView(
+          content: '- [ ] parent\n  - [x] child\n\n- [ ] second',
+          onToggleTask: ordinals.add,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('•'), findsNothing);
+    expect(find.byIcon(Icons.check_box), findsOneWidget);
+    expect(find.byIcon(Icons.check_box_outline_blank), findsNWidgets(2));
+
+    await tester.tap(find.byIcon(Icons.check_box_outline_blank).at(0));
+    await tester.tap(find.byIcon(Icons.check_box_outline_blank).at(1));
+    await tester.tap(find.byIcon(Icons.check_box));
+    expect(ordinals, [1, 2, 0]);
+  });
+
+  testWidgets('tapping a rendered todo toggles the source and autosaves',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_widget_test');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    late Note note;
+    await tester.runAsync(() async {
+      final book = await db.createNotebook('work');
+      note = await db.createNote(book.id,
+          title: 'todos', content: '- [ ] todo a\n\n- [ ] todo b');
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.check_box_outline_blank), findsNWidgets(2));
+    await tester.tap(find.byIcon(Icons.check_box_outline_blank).at(0));
+    await tester.pump();
+    expect(find.byIcon(Icons.check_box), findsOneWidget);
+
+    now += 1000;
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final saved = await db.getNote(note.id);
+      expect(saved.content, '- [x] todo a\n\n- [ ] todo b');
+    });
+
+    await tester.tap(find.byIcon(Icons.check_box));
+    await tester.pump();
+    now += 1000;
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final saved = await db.getNote(note.id);
+      expect(saved.content, '- [ ] todo a\n\n- [ ] todo b');
+    });
   });
 }

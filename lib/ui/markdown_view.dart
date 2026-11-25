@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../data/attachment_store.dart';
+import '../data/markdown_tasks.dart';
 import 'attachment_image.dart';
 import 'theme.dart';
 
@@ -11,11 +12,13 @@ class MarkdownView extends StatelessWidget {
     required this.content,
     this.attachments,
     this.onAttachmentLink,
+    this.onToggleTask,
   });
 
   final String content;
   final AttachmentStore? attachments;
   final void Function(String id)? onAttachmentLink;
+  final void Function(int ordinal)? onToggleTask;
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +52,23 @@ class MarkdownView extends StatelessWidget {
       color: t.ink,
     );
     final store = attachments;
+    final toggle = onToggleTask;
+    final taskCount = toggle == null ? 0 : markdownTaskStates(content).length;
+    var checkboxCalls = 0;
     return MarkdownBody(
       data: content,
       selectable: true,
+      blockSyntaxes: markdownTaskBlockSyntaxes,
+      checkboxBuilder: (checked) {
+        if (toggle == null || taskCount == 0) {
+          return _TaskCheckbox(checked: checked);
+        }
+        final ordinal = checkboxCalls++ % taskCount;
+        return _TaskCheckbox(
+          checked: checked,
+          onTap: () => toggle(ordinal),
+        );
+      },
       builders: store == null
           ? const {}
           : {'img': AttachmentImageBuilder(store)},
@@ -108,6 +125,36 @@ class MarkdownView extends StatelessWidget {
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));
       },
+    );
+  }
+}
+
+class _TaskCheckbox extends StatelessWidget {
+  const _TaskCheckbox({required this.checked, this.onTap});
+
+  final bool checked;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = inkOf(context);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: Center(
+            child: Icon(
+              checked ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 18,
+              color: t.accent,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

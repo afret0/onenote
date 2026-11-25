@@ -11,6 +11,7 @@ import 'package:pasteboard/pasteboard.dart';
 
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
+import '../data/markdown_tasks.dart';
 import '../state/app_state.dart';
 import 'dialogs.dart';
 import 'markdown_view.dart';
@@ -129,6 +130,24 @@ class _NoteViewState extends State<NoteView> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _toggleTask(int ordinal) {
+    final note = _note;
+    if (note == null) {
+      return;
+    }
+    final content = _contentController.text;
+    final position = markdownTaskMarkerPosition(content, ordinal);
+    if (position == null) {
+      return;
+    }
+    final updated = toggleMarkdownTaskAt(content, position);
+    setState(() {
+      _note = note.copyWith(content: updated);
+      _contentController.text = updated;
+    });
+    _changed();
   }
 
   void _insertText(String text) {
@@ -462,6 +481,7 @@ class _NoteViewState extends State<NoteView> {
                             content: note.content,
                             attachments: state.attachments,
                             onAttachmentLink: _openAttachment,
+                            onToggleTask: _toggleTask,
                           ),
                         ],
                       ),

@@ -19,6 +19,7 @@
 
 - 层级两级：笔记本 → 笔记；**非空笔记本禁止删除**（回收站里的笔记也算非空）。
 - 笔记默认渲染（flutter_markdown_plus），点「编辑」才进源码编辑；**进入编辑前先同步一次**（同步引擎未落地，失败时放行离线编辑）。无 vim。
+- **todo 清单（2026-11-25 用户拍板）**：`- [ ]`/`- [x]` 渲染为复选框而非圆点；渲染态点复选框切换 `[ ]`↔`[x]` 写回源码，走既有 800ms 防抖自动保存（内容变化按 saveNote 语义记版本）；点击热区仅复选框本身，正文保持可选中。序号 = li 后序遍历（嵌套列表子先父后），与 checkboxBuilder 调用序一致；源码行定位用「逐候选行翻转重解析、比对哪个序号状态变化」的 oracle 法，天然跳过代码块里的似任务行。
 - 保存自动落库（800ms 防抖 + 完成/返回时保存）；`AppDb.saveNote` 先比对 title+content，**内容不变绝不记版本**。
 - 版本历史仅存本地（省同步流量），保留 90 天；回收站软删除保留 90 天。两者天数可在设置页改（settings 表 `versionRetentionDays` / `trashRetentionDays`，缺省 90）。清理在启动 + 轮询时顺带跑（`AppDb.purgeExpired`）。
 - 搜索默认全部笔记本，可多选范围（settings 表 `searchScope`，逗号分隔 id，**空 = 全部**）；回收站笔记不进搜索结果。
@@ -41,6 +42,7 @@
 
 - `lib/data/app_db.dart`：drift 表（Notebooks/Notes/NoteVersions/Settings）与全部业务语义；时间戳一律毫秒 int，可注入 clock 便于测试；`allAttachmentRefs` 扫笔记 + 全部版本供附件 GC。
 - `lib/data/attachment_store.dart`：附件内容寻址存储 + GC（`forTest` 构造可注入目录）。
+- `lib/data/markdown_tasks.dart`：todo 解析/切换纯逻辑（`markdownTaskBlockSyntaxes`、`markdownTaskStates`、`markdownTaskMarkerPosition`、`toggleMarkdownTaskAt`），可普通 `test()` 直测。
 - `lib/state/app_state.dart`：列表/作用域/搜索范围状态、附件 store 生命周期、`notebookColor`。
 - `lib/window_metrics.dart`：窗口尺寸纯计算（`scaledDefaultWindowSize`/`fitWindowSize`/`parseWindowSize`/`formatWindowSize` + 常量），无平台依赖，表驱动单测在 `test/window_metrics_test.dart`。
 - `lib/window_setup.dart`：`WindowSizeController`（桌面启动设尺寸 + 事件防抖落库），`main()` 里 `isDesktopWindow` 时创建并 `await init()` 再 runApp，`OneNoteApp` dispose 时释放。
@@ -63,6 +65,7 @@ flutter build web --release                                # web 产物在 build
 - 测试里 `find.text` 会同时命中侧栏 ScopeTile、笔记卡标题/预览、正文——用 `find.widgetWithText(ScopeTile/NoteCard, ...)` 或限定 `find.descendant(of: find.byType(NoteView), ...)`；同毫秒 createAt/updateAt 导致列表排序不稳定，务必注入 clock 且每次写入 `now += 1000`。
 - 字体已实例化为静态字重放 `assets/fonts/`（Inter 400-700、JetBrainsMono 400/500/700，OFL 许可同目录）；中文走系统字体 fallback 链（theme.dart），不内置 CJK 字体。标题用系统 serif（Georgia/Songti）营造编辑感。
 - 平台图标由 logo 源图缩放生成（mac appiconset / android mipmap / web icons / windows ico），换 logo 时全平台同步重生成。
+- **flutter_markdown_plus 只认 li 首子节点为 input 的复选框**：loose 列表（项间有空行）里 markdown 包把 input 塞进 p 内，退化成圆点且吞掉 `[ ]` 文本——必须传 `markdownTaskBlockSyntaxes` 把 input 提升回 li 首子。`checkboxBuilder` 只给 checked 不给序号：序号按 li 后序自计（嵌套子先父后），并对总数取模防 didChangeDependencies 重解析时计数续增。
 - **本机 pub.dev 直连超时**：每次 bash 装包/解析都要 `export PUB_HOSTED_URL=https://pub.flutter-io.cn`（shell profile 没持久化，bash 工具每条命令新进程不保留 env）。
 - **窗口管理用 window_manager 0.6.x（nativeapi/FFI 底座）**：0.5.x 旧 API 已移入 `legacy.dart` 且废弃。新 API：`WindowManager.instance.getCurrent()/getAll()`（同步 FFI）、事件 `window.addListener((WindowEvent e){...})` 返回 `ListenerId`；`DisplayManager` 不被 window_manager 导出，需要 `import 'package:nativeapi/nativeapi.dart'`；`Rectangle`/`Size` 也不导出，用 `.toSize()/.toNative()` 转换或直接 `na.Rectangle`。窗口逻辑只能放 `main()` 路径（`flutter test` 里 `Platform.isMacOS` 为 true，测试 pump `OneNoteApp` 不传 controller 即安全）。
 - **macOS 隐藏启动（`visibleAtLaunch="NO"`）必须强制加载视图否则引擎不启动**：NSWindow 不加载 contentViewController.view → FlutterViewController 引擎只在视图加载/出现时启动 → Dart main 永不执行（`sample <pid>` 看不到 Flutter 线程）。`MainFlutterWindow.awakeFromNib` 里 `_ = flutterViewController.view` + `flutterViewController.viewWillAppear()`（`loadViewIfNeeded()` 需 macOS 14+，项目 target 12.0 不能用）。
