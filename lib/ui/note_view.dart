@@ -66,6 +66,7 @@ class NoteViewState extends State<NoteView> {
   bool _tocVisible = true;
   int _tocActive = -1;
   final GlobalKey _renderViewportKey = GlobalKey();
+  final GlobalKey _navAreaKey = GlobalKey();
   final GlobalKey _navKey = GlobalKey();
   Size _navSize = const Size(200, 52);
   Offset? _navPos;
@@ -129,7 +130,7 @@ class NoteViewState extends State<NoteView> {
   void _dragNav(Offset delta) {
     final bar = _navKey.currentContext?.findRenderObject() as RenderBox?;
     final area =
-        _renderViewportKey.currentContext?.findRenderObject() as RenderBox?;
+        _navAreaKey.currentContext?.findRenderObject() as RenderBox?;
     if (bar == null || area == null) {
       return;
     }
@@ -165,7 +166,7 @@ class NoteViewState extends State<NoteView> {
     });
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool jumpToFirstMatch = true}) async {
     final note = await state.db.getNote(widget.noteId);
     if (!mounted) {
       return;
@@ -175,7 +176,9 @@ class NoteViewState extends State<NoteView> {
       _titleController.text = note.title;
       _contentController.text = note.content;
     });
-    _scheduleFirstMatch();
+    if (jumpToFirstMatch) {
+      _scheduleFirstMatch();
+    }
   }
 
   @override
@@ -248,7 +251,27 @@ class NoteViewState extends State<NoteView> {
     if (_editing || _dirty || _note == null) {
       return;
     }
-    _load();
+    _reloadNote();
+  }
+
+  Future<void> _reloadNote() async {
+    final fresh = await state.db.getNote(widget.noteId);
+    if (!mounted) {
+      return;
+    }
+    final current = _note;
+    if (current != null &&
+        current.title == fresh.title &&
+        current.content == fresh.content &&
+        current.updateAt == fresh.updateAt &&
+        current.notebookId == fresh.notebookId) {
+      return;
+    }
+    setState(() {
+      _note = fresh;
+      _titleController.text = fresh.title;
+      _contentController.text = fresh.content;
+    });
   }
 
   Future<void> _enterEdit() async {
@@ -1028,7 +1051,6 @@ class NoteViewState extends State<NoteView> {
                                     highlightActiveIndex: _matchIndex,
                                     highlightController: _highlight,
                                     tocController: _toc,
-                                    tint: tocTint,
                                   ),
                                 ],
                               ),
@@ -1041,7 +1063,7 @@ class NoteViewState extends State<NoteView> {
                               alignment: Alignment.topRight,
                               child: Padding(
                                 padding: const EdgeInsets.only(top: spaceLg),
-                                child: _editButton(t, tocTint),
+                                child: _editButton(t),
                               ),
                             ),
                           ),
@@ -1074,14 +1096,47 @@ class NoteViewState extends State<NoteView> {
                               ),
                             ),
                           ),
-                        if (!_editing && _highlight.matches.isNotEmpty)
+                      ],
+                    );
+                    final Widget body = showTocColumn
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(child: renderArea),
+                              Container(
+                                width: noteTocWidth,
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                      left: BorderSide(color: t.hairline)),
+                                ),
+                                child: NoteTocPanel(
+                                  entries: tocEntries,
+                                  activeIndex: _tocActive,
+                                  tint: tocTint,
+                                  onTap: _jumpToTocEntry,
+                                ),
+                              ),
+                            ],
+                          )
+                        : renderArea;
+                    return Stack(
+                      key: _navAreaKey,
+                      fit: StackFit.expand,
+                      children: [
+                        body,
+                        if (_highlight.matches.isNotEmpty)
                           Positioned.fill(
                             child: LayoutBuilder(
                               builder: (context, constraints) {
                                 final area = constraints.biggest;
                                 final bar = _navSize;
+                                final contentArea = Size(
+                                    area.width -
+                                        (showTocColumn ? noteTocWidth : 0.0),
+                                    area.height);
                                 final pos = _clampNav(
-                                    _navPos ?? _defaultNavPos(area, bar),
+                                    _navPos ??
+                                        _defaultNavPos(contentArea, bar),
                                     area,
                                     bar);
                                 WidgetsBinding.instance
@@ -1106,28 +1161,6 @@ class NoteViewState extends State<NoteView> {
                               },
                             ),
                           ),
-                      ],
-                    );
-                    if (!showTocColumn) {
-                      return renderArea;
-                    }
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: renderArea),
-                        Container(
-                          width: noteTocWidth,
-                          decoration: BoxDecoration(
-                            border:
-                                Border(left: BorderSide(color: t.hairline)),
-                          ),
-                          child: NoteTocPanel(
-                            entries: tocEntries,
-                            activeIndex: _tocActive,
-                            tint: tocTint,
-                            onTap: _jumpToTocEntry,
-                          ),
-                        ),
                       ],
                     );
                   },
@@ -1180,7 +1213,7 @@ class NoteViewState extends State<NoteView> {
     );
   }
 
-  Widget _editButton(InkTokens t, Color tint) {
+  Widget _editButton(InkTokens t) {
     return Padding(
       padding: const EdgeInsets.only(right: spaceXs),
       child: SizedBox(
@@ -1194,10 +1227,8 @@ class NoteViewState extends State<NoteView> {
               SystemMouseCursors.click,
             ),
             backgroundColor: WidgetStatePropertyAll(t.paper),
-            foregroundColor:
-                WidgetStatePropertyAll(readableOn(tint, t.paper)),
-            overlayColor:
-                WidgetStatePropertyAll(tint.withValues(alpha: 0.08)),
+            foregroundColor: WidgetStatePropertyAll(t.accentText),
+            overlayColor: WidgetStatePropertyAll(t.accentSoft),
             side: WidgetStatePropertyAll(
               BorderSide(color: t.hairline),
             ),
