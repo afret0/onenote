@@ -235,8 +235,8 @@ class AppDb extends _$AppDb {
                 'done, v3 迁移按新色板重排笔记本颜色, notebookCount: ${rows.length}');
           }
           if (from < 4) {
-            await m.addColumn(notebooks, notebooks.sortKey);
-            await m.addColumn(notes, notes.sortKey);
+            await _addColumnIfAbsent(m, notebooks, notebooks.sortKey);
+            await _addColumnIfAbsent(m, notes, notes.sortKey);
           }
           if (from < 5) {
             await m.createTable(syncState);
@@ -247,11 +247,25 @@ class AppDb extends _$AppDb {
                 'ON note_versions (note_id)');
           }
           if (from < 6) {
-            await m.addColumn(notebooks, notebooks.lock);
-            await m.addColumn(notes, notes.lock);
+            await _addColumnIfAbsent(m, notebooks, notebooks.lock);
+            await _addColumnIfAbsent(m, notes, notes.lock);
           }
         },
       );
+
+  Future<void> _addColumnIfAbsent(
+      Migrator m, TableInfo table, GeneratedColumn column) async {
+    final rows = await customSelect(
+            'PRAGMA table_info(${table.aliasedName})')
+        .get();
+    final exists = rows.any((r) => r.data['name'] == column.name);
+    if (exists) {
+      developer.log(
+          'skip, 迁移加列跳过, 列已存在(历史迁移中断留下的中间态), table: ${table.aliasedName}, column: ${column.name}');
+      return;
+    }
+    await m.addColumn(table, column);
+  }
 
   Future<Notebook> createNotebook(String name) async {
     final now = clock();

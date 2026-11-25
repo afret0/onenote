@@ -205,6 +205,44 @@ void main() {
         [notebookPalette[0], notebookPalette[1], notebookPalette[2]]);
   });
 
+  test('v6 migration self-heals when lock columns already exist at version 5',
+      () async {
+    final interrupted = NativeDatabase.memory(setup: (raw) {
+      raw.execute('CREATE TABLE notebooks (id TEXT NOT NULL PRIMARY KEY, '
+          'name TEXT NOT NULL, color INTEGER NOT NULL DEFAULT 4287837674, '
+          'create_at INTEGER NOT NULL, update_at INTEGER NOT NULL, '
+          'sort_key INTEGER NULL, lock TEXT NULL)');
+      raw.execute('CREATE TABLE notes (id TEXT NOT NULL PRIMARY KEY, '
+          'notebook_id TEXT NOT NULL REFERENCES notebooks (id), '
+          'title TEXT NOT NULL, content TEXT NOT NULL, '
+          'create_at INTEGER NOT NULL, update_at INTEGER NOT NULL, '
+          'deleted_at INTEGER NULL, sort_key INTEGER NULL, lock TEXT NULL)');
+      raw.execute('CREATE TABLE note_versions (id TEXT NOT NULL PRIMARY KEY, '
+          'note_id TEXT NOT NULL REFERENCES notes (id), '
+          'title TEXT NOT NULL, content TEXT NOT NULL, '
+          'create_at INTEGER NOT NULL)');
+      raw.execute('CREATE TABLE settings (key TEXT NOT NULL PRIMARY KEY, '
+          'value TEXT NOT NULL)');
+      raw.execute('CREATE TABLE sync_state (id TEXT NOT NULL PRIMARY KEY, '
+          'kind TEXT NOT NULL, base_json TEXT NOT NULL, '
+          'synced_at INTEGER NOT NULL)');
+      raw.execute('CREATE TABLE sync_conflicts (note_id TEXT NOT NULL '
+          'PRIMARY KEY, json TEXT NOT NULL, create_at INTEGER NOT NULL)');
+      raw.execute('CREATE TABLE tombstones (id TEXT NOT NULL PRIMARY KEY, '
+          'kind TEXT NOT NULL, deleted_at INTEGER NOT NULL)');
+      raw.execute('CREATE INDEX note_versions_note_id '
+          'ON note_versions (note_id)');
+      raw.execute('PRAGMA user_version = 5');
+    });
+    final healed = AppDb(interrupted, clock: () => now);
+    addTearDown(healed.close);
+    final notebook = await healed.createNotebook('work');
+    final note =
+        await healed.createNote(notebook.id, title: 't', content: 'body');
+    expect((await healed.listNotes(notebookId: notebook.id)).single.id,
+        note.id);
+  });
+
   test('attachment refs cover live notes, trash and history versions', () async {
     final idA = 'a' * 64;
     final idB = 'b' * 64;
