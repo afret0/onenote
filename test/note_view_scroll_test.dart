@@ -163,4 +163,22 @@ void main() {
     expect(upRight, moreOrLessEquals(editRight, epsilon: 1));
     expect(upRight, lessThan(viewportWidth - spaceLg));
   });
+
+  testWidgets('edit button stays visible and usable after scrolling down',
+      (tester) async {
+    final content = List.generate(150, (i) => 'line $i').join('\n\n');
+    final (state, note) = await seed(tester, content);
+    await tester.pumpWidget(app(state, note));
+    await tester.pumpAndSettle();
+
+    final controller = renderScroll(tester).controller!;
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    final edit = find.byIcon(Icons.edit_outlined);
+    expect(edit, findsOneWidget);
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+    expect(find.text('完成'), findsOneWidget);
+  });
 }

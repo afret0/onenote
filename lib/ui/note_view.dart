@@ -586,7 +586,7 @@ class _NoteViewState extends State<NoteView> {
                               Padding(
                                 padding:
                                     const EdgeInsets.only(bottom: spaceLg),
-                                child: _metaRow(note, _editButton(t)),
+                                child: _metaRow(note),
                               ),
                               MarkdownView(
                                 content: note.content,
@@ -597,6 +597,17 @@ class _NoteViewState extends State<NoteView> {
                                 highlightController: _highlight,
                               ),
                             ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: _readingColumnOverlay(
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: spaceLg),
+                            child: _editButton(t),
                           ),
                         ),
                       ),
@@ -647,6 +658,7 @@ class _NoteViewState extends State<NoteView> {
             mouseCursor: const WidgetStatePropertyAll(
               SystemMouseCursors.click,
             ),
+            backgroundColor: WidgetStatePropertyAll(t.paper),
             foregroundColor: WidgetStatePropertyAll(t.accentText),
             overlayColor: WidgetStatePropertyAll(t.accentSoft),
             side: WidgetStatePropertyAll(
@@ -664,7 +676,7 @@ class _NoteViewState extends State<NoteView> {
     );
   }
 
-  Widget _metaRow(Note note, Widget trailing) {
+  Widget _metaRow(Note note, [Widget? trailing]) {
     return Row(
       children: [
         Container(
@@ -680,8 +692,7 @@ class _NoteViewState extends State<NoteView> {
         const SizedBox(width: spaceMd),
         Text(formatDateTime(note.updateAt),
             style: Theme.of(context).textTheme.labelSmall),
-        const Spacer(),
-        trailing,
+        if (trailing != null) ...[const Spacer(), trailing],
       ],
     );
   }
