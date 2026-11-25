@@ -744,8 +744,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _SettingCard(children: [
             _DisabledRow(
                 icon: Icons.enhanced_encryption_outlined,
-                title: '内容加密',
-                subtitle: '笔记正文端到端加密（密码锁定与隐私空间已上线）'),
+                title: '正文端到端加密',
+                subtitle: '正文加密后再上云，与已上线的密码锁、隐私空间无关'),
           ]),
         ]),
         _group([
