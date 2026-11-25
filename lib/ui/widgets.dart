@@ -37,6 +37,18 @@ String notePreview(String content) {
   return lines.take(3).join(' ');
 }
 
+Color notebookTint(BuildContext context, Color color, double level) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  final alpha = dark ? 0.16 + 0.10 * level : 0.10 + 0.08 * level;
+  return Color.alphaBlend(
+      color.withValues(alpha: alpha), inkOf(context).surface);
+}
+
+Color notebookTintBorder(BuildContext context, Color color, double level) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return color.withValues(alpha: (dark ? 0.45 : 0.40) + 0.25 * level);
+}
+
 class BrandMark extends StatelessWidget {
   const BrandMark({super.key, this.size = 32});
 
@@ -77,12 +89,15 @@ class ScopeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
+    final base = dotColor == null
+        ? null
+        : notebookTint(context, dotColor!, selected ? 2 : 0);
     return AnimatedContainer(
       duration: motionFast,
       curve: motionCurve,
       margin: const EdgeInsets.only(bottom: 2),
       decoration: BoxDecoration(
-        color: selected ? t.accentSoft : Colors.transparent,
+        color: base ?? (selected ? t.accentSoft : Colors.transparent),
         borderRadius: BorderRadius.circular(radiusMd),
       ),
       child: GestureDetector(
@@ -93,6 +108,10 @@ class ScopeTile extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(radiusMd),
+            overlayColor: dotColor == null
+                ? null
+                : WidgetStatePropertyAll(
+                    dotColor!.withValues(alpha: 0.10)),
             onTap: onTap,
             onSecondaryTapUp: onContext == null
                 ? null
@@ -147,6 +166,7 @@ class NoteCard extends StatelessWidget {
     required this.note,
     required this.onTap,
     this.onContext,
+    this.tintColor,
     this.highlight,
     this.selected = false,
     this.dense = false,
@@ -155,6 +175,7 @@ class NoteCard extends StatelessWidget {
   final Note note;
   final VoidCallback onTap;
   final void Function(Offset globalPosition)? onContext;
+  final Color? tintColor;
   final String? highlight;
   final bool selected;
   final bool dense;
@@ -163,15 +184,22 @@ class NoteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = inkOf(context);
     final title = note.title.trim().isEmpty ? '无标题' : note.title.trim();
+    final tint = tintColor == null
+        ? null
+        : notebookTint(context, tintColor!, selected ? 2 : 0);
     return GestureDetector(
       onLongPressStart: onContext == null
           ? null
           : (details) => onContext!(details.globalPosition),
       child: Material(
-        color: selected ? t.accentSoft : t.surface,
+        color: tint ?? (selected ? t.accentSoft : t.surface),
         borderRadius: BorderRadius.circular(radiusMd),
         child: InkWell(
           borderRadius: BorderRadius.circular(radiusMd),
+          overlayColor: tintColor == null
+              ? null
+              : WidgetStatePropertyAll(
+                  tintColor!.withValues(alpha: 0.10)),
           onTap: onTap,
           onSecondaryTapUp: onContext == null
               ? null
@@ -179,7 +207,13 @@ class NoteCard extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(radiusMd),
-              border: Border.all(color: selected ? t.accent : t.hairline),
+              border: Border.all(
+                color: tintColor != null
+                    ? notebookTintBorder(context, tintColor!, selected ? 1 : 0)
+                    : selected
+                        ? t.accent
+                        : t.hairline,
+              ),
             ),
             padding: dense
                 ? const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm)

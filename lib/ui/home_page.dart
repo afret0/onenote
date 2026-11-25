@@ -6,6 +6,7 @@ import '../data/app_db.dart';
 import '../state/app_state.dart';
 import 'dialogs.dart';
 import 'note_view.dart';
+import 'notebook_color_picker.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -58,6 +59,7 @@ class _HomePageState extends State<HomePage> {
       ),
       items: const [
         PopupMenuItem(value: 'rename', child: Text('重命名')),
+        PopupMenuItem(value: 'color', child: Text('自定义背景色')),
         PopupMenuItem(value: 'delete', child: Text('删除')),
       ],
     );
@@ -66,8 +68,17 @@ class _HomePageState extends State<HomePage> {
     }
     if (value == 'rename') {
       await _renameNotebook(notebook);
+    } else if (value == 'color') {
+      await _customizeNotebookColor(notebook);
     } else if (value == 'delete') {
       await _deleteNotebook(notebook);
+    }
+  }
+
+  Future<void> _customizeNotebookColor(Notebook notebook) async {
+    final color = await pickNotebookColor(context, initial: notebook.color);
+    if (color != null) {
+      await state.setNotebookColor(notebook.id, color);
     }
   }
 
@@ -554,6 +565,7 @@ class _HomePageState extends State<HomePage> {
                     }
                     return NoteCard(
                       note: note,
+                      tintColor: Color(state.notebookColor(note.notebookId)),
                       highlight: searching
                           ? _searchController.text.trim()
                           : null,
@@ -628,6 +640,7 @@ class _HomePageState extends State<HomePage> {
         final note = entry.note!;
         return NoteCard(
           note: note,
+          tintColor: Color(state.notebookColor(note.notebookId)),
           highlight: _searchController.text.trim(),
           selected: dense && note.id == state.openNoteId,
           dense: dense,

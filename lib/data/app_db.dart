@@ -21,13 +21,13 @@ class Notebooks extends Table {
 
 const notebookPalette = [
   0xFF9333EA,
-  0xFF0E7490,
+  0xFF16A34A,
+  0xFFEA580C,
   0xFF2563EB,
-  0xFF7C3AED,
   0xFFDB2777,
-  0xFFD97706,
+  0xFF0D9488,
+  0xFFCA8A04,
   0xFFDC2626,
-  0xFF64748B,
 ];
 
 class Notes extends Table {
@@ -107,7 +107,7 @@ class AppDb extends _$AppDb {
       );
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -125,6 +125,18 @@ class AppDb extends _$AppDb {
                   .write(NotebooksCompanion(
                       color: Value(notebookPalette[i % notebookPalette.length])));
             }
+          }
+          if (from < 3) {
+            final rows = await (select(notebooks)
+                  ..orderBy([(t) => OrderingTerm.asc(t.createAt)]))
+                .get();
+            for (var i = 0; i < rows.length; i++) {
+              await (update(notebooks)..where((t) => t.id.equals(rows[i].id)))
+                  .write(NotebooksCompanion(
+                      color: Value(notebookPalette[i % notebookPalette.length])));
+            }
+            developer.log(
+                'done, v3 迁移按新色板重排笔记本颜色, notebookCount: ${rows.length}');
           }
         },
       );
@@ -147,6 +159,19 @@ class AppDb extends _$AppDb {
   Future<void> renameNotebook(String id, String name) async {
     await (update(notebooks)..where((t) => t.id.equals(id))).write(
         NotebooksCompanion(name: Value(name), updateAt: Value(clock())));
+  }
+
+  Future<void> setNotebookColor(String id, int color) async {
+    final row =
+        await (select(notebooks)..where((t) => t.id.equals(id))).getSingle();
+    if (row.color == color) {
+      developer.log('skip, 笔记本颜色未变更不写入, notebookId: $id');
+      return;
+    }
+    await (update(notebooks)..where((t) => t.id.equals(id))).write(
+        NotebooksCompanion(color: Value(color), updateAt: Value(clock())));
+    developer.log(
+        'done, 笔记本颜色已更新, notebookId: $id, old: ${row.color}, new: $color');
   }
 
   Future<void> deleteNotebook(String id) async {

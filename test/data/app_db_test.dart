@@ -144,6 +144,49 @@ void main() {
     }
   });
 
+  test('setNotebookColor bumps updateAt and skips unchanged value', () async {
+    final notebook = await db.createNotebook('work');
+    now += 1000;
+    await db.setNotebookColor(notebook.id, 0xFF00FF00);
+    var row = (await db.listNotebooks()).single;
+    expect(row.color, 0xFF00FF00);
+    expect(row.updateAt, now);
+    now += 1000;
+    await db.setNotebookColor(notebook.id, 0xFF00FF00);
+    row = (await db.listNotebooks()).single;
+    expect(row.updateAt, now - 1000);
+  });
+
+  test('v3 migration reassigns legacy colors in createAt order', () async {
+    final legacy = NativeDatabase.memory(setup: (raw) {
+      raw.execute('CREATE TABLE notebooks (id TEXT NOT NULL PRIMARY KEY, '
+          'name TEXT NOT NULL, color INTEGER NOT NULL DEFAULT 4287837674, '
+          'create_at INTEGER NOT NULL, update_at INTEGER NOT NULL)');
+      raw.execute('CREATE TABLE notes (id TEXT NOT NULL PRIMARY KEY, '
+          'notebook_id TEXT NOT NULL REFERENCES notebooks (id), '
+          'title TEXT NOT NULL, content TEXT NOT NULL, '
+          'create_at INTEGER NOT NULL, update_at INTEGER NOT NULL, '
+          'deleted_at INTEGER NULL)');
+      raw.execute('CREATE TABLE note_versions (id TEXT NOT NULL PRIMARY KEY, '
+          'note_id TEXT NOT NULL REFERENCES notes (id), '
+          'title TEXT NOT NULL, content TEXT NOT NULL, '
+          'create_at INTEGER NOT NULL)');
+      raw.execute('CREATE TABLE settings (key TEXT NOT NULL PRIMARY KEY, '
+          'value TEXT NOT NULL)');
+      raw.execute('INSERT INTO notebooks (id, name, color, create_at, update_at) '
+          "VALUES ('c', 'late', ${0xFF9333EA}, 30, 30), "
+          "('a', 'early', ${0xFF0E7490}, 10, 10), "
+          "('b', 'mid', ${0xFF2563EB}, 20, 20)");
+      raw.execute('PRAGMA user_version = 2');
+    });
+    final migrated = AppDb(legacy, clock: () => now);
+    addTearDown(migrated.close);
+    final rows = await migrated.listNotebooks();
+    expect([for (final r in rows) r.id], ['a', 'b', 'c']);
+    expect([for (final r in rows) r.color],
+        [notebookPalette[0], notebookPalette[1], notebookPalette[2]]);
+  });
+
   test('attachment refs cover live notes, trash and history versions', () async {
     final idA = 'a' * 64;
     final idB = 'b' * 64;

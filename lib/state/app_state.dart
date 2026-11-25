@@ -189,6 +189,11 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
+  Future<void> setNotebookColor(String id, int color) async {
+    await db.setNotebookColor(id, color);
+    await refresh();
+  }
+
   Future<void> deleteNotebook(String id) async {
     await db.deleteNotebook(id);
     lastOpenNote.remove(id);

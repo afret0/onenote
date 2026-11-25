@@ -372,4 +372,16 @@ void main() {
     expect(state.narrowStartup, AppState.narrowStartupNote);
     expect(await db.getSetting(AppDb.narrowStartupKey), isNull);
   });
+
+  test('setNotebookColor refreshes notebook list and lookup', () async {
+    final work = await db.createNotebook('work');
+    await state.init();
+    var notified = 0;
+    state.addListener(() => notified++);
+    await state.setNotebookColor(work.id, 0xFF16A34A);
+    expect(state.notebookColor(work.id), 0xFF16A34A);
+    expect(state.notebooks.single.color, 0xFF16A34A);
+    expect(notified, greaterThan(0));
+    expect((await db.listNotebooks()).single.color, 0xFF16A34A);
+  });
 }
