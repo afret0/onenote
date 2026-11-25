@@ -616,7 +616,21 @@ class NoteViewState extends State<NoteView> {
 
   Widget _replacePanel(InkTokens t) {
     final count = _findMatches.length;
-    return Container(
+    final tint = Color(state.notebookColor(_note!.notebookId));
+    final inkAlt = readableOn(tint, t.surfaceAlt);
+    final selAlt =
+        readableOn(tint, t.surfaceAlt, ratio: 3).withValues(alpha: 0.4);
+    final focusedBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(radiusMd),
+      borderSide: BorderSide(color: inkAlt, width: 1.5),
+    );
+    final linkStyle = ButtonStyle(
+      foregroundColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.disabled)
+              ? t.ink.withValues(alpha: 0.38)
+              : inkAlt),
+    );
+    final panel = Container(
       key: const ValueKey('replacePanel'),
       decoration: BoxDecoration(
         color: t.surfaceAlt,
@@ -635,9 +649,10 @@ class NoteViewState extends State<NoteView> {
                     setState(() => _refreshFindMatches(null));
                     _selectFindMatch();
                   },
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: '查找（区分大小写）',
                     isDense: true,
+                    focusedBorder: focusedBorder,
                   ),
                 ),
               ),
@@ -667,25 +682,32 @@ class NoteViewState extends State<NoteView> {
               Expanded(
                 child: TextField(
                   controller: _replaceController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: '替换为',
                     isDense: true,
+                    focusedBorder: focusedBorder,
                   ),
                 ),
               ),
               const SizedBox(width: spaceSm),
               TextButton(
                 onPressed: count == 0 ? null : _replaceCurrent,
+                style: linkStyle,
                 child: const Text('替换'),
               ),
               TextButton(
                 onPressed: count == 0 ? null : _replaceAll,
+                style: linkStyle,
                 child: const Text('全部替换'),
               ),
             ],
           ),
         ],
       ),
+    );
+    return TextSelectionTheme(
+      data: TextSelectionThemeData(cursorColor: inkAlt, selectionColor: selAlt),
+      child: panel,
     );
   }
 
@@ -816,6 +838,10 @@ class NoteViewState extends State<NoteView> {
 
   Widget _editorArea() {
     final t = inkOf(context);
+    final tint = Color(state.notebookColor(_note!.notebookId));
+    final fill = readableOn(tint, t.paper, ratio: 3);
+    final ink = readableOn(tint, t.paper);
+    final onFill = readableOn(t.onAccent, fill);
     final editor = Container(
       color: t.paper,
       padding: const EdgeInsets.symmetric(horizontal: spaceSm),
@@ -865,10 +891,34 @@ class NoteViewState extends State<NoteView> {
                         onPressed: () => _pickFiles(image: false),
                         icon: const Icon(Icons.attach_file),
                       ),
-                      FilledButton.icon(
-                        onPressed: _exitEdit,
-                        icon: const Icon(Icons.check, size: 18),
-                        label: const Text('完成'),
+                      SizedBox(
+                        height: 40,
+                        width: 48,
+                        child: FilledButton(
+                          onPressed: _exitEdit,
+                          style: ButtonStyle(
+                            padding:
+                                const WidgetStatePropertyAll(EdgeInsets.zero),
+                            mouseCursor: const WidgetStatePropertyAll(
+                              SystemMouseCursors.click,
+                            ),
+                            backgroundColor: WidgetStatePropertyAll(fill),
+                            foregroundColor: WidgetStatePropertyAll(onFill),
+                            overlayColor: WidgetStatePropertyAll(
+                                onFill.withValues(alpha: 0.1)),
+                            shape: WidgetStatePropertyAll(
+                              RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(radiusMd),
+                              ),
+                            ),
+                          ),
+                          child: Semantics(
+                            button: true,
+                            label: '完成',
+                            child: const Icon(Icons.check, size: 18),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -881,8 +931,13 @@ class NoteViewState extends State<NoteView> {
         Expanded(child: editor),
       ],
     );
+    final themed = TextSelectionTheme(
+      data: TextSelectionThemeData(
+          cursorColor: ink, selectionColor: fill.withValues(alpha: 0.4)),
+      child: area,
+    );
     if (kIsWeb) {
-      return area;
+      return themed;
     }
     return DropTarget(
       onDrop: _onDrop,
@@ -896,7 +951,7 @@ class NoteViewState extends State<NoteView> {
             },
           ),
         },
-        child: area,
+        child: themed,
       ),
     );
   }
@@ -966,7 +1021,14 @@ class NoteViewState extends State<NoteView> {
                 ),
               Expanded(
                 child: _editing
-                    ? TextField(
+                    ? TextSelectionTheme(
+                        data: TextSelectionThemeData(
+                          cursorColor: readableOn(tocTint, t.paper),
+                          selectionColor:
+                              readableOn(tocTint, t.paper, ratio: 3)
+                                  .withValues(alpha: 0.4),
+                        ),
+                        child: TextField(
                         controller: _titleController,
                         onChanged: (_) => _changed(),
                         style: _titleStyle(context),
@@ -978,6 +1040,7 @@ class NoteViewState extends State<NoteView> {
                           focusedBorder: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
                               horizontal: spaceSm, vertical: spaceSm),
+                        ),
                         ),
                       )
                     : GestureDetector(

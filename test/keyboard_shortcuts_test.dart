@@ -149,7 +149,7 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('完成'));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.check));
     await tester.pumpAndSettle();
 
     await press(tester, LogicalKeyboardKey.keyF, meta: true);
@@ -228,7 +228,7 @@ void main() {
     expect(find.text('已替换 1 处'), findsOneWidget);
     expect(find.text('0/0'), findsOneWidget);
 
-    await tester.tap(find.text('完成'));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.check));
     await tester.pumpAndSettle();
     expect(replacePanel(), findsNothing);
     final fresh = await db.findNote(note.id);

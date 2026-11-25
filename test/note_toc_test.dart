@@ -230,7 +230,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(NoteTocPanel), findsNothing);
 
-    await tester.tap(find.text('完成'));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.check));
     await tester.pumpAndSettle();
     expect(find.byType(NoteTocPanel), findsOneWidget);
   });

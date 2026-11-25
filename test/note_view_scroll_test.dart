@@ -132,7 +132,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
 
-    expect(find.text('完成'), findsOneWidget);
+    expect(find.widgetWithIcon(FilledButton, Icons.check), findsOneWidget);
     final done = find.byType(FilledButton);
     expect(tester.getTopRight(done).dx, moreOrLessEquals(editRight, epsilon: 1));
     final headerY = tester.getTopLeft(find.byType(TextField).first).dy;
@@ -179,6 +179,32 @@ void main() {
     expect(edit, findsOneWidget);
     await tester.tap(edit);
     await tester.pumpAndSettle();
-    expect(find.text('完成'), findsOneWidget);
+    expect(find.widgetWithIcon(FilledButton, Icons.check), findsOneWidget);
+  });
+
+  testWidgets('edit page accents follow notebook tint and done is icon-only',
+      (tester) async {
+    final (state, note) = await seed(tester, 'hello');
+    const orange = Color(0xFFE8890C);
+    await tester.runAsync(() async {
+      await state.setNotebookColor(note.notebookId, orange.toARGB32());
+    });
+    await tester.pumpWidget(app(state, note));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('完成'), findsNothing);
+    final t = InkTokens.dark;
+    final fill = readableOn(orange, t.paper, ratio: 3);
+    final done = tester.widget<FilledButton>(find.byType(FilledButton));
+    expect(done.style!.backgroundColor!.resolve({}), fill);
+    expect(done.style!.foregroundColor!.resolve({}),
+        readableOn(t.onAccent, fill));
+    final content = tester
+        .widgetList<EditableText>(find.byType(EditableText))
+        .firstWhere((e) => e.maxLines == null);
+    expect(content.cursorColor, readableOn(orange, t.paper));
+    expect(content.selectionColor, fill.withValues(alpha: 0.4));
   });
 }
