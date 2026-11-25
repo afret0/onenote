@@ -122,6 +122,25 @@ void main() {
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
   });
 
+  testWidgets('cmd+f schedules a frame so focus lands while idle',
+      (tester) async {
+    wide(tester);
+    final (state, _, _) = await seed(tester);
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+    await tester.pumpAndSettle();
+    expect(tester.binding.hasScheduledFrame, isFalse);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.pumpAndSettle();
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
+  });
+
   testWidgets('cmd+f still works after leaving edit mode', (tester) async {
     wide(tester);
     final (state, _, _) = await seed(tester);

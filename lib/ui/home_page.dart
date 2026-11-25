@@ -238,6 +238,7 @@ class _HomePageState extends State<HomePage> {
         _searchFocus.requestFocus();
       }
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   void _openSettings() {
