@@ -10,6 +10,7 @@ FLUTTER = os.path.dirname(HERE)
 MAC_SIZES = [16, 32, 64, 128, 256, 512, 1024]
 ANDROID_SIZES = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 ICO_SIZES = [16, 32, 48, 64, 128, 256]
+EXTENSION_SIZES = [16, 48, 128]
 MAC_GRID = 824
 MAC_RADIUS = 185
 LOGO_SIZE = 512
@@ -66,7 +67,11 @@ def main():
     master.save(os.path.join(FLUTTER, "windows", "runner", "resources", "app_icon.ico"),
                 sizes=[(s, s) for s in ICO_SIZES])
 
-    print("generated: logo.png, macos x7, web x5, android x5, windows ico")
+    for s in EXTENSION_SIZES:
+        logo.resize((s, s), Image.NEAREST).save(
+            os.path.join(FLUTTER, "extension", "chrome", "icons", f"icon{s}.png"))
+
+    print("generated: logo.png, macos x7, web x5, android x5, windows ico, extension x3")
 
 
 if __name__ == "__main__":

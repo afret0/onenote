@@ -1,14 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../clip/clip_server.dart';
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
 import '../sync/diff3.dart';
 import '../sync/remote_store.dart';
 import '../sync/sync_engine.dart';
+import '../window_setup.dart' show isDesktopWindow;
 
 enum NoteScopeKind { all, notebook, trash }
 
@@ -49,6 +53,9 @@ class AppState extends ChangeNotifier {
   static const noteFontSizeDefault = 18.0;
   static const narrowStartupNote = 'note';
   static const narrowStartupList = 'list';
+  static const clipPortDefault = 41190;
+  static const clipPortMin = 1024;
+  static const clipPortMax = 65535;
   static const _notebookScopePrefix = 'notebook:';
 
   final AppDb db;
@@ -70,6 +77,11 @@ class AppState extends ChangeNotifier {
   String uiFont = uiFontMiSans;
   double fontScale = fontScaleDefault;
   double noteFontSize = noteFontSizeDefault;
+  bool clipEnabled = false;
+  int clipPort = clipPortDefault;
+  String clipToken = '';
+  String? clipError;
+  ClipServer? _clipServer;
 
   Future<void> init() async {
     if (!kIsWeb) {
@@ -108,6 +120,18 @@ class AppState extends ChangeNotifier {
       developer.log(
           'skip, 窄屏启动设置非法回退默认, raw: $savedStartup, fallback: $narrowStartup');
     }
+    if (isDesktopWindow) {
+      clipEnabled = await db.getSetting(AppDb.clipEnabledKey) == '1';
+      clipPort = _loadedDouble(await db.getSetting(AppDb.clipPortKey),
+              clipPortDefault.toDouble(), clipPortMin.toDouble(), clipPortMax.toDouble())
+          .round();
+      clipToken = await db.getSetting(AppDb.clipTokenKey) ?? '';
+      if (clipToken.isEmpty) {
+        clipToken = _newClipToken();
+        await db.setSetting(AppDb.clipTokenKey, clipToken);
+        developer.log('done, 首次生成剪藏配对令牌, tokenLength: ${clipToken.length}');
+      }
+    }
     final savedScope = _parseScope(await db.getSetting(AppDb.lastViewScopeKey));
     if (savedScope != null) {
       scope = savedScope;
@@ -121,6 +145,9 @@ class AppState extends ChangeNotifier {
       }
     }
     await refresh();
+    if (clipEnabled) {
+      await _startClipServer();
+    }
     await sync.init();
     unawaited(sync.requestSync('startup').then(_applyOutcome));
   }
@@ -159,6 +186,8 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_clipServer?.stop());
+    _clipServer = null;
     sync.removeListener(_onSyncChanged);
     sync.dispose();
     super.dispose();
@@ -289,6 +318,30 @@ class AppState extends ChangeNotifier {
     await refresh();
     await openNote(note.id);
     _pushAfterWrite('createNote');
+    return note;
+  }
+
+  Future<Note> clipNote(
+      {required String notebookId,
+      required String title,
+      required String markdown,
+      String? sourceUrl}) async {
+    if (!notebooks.any((n) => n.id == notebookId)) {
+      throw ClipException(404, '笔记本不存在，请在插件里刷新后重选');
+    }
+    final body = markdown.trim();
+    final url = sourceUrl?.trim() ?? '';
+    if (body.isEmpty && url.isEmpty) {
+      throw ClipException(400, '剪藏内容为空');
+    }
+    final link = url.isEmpty ? '' : '<$url>';
+    final content =
+        body.isEmpty ? link : (link.isEmpty ? body : '$link\n\n$body');
+    await _pullBeforeWrite('clipNote');
+    final note =
+        await db.createNote(notebookId, title: title.trim(), content: content);
+    await refresh();
+    _pushAfterWrite('clipNote');
     return note;
   }
 
@@ -475,6 +528,73 @@ class AppState extends ChangeNotifier {
     await db.setSetting(AppDb.narrowStartupKey, value);
     developer.log('done, 窄屏启动页面已切换, narrowStartup: $value');
     notifyListeners();
+  }
+
+  Future<void> setClipEnabled(bool enabled) async {
+    if (enabled == clipEnabled) {
+      return;
+    }
+    clipEnabled = enabled;
+    await db.setSetting(AppDb.clipEnabledKey, enabled ? '1' : '0');
+    if (enabled) {
+      await _startClipServer();
+    } else {
+      await _clipServer?.stop();
+      _clipServer = null;
+      clipError = null;
+      developer.log('done, 剪藏桥接已关闭');
+      notifyListeners();
+    }
+  }
+
+  Future<bool> setClipPort(int port) async {
+    if (port < clipPortMin || port > clipPortMax) {
+      developer.log(
+          'skip, 剪藏端口越界不写入, port: $port, min: $clipPortMin, max: $clipPortMax');
+      return false;
+    }
+    if (port == clipPort) {
+      return true;
+    }
+    clipPort = port;
+    await db.setSetting(AppDb.clipPortKey, '$port');
+    developer.log('done, 剪藏端口已更新, port: $port');
+    if (clipEnabled) {
+      await _startClipServer();
+    } else {
+      notifyListeners();
+    }
+    return true;
+  }
+
+  Future<void> regenerateClipToken() async {
+    clipToken = _newClipToken();
+    await db.setSetting(AppDb.clipTokenKey, clipToken);
+    developer.log('done, 剪藏配对令牌已重新生成, tokenLength: ${clipToken.length}');
+    notifyListeners();
+  }
+
+  Future<void> _startClipServer() async {
+    await _clipServer?.stop();
+    _clipServer = null;
+    final server = ClipServer(this);
+    try {
+      await server.start(clipPort);
+      _clipServer = server;
+      clipError = null;
+      developer.log('done, 剪藏桥接已启动, port: $clipPort');
+    } on SocketException catch (err) {
+      clipError = '端口 $clipPort 启动失败：${err.osError?.message ?? err.message}';
+      developer.log('fail, 剪藏桥接启动失败, port: $clipPort, err: $err');
+    }
+    notifyListeners();
+  }
+
+  String _newClipToken() {
+    final random = Random.secure();
+    return List.generate(16, (_) => random.nextInt(256))
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join();
   }
 
   void updateSidebarWidth(double width) {

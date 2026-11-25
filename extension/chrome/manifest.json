@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "onenote 剪藏",
+  "version": "1.0.0",
+  "description": "把网页正文、选中内容或网址剪藏到本地 onenote 应用（127.0.0.1 直连，不经云端）",
+  "minimum_chrome_version": "103",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "剪藏到 onenote",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

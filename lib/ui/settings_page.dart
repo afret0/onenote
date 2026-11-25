@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/app_db.dart';
 import '../state/app_state.dart';
+import '../window_setup.dart' show isDesktopWindow;
 import 'dialogs.dart';
 import 'sync_settings_page.dart';
 import 'theme.dart';
@@ -147,6 +149,83 @@ class _SettingsPageState extends State<SettingsPage> {
     if (picked != null) {
       await state.setNarrowStartup(picked);
     }
+  }
+
+  Future<void> _editClipPort() async {
+    final input = await promptText(context,
+        title: '桥接端口',
+        label: '端口（1024–65535）',
+        initial: '${state.clipPort}',
+        hint: '默认 41190');
+    if (input == null) {
+      return;
+    }
+    final port = int.tryParse(input);
+    final ok = port != null && await state.setClipPort(port);
+    if (!mounted) {
+      return;
+    }
+    final message = !ok
+        ? '请输入 1024–65535 的整数端口'
+        : state.clipError;
+    if (message != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _copyClipToken() async {
+    await Clipboard.setData(ClipboardData(text: state.clipToken));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('配对令牌已复制，粘贴到插件设置里')));
+    }
+  }
+
+  Future<void> _regenerateClipToken() async {
+    final ok = await confirm(context,
+        title: '重新生成配对令牌',
+        message: '旧令牌立即失效，需要在插件设置里重新粘贴新令牌。',
+        confirmLabel: '重新生成');
+    if (ok) {
+      await state.regenerateClipToken();
+    }
+  }
+
+  Future<void> _showClipInstall() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('安装 Chrome 剪藏插件'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: spaceLg),
+            child: SelectableText(
+              '1. 打开 chrome://extensions，开启右上角「开发者模式」\n'
+              '2. 点「加载已解压的扩展程序」，选择仓库里的 extension/chrome 目录\n'
+              '3. 打开插件弹窗的设置，确认端口为 ${state.clipPort}，粘贴配对令牌\n'
+              '4. 保持本应用运行且剪藏服务已启用，即可剪藏网页',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(height: 1.7),
+            ),
+          ),
+          const SizedBox(height: spaceMd),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: spaceLg),
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('知道了'),
+              ),
+            ),
+          ),
+          const SizedBox(height: spaceSm),
+        ],
+      ),
+    );
   }
 
   Future<void> _toggleScope(String notebookId, bool checked) async {
@@ -340,6 +419,92 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ]),
         ]),
+        if (isDesktopWindow)
+          _group([
+            _SectionTitle('剪藏'),
+            _SettingCard(children: [
+              InkWell(
+                onTap: () => state.setClipEnabled(!state.clipEnabled),
+                borderRadius: BorderRadius.circular(radiusLg),
+                child: Padding(
+                  padding: const EdgeInsets.all(spaceMd),
+                  child: Row(
+                    children: [
+                      Icon(Icons.content_paste_outlined,
+                          size: 20, color: t.inkMuted),
+                      const SizedBox(width: spaceMd),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('启用剪藏服务',
+                                style:
+                                    Theme.of(context).textTheme.bodyMedium),
+                            const SizedBox(height: 2),
+                            Text('Chrome 插件经 127.0.0.1 直连本应用，不经云端',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: t.inkMuted)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: spaceSm),
+                      Switch(
+                        value: state.clipEnabled,
+                        onChanged: (value) => state.setClipEnabled(value),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (state.clipError != null) ...[
+                Divider(height: 1, color: t.hairline),
+                Padding(
+                  padding: const EdgeInsets.all(spaceMd),
+                  child: Text(state.clipError!,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: t.danger)),
+                ),
+              ],
+              Divider(height: 1, color: t.hairline),
+              _SettingRow(
+                icon: Icons.lan_outlined,
+                title: '桥接端口',
+                subtitle: '插件连接 127.0.0.1 使用的端口，改动立即生效',
+                action: '${state.clipPort}',
+                onTap: _editClipPort,
+              ),
+              Divider(height: 1, color: t.hairline),
+              _SettingRow(
+                icon: Icons.key_outlined,
+                title: '配对令牌',
+                subtitle: '点击复制，粘贴到插件设置完成配对',
+                action: state.clipToken.isEmpty
+                    ? '生成中…'
+                    : '${state.clipToken.substring(0, 6)}…',
+                onTap: _copyClipToken,
+              ),
+              Divider(height: 1, color: t.hairline),
+              _SettingRow(
+                icon: Icons.autorenew,
+                title: '重新生成令牌',
+                subtitle: '旧令牌立即失效，插件需重新粘贴',
+                action: '',
+                onTap: _regenerateClipToken,
+              ),
+              Divider(height: 1, color: t.hairline),
+              _SettingRow(
+                icon: Icons.extension_outlined,
+                title: '安装 Chrome 插件',
+                subtitle: '开发者模式加载仓库 extension/chrome 目录',
+                action: '',
+                onTap: _showClipInstall,
+              ),
+            ]),
+          ]),
         _group([
           _SectionTitle('即将上线'),
           _SettingCard(children: [
@@ -347,11 +512,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 icon: Icons.lock_outline,
                 title: '加密与锁定',
                 subtitle: '端到端加密 · 密码 / 生物识别 · 笔记本单独锁定'),
-            Divider(height: 1, color: t.hairline),
-            _DisabledRow(
-                icon: Icons.extension_outlined,
-                title: '网页剪藏',
-                subtitle: 'Chrome 插件 · 本地桥接直入应用'),
           ]),
         ]),
         _group([

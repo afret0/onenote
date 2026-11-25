@@ -148,6 +148,9 @@ class AppDb extends _$AppDb {
   static const lastViewScopeKey = 'lastViewScope';
   static const lastViewNoteKey = 'lastViewNote';
   static const narrowStartupKey = 'narrowStartup';
+  static const clipEnabledKey = 'clipEnabled';
+  static const clipPortKey = 'clipPort';
+  static const clipTokenKey = 'clipToken';
   static const msPerDay = 86400000;
   static const versionCoalesceWindowMs = 10 * 60 * 1000;
   static const syncProtocolKey = 'syncProtocol';

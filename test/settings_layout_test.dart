@@ -46,13 +46,13 @@ void main() {
 
   testWidgets('narrow settings stays single column with search scope last',
       (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.physicalSize = const Size(800, 2600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final state = await seed(tester);
     await pumpSettings(tester, state);
 
-    const titles = ['字体', '启动', '数据保留', '同步', '即将上线', '搜索范围'];
+    const titles = ['字体', '启动', '数据保留', '同步', '剪藏', '即将上线', '搜索范围'];
     for (final title in titles) {
       expect(dx(tester, title), dx(tester, '字体'));
     }
@@ -71,8 +71,11 @@ void main() {
 
     expect(dx(tester, '启动'), dx(tester, '字体'));
     expect(dx(tester, '数据保留'), dx(tester, '字体'));
-    expect(dx(tester, '即将上线'), greaterThan(dx(tester, '字体')));
-    expect(dx(tester, '搜索范围'), dx(tester, '即将上线'));
+    expect(dx(tester, '同步'), dx(tester, '字体'));
+    expect(dx(tester, '剪藏'), greaterThan(dx(tester, '字体')));
+    expect(dx(tester, '即将上线'), dx(tester, '剪藏'));
+    expect(dx(tester, '搜索范围'), dx(tester, '剪藏'));
+    expect(dy(tester, '即将上线'), greaterThan(dy(tester, '剪藏')));
     expect(dy(tester, '搜索范围'), greaterThan(dy(tester, '即将上线')));
   });
 
@@ -102,9 +105,10 @@ void main() {
     await pumpSettings(tester, state);
 
     expect(dx(tester, '启动'), dx(tester, '字体'));
-    expect(dx(tester, '数据保留'), greaterThan(dx(tester, '字体')));
-    expect(dx(tester, '同步'), dx(tester, '数据保留'));
-    expect(dx(tester, '即将上线'), greaterThan(dx(tester, '数据保留')));
+    expect(dx(tester, '数据保留'), dx(tester, '字体'));
+    expect(dx(tester, '剪藏'), greaterThan(dx(tester, '字体')));
+    expect(dx(tester, '同步'), dx(tester, '剪藏'));
+    expect(dx(tester, '即将上线'), greaterThan(dx(tester, '剪藏')));
     expect(dx(tester, '搜索范围'), dx(tester, '即将上线'));
   });
 }
