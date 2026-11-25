@@ -131,6 +131,8 @@ class NoteCard extends StatelessWidget {
     required this.notebookColor,
     required this.onTap,
     this.highlight,
+    this.selected = false,
+    this.dense = false,
   });
 
   final Note note;
@@ -138,6 +140,8 @@ class NoteCard extends StatelessWidget {
   final Color notebookColor;
   final VoidCallback onTap;
   final String? highlight;
+  final bool selected;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +149,7 @@ class NoteCard extends StatelessWidget {
     final title = note.title.trim().isEmpty ? '无标题' : note.title.trim();
     final preview = notePreview(note.content);
     return Material(
-      color: t.surface,
+      color: selected ? t.accentSoft : t.surface,
       borderRadius: BorderRadius.circular(radiusMd),
       child: InkWell(
         borderRadius: BorderRadius.circular(radiusMd),
@@ -153,9 +157,11 @@ class NoteCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radiusMd),
-            border: Border.all(color: t.hairline),
+            border: Border.all(color: selected ? t.accent : t.hairline),
           ),
-          padding: const EdgeInsets.all(spaceMd),
+          padding: dense
+              ? const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm)
+              : const EdgeInsets.all(spaceMd),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -177,10 +183,10 @@ class NoteCard extends StatelessWidget {
                       .textTheme
                       .bodySmall
                       ?.copyWith(color: t.inkMuted),
-                  maxLines: 2,
+                  maxLines: dense ? 1 : 2,
                 ),
               ],
-              const SizedBox(height: 10),
+              SizedBox(height: dense ? 6 : 10),
               Row(
                 children: [
                   Container(

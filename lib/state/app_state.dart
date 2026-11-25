@@ -32,6 +32,7 @@ class AppState extends ChangeNotifier {
   List<Note> notes = [];
   String? openNoteId;
   Set<String> searchScope = {};
+  Map<String, String> lastOpenNote = {};
 
   Future<void> init() async {
     if (!kIsWeb) {
@@ -47,6 +48,12 @@ class AppState extends ChangeNotifier {
           .split(',')
           .where((id) => notebooks.any((n) => n.id == id))
           .toSet();
+    }
+    for (final entry in (await db.listLastOpenNotes()).entries) {
+      if (entry.key == AppDb.allNotesScopeKey ||
+          notebooks.any((n) => n.id == entry.key)) {
+        lastOpenNote[entry.key] = entry.value;
+      }
     }
     await refresh();
   }
@@ -73,6 +80,17 @@ class AppState extends ChangeNotifier {
     await refresh();
   }
 
+  void autoOpenCurrentScope() {
+    final id = _resolveAutoOpen();
+    if (id == null || id == openNoteId) {
+      return;
+    }
+    openNoteId = id;
+    developer.log(
+        'hit, 宽屏自动打开笔记, scope: ${scope.kind.name}, notebookId: ${scope.notebookId}, noteId: $id');
+    notifyListeners();
+  }
+
   Future<Notebook> createNotebook(String name) async {
     final notebook = await db.createNotebook(name);
     await refresh();
@@ -86,6 +104,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteNotebook(String id) async {
     await db.deleteNotebook(id);
+    lastOpenNote.remove(id);
+    await db.clearLastOpenNote(id);
     await refresh();
   }
 
@@ -99,14 +119,28 @@ class AppState extends ChangeNotifier {
         : notebooks.first.id;
     final note = await db.createNote(target);
     await refresh();
-    openNoteId = note.id;
-    notifyListeners();
+    await openNote(note.id);
     return note;
   }
 
-  void openNote(String id) {
+  Future<void> openNote(String id) async {
     openNoteId = id;
     notifyListeners();
+    final note = notes.where((n) => n.id == id).firstOrNull;
+    if (note != null) {
+      await _rememberOpen(note);
+    }
+  }
+
+  Future<void> _rememberOpen(Note note) async {
+    developer.log(
+        'done, 记录作用域最近打开, notebookId: ${note.notebookId}, noteId: ${note.id}');
+    lastOpenNote[note.notebookId] = note.id;
+    await db.setLastOpenNote(note.notebookId, note.id);
+    if (scope.kind == NoteScopeKind.all) {
+      lastOpenNote[AppDb.allNotesScopeKey] = note.id;
+      await db.setLastOpenNote(AppDb.allNotesScopeKey, note.id);
+    }
   }
 
   void closeNote() {
@@ -150,6 +184,26 @@ class AppState extends ChangeNotifier {
     await db.setSetting(AppDb.searchScopeKey, ids.join(','));
     notifyListeners();
   }
+
+  String? _resolveAutoOpen() {
+    if (scope.kind == NoteScopeKind.trash || notes.isEmpty) {
+      return null;
+    }
+    final remembered = lastOpenNote[_lastOpenKey];
+    final hit = notes.where((n) => n.id == remembered).firstOrNull;
+    if (hit != null) {
+      return hit.id;
+    }
+    if (remembered != null) {
+      developer.log(
+          'skip, 记忆的笔记已不在列表回退第一篇, scopeKey: $_lastOpenKey, staleNoteId: $remembered');
+    }
+    return notes.first.id;
+  }
+
+  String get _lastOpenKey => scope.kind == NoteScopeKind.notebook
+      ? scope.notebookId!
+      : AppDb.allNotesScopeKey;
 
   Notebook? _notebook(String notebookId) =>
       notebooks.where((n) => n.id == notebookId).firstOrNull;

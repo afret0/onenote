@@ -85,6 +85,8 @@ class AppDb extends _$AppDb {
   static const trashRetentionKey = 'trashRetentionDays';
   static const versionRetentionKey = 'versionRetentionDays';
   static const searchScopeKey = 'searchScope';
+  static const lastOpenNotePrefix = 'lastOpenNote:';
+  static const allNotesScopeKey = 'all';
   static const msPerDay = 86400000;
 
   static QueryExecutor openExecutor() => driftDatabase(
@@ -292,6 +294,23 @@ class AppDb extends _$AppDb {
 
   Future<void> setSetting(String key, String value) => into(settings)
       .insertOnConflictUpdate(SettingsCompanion.insert(key: key, value: value));
+
+  Future<void> setLastOpenNote(String scopeKey, String noteId) =>
+      setSetting('$lastOpenNotePrefix$scopeKey', noteId);
+
+  Future<void> clearLastOpenNote(String scopeKey) => (delete(settings)
+        ..where((t) => t.key.equals('$lastOpenNotePrefix$scopeKey')))
+      .go();
+
+  Future<Map<String, String>> listLastOpenNotes() async {
+    final rows = await (select(settings)
+          ..where((t) => t.key.like('$lastOpenNotePrefix%')))
+        .get();
+    return {
+      for (final row in rows)
+        row.key.substring(lastOpenNotePrefix.length): row.value
+    };
+  }
 
   Future<int> retentionDays(String key) async =>
       int.tryParse(await getSetting(key) ?? '') ?? defaultRetentionDays;

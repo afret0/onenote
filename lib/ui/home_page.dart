@@ -82,14 +82,17 @@ class _HomePageState extends State<HomePage> {
     setState(() => _searchHits = hits);
   }
 
-  void _openHit(Note hit) {
+  Future<void> _openHit(Note hit) async {
     final scope = state.scope;
     if (scope.kind == NoteScopeKind.trash ||
         (scope.kind == NoteScopeKind.notebook &&
             scope.notebookId != hit.notebookId)) {
-      state.selectScope(const NoteScope.all());
+      await state.selectScope(const NoteScope.all());
+      if (!mounted) {
+        return;
+      }
     }
-    state.openNote(hit.id);
+    await state.openNote(hit.id);
   }
 
   @override
@@ -100,6 +103,18 @@ class _HomePageState extends State<HomePage> {
         final openId = state.openNoteId;
         final isWide = MediaQuery.sizeOf(context).width >= 900;
         final drawerNeeded = !isWide && openId != null;
+        final searching = _searchHits != null;
+        if (isWide &&
+            openId == null &&
+            !searching &&
+            state.scope.kind != NoteScopeKind.trash &&
+            state.notes.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              state.autoOpenCurrentScope();
+            }
+          });
+        }
         return Scaffold(
           key: _scaffoldKey,
           drawer: isWide
@@ -108,7 +123,10 @@ class _HomePageState extends State<HomePage> {
                   backgroundColor: inkOf(context).surface,
                   child: SafeArea(child: _sidebar(compact: true)),
                 ),
-          floatingActionButton: openId == null && state.scope.kind != NoteScopeKind.trash
+          floatingActionButton: !isWide &&
+                  openId == null &&
+                  !searching &&
+                  state.scope.kind != NoteScopeKind.trash
               ? FloatingActionButton(
                   backgroundColor: inkOf(context).accent,
                   foregroundColor: inkOf(context).onAccent,
@@ -126,17 +144,23 @@ class _HomePageState extends State<HomePage> {
                     child: _sidebar(compact: false),
                   ),
                 if (isWide) const VerticalDivider(width: 1),
-                Expanded(
-                  child: openId != null
-                      ? NoteView(
-                          key: ValueKey(openId),
-                          state: state,
-                          noteId: openId,
-                          showBack: drawerNeeded,
-                          onBack: state.closeNote,
-                        )
-                      : _listPane(),
-                ),
+                if (isWide)
+                  SizedBox(width: 320, child: _listPane(dense: true))
+                else if (openId == null)
+                  Expanded(child: _listPane()),
+                if (isWide) const VerticalDivider(width: 1),
+                if (isWide || openId != null)
+                  Expanded(
+                    child: openId != null
+                        ? NoteView(
+                            key: ValueKey(openId),
+                            state: state,
+                            noteId: openId,
+                            showBack: drawerNeeded,
+                            onBack: state.closeNote,
+                          )
+                        : _contentPlaceholder(),
+                  ),
               ],
             ),
           ),
@@ -252,7 +276,40 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _listPane() {
+  Widget _contentPlaceholder() {
+    final t = inkOf(context);
+    final isTrash = state.scope.kind == NoteScopeKind.trash;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Opacity(
+            opacity: 0.9,
+            child: Image.asset('assets/images/logo.png',
+                width: 72, height: 72, filterQuality: FilterQuality.medium),
+          ),
+          const SizedBox(height: spaceMd),
+          Text(
+            isTrash ? '回收站中的笔记可恢复或彻底删除' : '没有可显示的笔记',
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: t.inkMuted),
+          ),
+          if (!isTrash && _searchHits == null) ...[
+            const SizedBox(height: spaceMd),
+            FilledButton.icon(
+              onPressed: _newNote,
+              icon: const Icon(Icons.edit_note, size: 18),
+              label: const Text('新建笔记'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _listPane({bool dense = false}) {
     final t = inkOf(context);
     final isTrash = state.scope.kind == NoteScopeKind.trash;
     final searching = _searchHits != null;
@@ -264,7 +321,7 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.fromLTRB(spaceMd, spaceMd, spaceMd, spaceSm),
           child: Row(
             children: [
-              if (MediaQuery.sizeOf(context).width < 900)
+              if (!dense && MediaQuery.sizeOf(context).width < 900)
                 IconButton(
                   tooltip: '菜单',
                   onPressed: () => _scaffoldKey.currentState?.openDrawer(),
@@ -297,12 +354,16 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.fromLTRB(spaceLg, spaceXs, spaceMd, spaceSm),
           child: Row(
             children: [
-              Text(
-                searching ? '搜索结果' : _scopeTitle(),
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(letterSpacing: -0.3),
+              Flexible(
+                child: Text(
+                  searching ? '搜索结果' : _scopeTitle(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(letterSpacing: -0.3),
+                ),
               ),
               const SizedBox(width: spaceSm),
               Text('${list.length}',
@@ -335,6 +396,8 @@ class _HomePageState extends State<HomePage> {
                       notebookName: state.notebookName(note.notebookId),
                       notebookColor: Color(state.notebookColor(note.notebookId)),
                       highlight: searching ? _searchController.text.trim() : null,
+                      selected: dense && note.id == state.openNoteId,
+                      dense: dense,
                       onTap: () => searching ? _openHit(note) : state.openNote(note.id),
                     );
                   },

@@ -426,6 +426,7 @@ class _NoteViewState extends State<NoteView> {
           child: _editing
               ? _editorArea()
               : SingleChildScrollView(
+                  key: PageStorageKey<String>('noteScroll:${widget.noteId}'),
                   padding: const EdgeInsets.fromLTRB(
                       spaceLg, spaceLg, spaceLg, spaceXxl),
                   child: Center(
