@@ -33,12 +33,15 @@
 - macOS 图标按 Big Sur 网格：1024 透明画布中央 824×824 圆角方形（半径 ≈184），appiconset 程序化生成，勿直接用满幅图。**深色底在深色 Dock 里融底显小（真实教训）**：底色要亮、主体要大而简单。
 - 笔记本主题色：`notebookPalette` 8 色按创建顺序自动循环（schema v2 color 列，迁移按 createAt 序回填）；**笔记本名称前不放图标，只放主题色圆点**（侧栏/笔记卡/设置页一致）；暂无手动换色入口。
 - 附件（2026-11-25 用户拍板）：图片/文件本地内容寻址存储（sha256 去重，`onenote-asset://<64hex>` scheme，单文件 ≤20MB）；入口 = 编辑工具栏按钮 + 粘贴（剪贴板有图先插图）+ 拖拽；**GC 仅删「笔记 + 回收站 + 版本历史均未引用」的资源**，时机 = 启动 + 轮询，且必须在 `purgeExpired` 之后跑；渲染态点附件链接写临时文件用系统默认应用打开；Web 端附件随同步阶段支持（store 在 web 为 null，UI 提示）。
+- **桌面窗口尺寸（2026-11-25 用户拍板）**：横版默认 **1300×800**，按 **1920×1080** 基准设计；非该分辨率**等比缩放**——缩放系数取 `min(screenW/1920, screenH/1080)` 且**封顶 1（大于基准屏不放大）**。**记录窗口尺寸、重启不变**（settings 表 `windowSize`，格式 `WxH` 整数）；记忆尺寸超出当前屏幕时**等比缩到屏内**（`fitWindowSize`，floor 取整）。仅桌面（mac/win/linux）生效，web/移动端不参与。尺寸记忆由 Dart 侧全权负责（`WindowSizeController`），**每次启动居中到主屏 workArea，不记位置**；最大化/最小化/全屏不记尺寸，尺寸未变跳过落库，800ms 防抖（沿用保存先例）。
 
 ## 目录与关键文件
 
 - `lib/data/app_db.dart`：drift 表（Notebooks/Notes/NoteVersions/Settings）与全部业务语义；时间戳一律毫秒 int，可注入 clock 便于测试；`allAttachmentRefs` 扫笔记 + 全部版本供附件 GC。
 - `lib/data/attachment_store.dart`：附件内容寻址存储 + GC（`forTest` 构造可注入目录）。
 - `lib/state/app_state.dart`：列表/作用域/搜索范围状态、附件 store 生命周期、`notebookColor`。
+- `lib/window_metrics.dart`：窗口尺寸纯计算（`scaledDefaultWindowSize`/`fitWindowSize`/`parseWindowSize`/`formatWindowSize` + 常量），无平台依赖，表驱动单测在 `test/window_metrics_test.dart`。
+- `lib/window_setup.dart`：`WindowSizeController`（桌面启动设尺寸 + 事件防抖落库），`main()` 里 `isDesktopWindow` 时创建并 `await init()` 再 runApp，`OneNoteApp` dispose 时释放。
 - `lib/ui/theme.dart`：InkTokens 主题扩展（紫调纸色 + 墨色 + OneNote 紫），`accentText` 是保证 4.5:1 的正文用主色变体，文字场景用它、填充用 `accent`。
 - `lib/ui/`：home_page（宽屏三栏 / 窄屏 Drawer + 导航）、note_view（渲染/编辑/版本历史/附件上传）、settings_page、markdown_view、attachment_image。
 
@@ -57,6 +60,11 @@ flutter build web --release                                # web 产物在 build
 - 测试里 `find.text` 会同时命中侧栏 ScopeTile、笔记卡标题/预览、正文——用 `find.widgetWithText(ScopeTile/NoteCard, ...)` 或限定 `find.descendant(of: find.byType(NoteView), ...)`；同毫秒 createAt/updateAt 导致列表排序不稳定，务必注入 clock 且每次写入 `now += 1000`。
 - 字体已实例化为静态字重放 `assets/fonts/`（Inter 400-700、JetBrainsMono 400/500/700，OFL 许可同目录）；中文走系统字体 fallback 链（theme.dart），不内置 CJK 字体。标题用系统 serif（Georgia/Songti）营造编辑感。
 - 平台图标由 logo 源图缩放生成（mac appiconset / android mipmap / web icons / windows ico），换 logo 时全平台同步重生成。
+- **本机 pub.dev 直连超时**：每次 bash 装包/解析都要 `export PUB_HOSTED_URL=https://pub.flutter-io.cn`（shell profile 没持久化，bash 工具每条命令新进程不保留 env）。
+- **窗口管理用 window_manager 0.6.x（nativeapi/FFI 底座）**：0.5.x 旧 API 已移入 `legacy.dart` 且废弃。新 API：`WindowManager.instance.getCurrent()/getAll()`（同步 FFI）、事件 `window.addListener((WindowEvent e){...})` 返回 `ListenerId`；`DisplayManager` 不被 window_manager 导出，需要 `import 'package:nativeapi/nativeapi.dart'`；`Rectangle`/`Size` 也不导出，用 `.toSize()/.toNative()` 转换或直接 `na.Rectangle`。窗口逻辑只能放 `main()` 路径（`flutter test` 里 `Platform.isMacOS` 为 true，测试 pump `OneNoteApp` 不传 controller 即安全）。
+- **macOS 隐藏启动（`visibleAtLaunch="NO"`）必须强制加载视图否则引擎不启动**：NSWindow 不加载 contentViewController.view → FlutterViewController 引擎只在视图加载/出现时启动 → Dart main 永不执行（`sample <pid>` 看不到 Flutter 线程）。`MainFlutterWindow.awakeFromNib` 里 `_ = flutterViewController.view` + `flutterViewController.viewWillAppear()`（`loadViewIfNeeded()` 需 macOS 14+，项目 target 12.0 不能用）。
+- **macOS 窗口状态恢复会覆盖 Dart 预设尺寸**：`AppDelegate applicationSupportsSecureRestorableState=true` + NSWindow 默认可恢复 → show 时用旧 frame 盖掉预设尺寸，resize 监听再把错误尺寸写库。`MainFlutterWindow.awakeFromNib` 加 `self.isRestorable = false`（尺寸记忆归 Dart 全权）。
+- **多屏定位别用 `window.center()`**：它居中到「窗口当前所在屏幕」，大尺寸窗口会落到副屏并被夹到副屏宽度（真实教训：竖屏副屏 1440 宽把窗口夹成 1440×1440）。改为按主屏 `display.workArea` 显式算居中坐标 + `window.bounds = na.Rectangle(x,y,w,h)`，确定性落主屏。
 
 ## 未实现（下一阶段，动工前先与用户确认边界值）
 
