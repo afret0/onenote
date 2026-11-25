@@ -92,6 +92,10 @@ class AppDb extends _$AppDb {
   static const noteFontSizeKey = 'noteFontSize';
   static const lastOpenNotePrefix = 'lastOpenNote:';
   static const allNotesScopeKey = 'all';
+  static const trashScopeKey = 'trash';
+  static const lastViewScopeKey = 'lastViewScope';
+  static const lastViewNoteKey = 'lastViewNote';
+  static const narrowStartupKey = 'narrowStartup';
   static const msPerDay = 86400000;
 
   static QueryExecutor openExecutor() => driftDatabase(
@@ -299,6 +303,9 @@ class AppDb extends _$AppDb {
 
   Future<void> setSetting(String key, String value) => into(settings)
       .insertOnConflictUpdate(SettingsCompanion.insert(key: key, value: value));
+
+  Future<void> deleteSetting(String key) =>
+      (delete(settings)..where((t) => t.key.equals(key))).go();
 
   Future<void> setLastOpenNote(String scopeKey, String noteId) =>
       setSetting('$lastOpenNotePrefix$scopeKey', noteId);

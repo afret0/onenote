@@ -197,6 +197,113 @@ void main() {
     expect(noteContent('alpha content'), findsOneWidget);
   });
 
+  testWidgets('narrow restart restores last note by default',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(500, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_widget_test');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      final work = await db.createNotebook('工作');
+      await db.createNote(work.id, title: 'first', content: 'alpha content');
+      now += 1000;
+      await db.createNote(work.id, title: 'second', content: 'second body');
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(NoteCard, 'first'));
+    await tester.pumpAndSettle();
+    expect(noteContent('alpha content'), findsOneWidget);
+
+    final restarted = AppState(db);
+    addTearDown(restarted.dispose);
+    await tester.runAsync(() async {
+      await restarted.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: restarted),
+    ));
+    await tester.pumpAndSettle();
+    expect(noteContent('alpha content'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('返回列表'));
+    await tester.pumpAndSettle();
+    expect(find.byType(NoteView), findsNothing);
+    expect(find.widgetWithText(NoteCard, 'second'), findsOneWidget);
+  });
+
+  testWidgets('narrow restart with list setting stays on list',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(500, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_widget_test');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      final work = await db.createNotebook('工作');
+      await db.createNote(work.id, title: 'first', content: 'alpha content');
+      now += 1000;
+      await db.createNote(work.id, title: 'second', content: 'second body');
+      await state.init();
+      await state.setNarrowStartup(AppState.narrowStartupList);
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(NoteCard, 'first'));
+    await tester.pumpAndSettle();
+    expect(noteContent('alpha content'), findsOneWidget);
+
+    final restarted = AppState(db);
+    addTearDown(restarted.dispose);
+    await tester.runAsync(() async {
+      await restarted.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: restarted),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byType(NoteView), findsNothing);
+    expect(find.widgetWithText(NoteCard, 'second'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(NoteCard, 'first'));
+    await tester.pumpAndSettle();
+    expect(noteContent('alpha content'), findsOneWidget);
+  });
+
   testWidgets('dragging pane dividers resizes columns and persists widths',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1400, 900);

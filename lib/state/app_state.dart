@@ -38,6 +38,9 @@ class AppState extends ChangeNotifier {
   static const noteFontSizeMin = 14.0;
   static const noteFontSizeMax = 24.0;
   static const noteFontSizeDefault = 18.0;
+  static const narrowStartupNote = 'note';
+  static const narrowStartupList = 'list';
+  static const _notebookScopePrefix = 'notebook:';
 
   final AppDb db;
 
@@ -49,6 +52,8 @@ class AppState extends ChangeNotifier {
   String? openNoteId;
   Set<String> searchScope = {};
   Map<String, String> lastOpenNote = {};
+  String narrowStartup = narrowStartupNote;
+  bool _startupRestorePending = true;
   double sidebarWidth = sidebarDefaultWidth;
   double listWidth = listDefaultWidth;
   String uiFont = uiFontMiSans;
@@ -84,6 +89,20 @@ class AppState extends ChangeNotifier {
           .where((id) => notebooks.any((n) => n.id == id))
           .toSet();
     }
+    final savedStartup = await db.getSetting(AppDb.narrowStartupKey);
+    if (savedStartup == narrowStartupNote ||
+        savedStartup == narrowStartupList) {
+      narrowStartup = savedStartup!;
+    } else if (savedStartup != null) {
+      developer.log(
+          'skip, 窄屏启动设置非法回退默认, raw: $savedStartup, fallback: $narrowStartup');
+    }
+    final savedScope = _parseScope(await db.getSetting(AppDb.lastViewScopeKey));
+    if (savedScope != null) {
+      scope = savedScope;
+      developer.log(
+          'done, 启动恢复上次作用域, scope: ${scope.kind.name}, notebookId: ${scope.notebookId}');
+    }
     for (final entry in (await db.listLastOpenNotes()).entries) {
       if (entry.key == AppDb.allNotesScopeKey ||
           notebooks.any((n) => n.id == entry.key)) {
@@ -109,10 +128,43 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool get startupRestorePending => _startupRestorePending;
+
+  Future<void> resolveStartupRestore({required bool isWide}) async {
+    if (!_startupRestorePending) {
+      return;
+    }
+    _startupRestorePending = false;
+    if (!isWide && narrowStartup == narrowStartupList) {
+      developer.log('skip, 窄屏启动设置为先看列表, scope: ${scope.kind.name}');
+      notifyListeners();
+      return;
+    }
+    final remembered = await db.getSetting(AppDb.lastViewNoteKey);
+    if (openNoteId != null) {
+      return;
+    }
+    final hit = notes.where((n) => n.id == remembered).firstOrNull;
+    if (hit == null) {
+      if (remembered != null) {
+        developer.log(
+            'skip, 上次打开的笔记已不在当前列表, scope: ${scope.kind.name}, staleNoteId: $remembered');
+      }
+      notifyListeners();
+      return;
+    }
+    openNoteId = hit.id;
+    developer.log(
+        'done, 启动恢复上次页面, scope: ${scope.kind.name}, notebookId: ${scope.notebookId}, noteId: ${hit.id}');
+    notifyListeners();
+  }
+
   Future<void> selectScope(NoteScope next) async {
+    _startupRestorePending = false;
     scope = next;
     openNoteId = null;
     await refresh();
+    await _persistView();
   }
 
   void autoOpenCurrentScope() {
@@ -142,6 +194,7 @@ class AppState extends ChangeNotifier {
     lastOpenNote.remove(id);
     await db.clearLastOpenNote(id);
     await refresh();
+    await _persistView();
   }
 
   Future<Note?> createNote() async {
@@ -159,12 +212,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> openNote(String id) async {
+    _startupRestorePending = false;
     openNoteId = id;
     notifyListeners();
     final note = notes.where((n) => n.id == id).firstOrNull;
     if (note != null) {
       await _rememberOpen(note);
     }
+    await _persistView();
   }
 
   Future<void> _rememberOpen(Note note) async {
@@ -178,9 +233,11 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void closeNote() {
+  Future<void> closeNote() async {
+    _startupRestorePending = false;
     openNoteId = null;
     notifyListeners();
+    await _persistView();
   }
 
   Future<void> trashNote(String id) async {
@@ -189,11 +246,13 @@ class AppState extends ChangeNotifier {
       openNoteId = null;
     }
     await refresh();
+    await _persistView();
   }
 
   Future<void> restoreNote(String id) async {
     await db.restoreNote(id);
     await refresh();
+    await _persistView();
   }
 
   Future<void> hardDeleteNote(String id) async {
@@ -202,6 +261,7 @@ class AppState extends ChangeNotifier {
       openNoteId = null;
     }
     await refresh();
+    await _persistView();
   }
 
   Future<void> purgeAttachments() async {
@@ -217,6 +277,20 @@ class AppState extends ChangeNotifier {
   Future<void> setSearchScope(Set<String> ids) async {
     searchScope = ids;
     await db.setSetting(AppDb.searchScopeKey, ids.join(','));
+    notifyListeners();
+  }
+
+  Future<void> setNarrowStartup(String value) async {
+    if (value != narrowStartupNote && value != narrowStartupList) {
+      developer.log('skip, 未知窄屏启动标识不写入, narrowStartup: $value');
+      return;
+    }
+    if (value == narrowStartup) {
+      return;
+    }
+    narrowStartup = value;
+    await db.setSetting(AppDb.narrowStartupKey, value);
+    developer.log('done, 窄屏启动页面已切换, narrowStartup: $value');
     notifyListeners();
   }
 
@@ -297,6 +371,41 @@ class AppState extends ChangeNotifier {
       return fallback;
     }
     return parsed.clamp(min, max).toDouble();
+  }
+
+  Future<void> _persistView() async {
+    final encoded = switch (scope.kind) {
+      NoteScopeKind.all => AppDb.allNotesScopeKey,
+      NoteScopeKind.trash => AppDb.trashScopeKey,
+      NoteScopeKind.notebook => '$_notebookScopePrefix${scope.notebookId}',
+    };
+    await db.setSetting(AppDb.lastViewScopeKey, encoded);
+    final id = openNoteId;
+    if (id == null) {
+      await db.deleteSetting(AppDb.lastViewNoteKey);
+    } else {
+      await db.setSetting(AppDb.lastViewNoteKey, id);
+    }
+  }
+
+  NoteScope? _parseScope(String? raw) {
+    if (raw == null) {
+      return null;
+    }
+    if (raw == AppDb.allNotesScopeKey) {
+      return const NoteScope.all();
+    }
+    if (raw == AppDb.trashScopeKey) {
+      return const NoteScope.trash();
+    }
+    if (raw.startsWith(_notebookScopePrefix)) {
+      final id = raw.substring(_notebookScopePrefix.length);
+      if (notebooks.any((n) => n.id == id)) {
+        return NoteScope.notebook(id);
+      }
+    }
+    developer.log('skip, 上次页面作用域非法或笔记本已删回退全部, raw: $raw');
+    return null;
   }
 
   String? _resolveAutoOpen() {

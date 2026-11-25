@@ -96,6 +96,47 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _pickNarrowStartup() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('窄屏启动页面'),
+        children: [
+          for (final option in const [
+            (AppState.narrowStartupNote, '上次打开的笔记', '启动直接进入上次浏览的页面'),
+            (AppState.narrowStartupList, '笔记列表', '启动先看列表，手动点开笔记'),
+          ])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, option.$1),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(option.$2,
+                            style: Theme.of(context).textTheme.bodyMedium),
+                        Text(option.$3,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: inkOf(context).inkMuted)),
+                      ],
+                    ),
+                  ),
+                  if (state.narrowStartup == option.$1)
+                    Icon(Icons.check, size: 18, color: inkOf(context).accentText),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      await state.setNarrowStartup(picked);
+    }
+  }
+
   Future<void> _toggleScope(String notebookId, bool checked) async {
     final next = {...state.searchScope};
     if (checked) {
@@ -158,6 +199,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     valueLabel: '${state.noteFontSize.round()}px',
                     onChanged: state.updateNoteFontSize,
                     onChangeEnd: (_) => state.persistFontSizes(),
+                  ),
+                ]),
+                const SizedBox(height: spaceLg),
+                _SectionTitle('启动'),
+                _SettingCard(children: [
+                  _SettingRow(
+                    icon: Icons.restore_page_outlined,
+                    title: '窄屏启动页面',
+                    subtitle: '手机 / 小窗启动时显示哪个页面，宽屏始终恢复上次页面',
+                    action: state.narrowStartup == AppState.narrowStartupList
+                        ? '笔记列表'
+                        : '上次笔记',
+                    onTap: _pickNarrowStartup,
                   ),
                 ]),
                 const SizedBox(height: spaceLg),

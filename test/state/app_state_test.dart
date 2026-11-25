@@ -242,4 +242,134 @@ void main() {
     expect(state.uiFont, AppState.uiFontMiSans);
     expect(await db.getSetting(AppDb.uiFontKey), isNull);
   });
+
+  test('restart restores last view scope and note', () async {
+    final work = await db.createNotebook('work');
+    final first = await seed(work, 'first');
+    final life = await db.createNotebook('life');
+    await seed(life, 'life-note');
+    await state.init();
+    await state.selectScope(NoteScope.notebook(work.id));
+    await state.openNote(first.id);
+
+    final restarted = await restartedState();
+    expect(restarted.scope.kind, NoteScopeKind.notebook);
+    expect(restarted.scope.notebookId, work.id);
+    expect(restarted.openNoteId, isNull);
+    expect(restarted.startupRestorePending, isTrue);
+    await restarted.resolveStartupRestore(isWide: false);
+    expect(restarted.openNoteId, first.id);
+    expect(restarted.startupRestorePending, isFalse);
+  });
+
+  test('narrow list setting skips restore but keeps scope and auto-open',
+      () async {
+    final work = await db.createNotebook('work');
+    final first = await seed(work, 'first');
+    await state.init();
+    await state.setNarrowStartup(AppState.narrowStartupList);
+    await state.selectScope(NoteScope.notebook(work.id));
+    await state.openNote(first.id);
+
+    final restarted = await restartedState();
+    expect(restarted.narrowStartup, AppState.narrowStartupList);
+    expect(restarted.scope.notebookId, work.id);
+    await restarted.resolveStartupRestore(isWide: false);
+    expect(restarted.openNoteId, isNull);
+    expect(restarted.startupRestorePending, isFalse);
+    restarted.autoOpenCurrentScope();
+    expect(restarted.openNoteId, first.id);
+  });
+
+  test('wide startup ignores narrow list setting', () async {
+    final work = await db.createNotebook('work');
+    final first = await seed(work, 'first');
+    await state.init();
+    await state.setNarrowStartup(AppState.narrowStartupList);
+    await state.openNote(first.id);
+
+    final restarted = await restartedState();
+    await restarted.resolveStartupRestore(isWide: true);
+    expect(restarted.openNoteId, first.id);
+  });
+
+  test('trash view restores scope and open trash note', () async {
+    final work = await db.createNotebook('work');
+    final note = await seed(work, 'trashed');
+    await state.init();
+    await state.trashNote(note.id);
+    await state.selectScope(const NoteScope.trash());
+    await state.openNote(note.id);
+
+    final restarted = await restartedState();
+    expect(restarted.scope.kind, NoteScopeKind.trash);
+    await restarted.resolveStartupRestore(isWide: true);
+    expect(restarted.openNoteId, note.id);
+  });
+
+  test('closing note persists list-only view', () async {
+    final work = await db.createNotebook('work');
+    final first = await seed(work, 'first');
+    await state.init();
+    await state.openNote(first.id);
+    expect(await db.getSetting(AppDb.lastViewNoteKey), first.id);
+    await state.closeNote();
+    expect(await db.getSetting(AppDb.lastViewNoteKey), isNull);
+
+    final restarted = await restartedState();
+    await restarted.resolveStartupRestore(isWide: false);
+    expect(restarted.openNoteId, isNull);
+  });
+
+  test('deleting scope notebook rewrites view to all', () async {
+    final work = await db.createNotebook('work');
+    await seed(work, 'keeper');
+    final temp = await db.createNotebook('temp');
+    await state.init();
+    await state.selectScope(NoteScope.notebook(temp.id));
+    await state.deleteNotebook(temp.id);
+    expect(state.scope.kind, NoteScopeKind.all);
+    expect(await db.getSetting(AppDb.lastViewScopeKey), AppDb.allNotesScopeKey);
+  });
+
+  test('invalid persisted view scope and startup value fall back', () async {
+    await db.setSetting(AppDb.lastViewScopeKey, 'notebook:missing');
+    await db.setSetting(AppDb.lastViewNoteKey, 'gone-note');
+    await db.setSetting(AppDb.narrowStartupKey, 'oops');
+    await state.init();
+    expect(state.scope.kind, NoteScopeKind.all);
+    expect(state.narrowStartup, AppState.narrowStartupNote);
+    await state.resolveStartupRestore(isWide: true);
+    expect(state.openNoteId, isNull);
+  });
+
+  test('user action before resolve wins over pending restore', () async {
+    final work = await db.createNotebook('work');
+    final first = await seed(work, 'first');
+    final second = await seed(work, 'second');
+    await state.init();
+    await state.openNote(first.id);
+
+    final restarted = await restartedState();
+    await restarted.openNote(second.id);
+    await restarted.resolveStartupRestore(isWide: true);
+    expect(restarted.openNoteId, second.id);
+  });
+
+  test('trashing open note clears persisted view note', () async {
+    final work = await db.createNotebook('work');
+    final first = await seed(work, 'first');
+    await state.init();
+    await state.openNote(first.id);
+    await state.trashNote(first.id);
+    expect(await db.getSetting(AppDb.lastViewNoteKey), isNull);
+  });
+
+  test('setNarrowStartup rejects unknown ids without touching state',
+      () async {
+    await state.init();
+    await state.setNarrowStartup('bogus');
+    expect(state.narrowStartup, AppState.narrowStartupNote);
+    expect(await db.getSetting(AppDb.narrowStartupKey), isNull);
+  });
 }

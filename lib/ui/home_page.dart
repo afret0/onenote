@@ -141,7 +141,13 @@ class _HomePageState extends State<HomePage> {
         final panes = isWide ? _paneWidths(windowWidth) : (0.0, 0.0);
         final drawerNeeded = !isWide && openId != null;
         final searching = _searchHits != null;
-        if (isWide &&
+        if (state.startupRestorePending) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              state.resolveStartupRestore(isWide: isWide);
+            }
+          });
+        } else if (isWide &&
             openId == null &&
             !searching &&
             state.scope.kind != NoteScopeKind.trash &&
