@@ -493,13 +493,20 @@ class _NoteViewState extends State<NoteView> {
                               horizontal: spaceSm, vertical: spaceSm),
                         ),
                       )
-                    : Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: spaceSm),
-                        child: HighlightText(
-                          text: noteDisplayTitle(note),
-                          needle: _editing ? null : widget.highlightQuery,
-                          maxLines: 1,
-                          style: _titleStyle(context),
+                    : GestureDetector(
+                        onSecondaryTapUp: (d) =>
+                            _showNoteMenu(d.globalPosition),
+                        onLongPressStart: (d) =>
+                            _showNoteMenu(d.globalPosition),
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: spaceSm),
+                          child: HighlightText(
+                            text: noteDisplayTitle(note),
+                            needle: _editing ? null : widget.highlightQuery,
+                            maxLines: 1,
+                            style: _titleStyle(context),
+                          ),
                         ),
                       ),
               ),
@@ -519,43 +526,11 @@ class _NoteViewState extends State<NoteView> {
                   icon: const Icon(Icons.attach_file),
                 ),
               ],
-              if (_editing) ...[
-                _moreMenu(withTrash: false),
-                const SizedBox(width: spaceXs),
+              if (_editing)
                 FilledButton.icon(
                   onPressed: _exitEdit,
                   icon: const Icon(Icons.check, size: 18),
                   label: const Text('完成'),
-                ),
-              ] else
-                Padding(
-                  padding: const EdgeInsets.only(right: spaceXs),
-                  child: SizedBox(
-                    height: 40,
-                    width: 48,
-                    child: OutlinedButton(
-                      onPressed: _enterEdit,
-                      style: ButtonStyle(
-                        padding:
-                            const WidgetStatePropertyAll(EdgeInsets.zero),
-                        mouseCursor: const WidgetStatePropertyAll(
-                          SystemMouseCursors.click,
-                        ),
-                        foregroundColor:
-                            WidgetStatePropertyAll(t.accentText),
-                        overlayColor: WidgetStatePropertyAll(t.accentSoft),
-                        side: WidgetStatePropertyAll(
-                          BorderSide(color: t.hairline),
-                        ),
-                        shape: WidgetStatePropertyAll(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(radiusMd),
-                          ),
-                        ),
-                      ),
-                      child: const Icon(Icons.edit_outlined, size: 18),
-                    ),
-                  ),
                 ),
             ],
           ),
@@ -603,7 +578,7 @@ class _NoteViewState extends State<NoteView> {
                                             .textTheme
                                             .labelSmall),
                                     const Spacer(),
-                                    _moreMenu(compact: true),
+                                    _editButton(t),
                                   ],
                                 ),
                               ),
@@ -639,28 +614,53 @@ class _NoteViewState extends State<NoteView> {
     );
   }
 
-  Widget _moreMenu({bool compact = false, bool withTrash = true}) {
-    return PopupMenuButton<String>(
-      icon: Icon(Icons.more_horiz, size: compact ? 18 : 24),
-      iconSize: compact ? 18 : 24,
-      padding: compact ? EdgeInsets.zero : const EdgeInsets.all(8),
-      constraints: compact
-          ? const BoxConstraints.tightFor(width: 28, height: 28)
-          : null,
-      splashRadius: compact ? 14 : null,
-      onSelected: (value) {
-        if (value == 'history') {
-          _showHistory();
-        } else if (value == 'trash') {
-          _trash();
-        }
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem(value: 'history', child: Text('版本历史')),
-        if (withTrash)
-          const PopupMenuItem(value: 'trash', child: Text('移入回收站')),
+  Widget _editButton(InkTokens t) {
+    return Padding(
+      padding: const EdgeInsets.only(right: spaceXs),
+      child: SizedBox(
+        height: 40,
+        width: 48,
+        child: OutlinedButton(
+          onPressed: _enterEdit,
+          style: ButtonStyle(
+            padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+            mouseCursor: const WidgetStatePropertyAll(
+              SystemMouseCursors.click,
+            ),
+            foregroundColor: WidgetStatePropertyAll(t.accentText),
+            overlayColor: WidgetStatePropertyAll(t.accentSoft),
+            side: WidgetStatePropertyAll(
+              BorderSide(color: t.hairline),
+            ),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(radiusMd),
+              ),
+            ),
+          ),
+          child: const Icon(Icons.edit_outlined, size: 18),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showNoteMenu(Offset pos) async {
+    final value = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx, pos.dy),
+      items: const [
+        PopupMenuItem(value: 'history', child: Text('版本历史')),
+        PopupMenuItem(value: 'trash', child: Text('移入回收站')),
       ],
     );
+    if (!mounted) {
+      return;
+    }
+    if (value == 'history') {
+      _showHistory();
+    } else if (value == 'trash') {
+      _trash();
+    }
   }
 
   Widget _matchNav(InkTokens t) {

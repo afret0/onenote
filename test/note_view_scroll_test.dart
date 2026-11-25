@@ -74,8 +74,9 @@ void main() {
     final scroll = renderScroll(tester);
     final maxExtent = scroll.controller!.position.maxScrollExtent;
     expect(maxExtent, greaterThan(0));
-    scroll.controller!.jumpTo(maxExtent * 0.6);
+    scroll.controller!.jumpTo(24);
     await tester.pumpAndSettle();
+    final fraction = scroll.controller!.position.pixels / maxExtent;
 
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
@@ -86,6 +87,7 @@ void main() {
         .controller!
         .selection
         .baseOffset;
+    expect(caret, (fraction * content.length).round());
     expect(caret, lessThan(content.length));
 
     final editPosition = tester
@@ -93,7 +95,7 @@ void main() {
         .firstWhere((e) => e.maxLines == null)
         .scrollController!
         .position;
-    expect(editPosition.pixels, greaterThan(editPosition.maxScrollExtent * 0.3));
+    expect(editPosition.pixels, lessThan(editPosition.maxScrollExtent * 0.5));
     expect(editPosition.pixels, lessThan(editPosition.maxScrollExtent * 0.95));
   });
 
