@@ -11,7 +11,7 @@ part 'app_db.g.dart';
 class Notebooks extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
-  IntColumn get color => integer().withDefault(const Constant(0xFF2E7D5B))();
+  IntColumn get color => integer().withDefault(const Constant(0xFF9333EA))();
   IntColumn get createAt => integer()();
   IntColumn get updateAt => integer()();
 
@@ -20,7 +20,7 @@ class Notebooks extends Table {
 }
 
 const notebookPalette = [
-  0xFF2E7D5B,
+  0xFF9333EA,
   0xFF0E7490,
   0xFF2563EB,
   0xFF7C3AED,

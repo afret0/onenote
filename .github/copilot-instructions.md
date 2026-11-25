@@ -21,8 +21,8 @@
 - 加密：AES-256-GCM + Argon2id，每笔记本独立密钥；生物识别只解锁本地托管密钥，密码是恢复根；Linux 无生物识别回退密码。
 - 剪藏：Chrome MV3 插件 → 应用内 127.0.0.1 桥接服务（Joplin 式），不经云端明文；插件不上架。
 - **可读性优先（项目规矩，2026-11-25 用户明确：这是笔记本应用）**：正文 ≥16px、行高 ≥1.7，正文对比度 ≥4.5:1（文字用 `accentText` 变体）；任何视觉改动不得牺牲可读性。
-- 品牌绿 `#2E7D5B`（用户 2026-11-25 指定「好看的绿」，与 GaDou 的蓝绿 teal 区分；DTV 占红 #C14C50）。应用 UI 主色不变。
-- **应用图标 = 程序化像素网格绘制（2026-11-25 用户最终拍板「还是喜欢像素风」）**：`~/.copilot/tools/fontenv/bin/python tool/icon_gen.py` 在 32×32 网格逐格画——主题绿底 #2E7D5B + 白色笔记本吉祥物(黑描边/蓝横线/粉腮红/微笑) + 右上黄闪电，**无外圈**（DTV/GaDou 都是圈，撞形分不清）；NEAREST 放大保证硬边。**改图标改网格坐标重跑，不用 AI 生图**（AI「假像素」边缘糊、格子不一，多轮被否；Fluent 玻璃/扁平 Office 风试过也被否）。mac appiconset 走 Big Sur 824 网格，源图 `assets/images/logo.png`。
+- 品牌紫 `#7719AA`（微软 OneNote 官方紫，用户 2026-11-25 指定，替代先前的品牌绿 #2E7D5B；DTV 占红 #C14C50、GaDou 占蓝绿）。**默认深色模式**（`themeMode: ThemeMode.dark`，用户指定「背景默认黑色」）：暗底 `#0E0B12` 带紫调、正文 `#EFEAF4`；暗色主色 `#A54FD4`（白字对比 4.5:1）、暗色文字紫 `#C89AE6`（对底 >7.9:1）。改主题色必须重算并核验这组对比度。
+- **应用图标 = 程序化像素网格绘制（2026-11-25 定稿候选 #26「像素 N」紫版）**：`~/.copilot/tools/fontenv/bin/python tool/icon_gen.py` 在 32×32 网格逐格画——白色像素 N + 黑描边，OneNote 紫双色对角底（亮 #8C34C2 / 暗 #651192，围绕官方 #7719AA），**无外圈**（DTV/GaDou 都是圈，撞形分不清）；NEAREST 放大保证硬边。**改图标改网格坐标重跑，不用 AI 生图**（AI「假像素」边缘糊、格子不一，多轮被否；Fluent 玻璃/扁平 Office 风也被否）。候选生成器 `tool/icon_gallery.py`（12 形象 ×4 背景批量出图供挑选）。mac appiconset 走 Big Sur 824 网格，源图 `assets/images/logo.png`。
 - macOS 图标按 Big Sur 网格：1024 透明画布中央 824×824 圆角方形（半径 ≈184），appiconset 程序化生成，勿直接用满幅图。**深色底在深色 Dock 里融底显小（真实教训）**：底色要亮、主体要大而简单。
 - 笔记本主题色：`notebookPalette` 8 色按创建顺序自动循环（schema v2 color 列，迁移按 createAt 序回填）；**笔记本名称前不放图标，只放主题色圆点**（侧栏/笔记卡/设置页一致）；暂无手动换色入口。
 - 附件（2026-11-25 用户拍板）：图片/文件本地内容寻址存储（sha256 去重，`onenote-asset://<64hex>` scheme，单文件 ≤20MB）；入口 = 编辑工具栏按钮 + 粘贴（剪贴板有图先插图）+ 拖拽；**GC 仅删「笔记 + 回收站 + 版本历史均未引用」的资源**，时机 = 启动 + 轮询，且必须在 `purgeExpired` 之后跑；渲染态点附件链接写临时文件用系统默认应用打开；Web 端附件随同步阶段支持（store 在 web 为 null，UI 提示）。
@@ -32,7 +32,7 @@
 - `lib/data/app_db.dart`：drift 表（Notebooks/Notes/NoteVersions/Settings）与全部业务语义；时间戳一律毫秒 int，可注入 clock 便于测试；`allAttachmentRefs` 扫笔记 + 全部版本供附件 GC。
 - `lib/data/attachment_store.dart`：附件内容寻址存储 + GC（`forTest` 构造可注入目录）。
 - `lib/state/app_state.dart`：列表/作用域/搜索范围状态、附件 store 生命周期、`notebookColor`。
-- `lib/ui/theme.dart`：InkTokens 主题扩展（暖纸色 + 墨色 + 品牌绿），`accentText` 是保证 4.5:1 的正文用主色变体，文字场景用它、填充用 `accent`。
+- `lib/ui/theme.dart`：InkTokens 主题扩展（紫调纸色 + 墨色 + OneNote 紫），`accentText` 是保证 4.5:1 的正文用主色变体，文字场景用它、填充用 `accent`。
 - `lib/ui/`：home_page（宽屏三栏 / 窄屏 Drawer + 导航）、note_view（渲染/编辑/版本历史/附件上传）、settings_page、markdown_view、attachment_image。
 
 ## 命令与坑

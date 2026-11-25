@@ -4,6 +4,7 @@ from PIL import Image
 N = 32
 PAL = {
     'G1': (46, 125, 91),
+    'P1': (119, 25, 170),
     'GL': (54, 146, 105),
     'GD': (38, 106, 77),
     'DP': (27, 79, 56),
@@ -361,6 +362,7 @@ BGS = [
     ('duo', '双色绿', lambda x, y: 'GL' if x + y < 31 else 'GD' if x + y > 31 else ('GL' if x % 2 else 'GD')),
     ('deep', '深绿', lambda x, y: 'DP'),
     ('mint', '浅薄荷', lambda x, y: 'M'),
+    ('purple', 'OneNote紫', lambda x, y: 'P1'),
 ]
 
 SUBJECTS = [

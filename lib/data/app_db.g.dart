@@ -35,7 +35,7 @@ class $NotebooksTable extends Notebooks
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    defaultValue: const Constant(0xFF2E7D5B),
+    defaultValue: const Constant(0xFF9333EA),
   );
   static const VerificationMeta _createAtMeta = const VerificationMeta(
     'createAt',
