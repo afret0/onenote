@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
@@ -21,6 +22,7 @@ import 'theme.dart';
 import 'widgets.dart';
 
 const _noteColumnWidth = 760.0;
+const _navPosSettingKey = 'searchNavPos';
 
 class NoteView extends StatefulWidget {
   const NoteView({
@@ -55,6 +57,9 @@ class _NoteViewState extends State<NoteView> {
   bool _showScrollTop = false;
   final MarkdownHighlightController _highlight = MarkdownHighlightController();
   final GlobalKey _renderViewportKey = GlobalKey();
+  final GlobalKey _navKey = GlobalKey();
+  Size _navSize = const Size(168, 44);
+  Offset? _navPos;
   int _matchIndex = 0;
 
   AppState get state => widget.state;
@@ -68,6 +73,57 @@ class _NoteViewState extends State<NoteView> {
     _highlight.addListener(_onHighlightChanged);
     state.addListener(_reloadIfIdle);
     _load();
+    _loadNavPos();
+  }
+
+  Future<void> _loadNavPos() async {
+    final raw = await state.db.getSetting(_navPosSettingKey);
+    if (!mounted || raw == null) {
+      return;
+    }
+    final parts = raw.split(',');
+    if (parts.length != 2) {
+      return;
+    }
+    final x = double.tryParse(parts[0]);
+    final y = double.tryParse(parts[1]);
+    if (x == null || y == null) {
+      return;
+    }
+    setState(() => _navPos = Offset(x, y));
+  }
+
+  Offset _defaultNavPos(Size area, Size bar) => Offset(
+        math.max(0.0, area.width - bar.width - spaceSm),
+        math.max(0.0, area.height - bar.height - spaceLg - 52),
+      );
+
+  Offset _clampNav(Offset pos, Size area, Size bar) {
+    final maxX = math.max(0.0, area.width - bar.width - spaceSm);
+    final maxY = math.max(0.0, area.height - bar.height - spaceSm);
+    return Offset(pos.dx.clamp(0.0, maxX), pos.dy.clamp(0.0, maxY));
+  }
+
+  void _dragNav(Offset delta) {
+    final bar = _navKey.currentContext?.findRenderObject() as RenderBox?;
+    final area =
+        _renderViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (bar == null || area == null) {
+      return;
+    }
+    final base = _navPos ?? _defaultNavPos(area.size, bar.size);
+    setState(() {
+      _navPos = _clampNav(base + delta, area.size, bar.size);
+    });
+  }
+
+  Future<void> _saveNavPos() async {
+    final pos = _navPos;
+    if (pos == null) {
+      return;
+    }
+    await state.db
+        .setSetting(_navPosSettingKey, '${pos.dx.round()},${pos.dy.round()}');
   }
 
   void _onHighlightChanged() {
@@ -594,6 +650,7 @@ class _NoteViewState extends State<NoteView> {
                                 onAttachmentLink: _openAttachment,
                                 onToggleTask: _toggleTask,
                                 highlightQuery: widget.highlightQuery,
+                                highlightActiveIndex: _matchIndex,
                                 highlightController: _highlight,
                               ),
                             ],
@@ -627,15 +684,31 @@ class _NoteViewState extends State<NoteView> {
                       ),
                     if (!_editing && _highlight.matches.isNotEmpty)
                       Positioned.fill(
-                        child: _readingColumnOverlay(
-                          Align(
-                            alignment: Alignment.bottomRight,
-                            child: Padding(
-                              padding: const EdgeInsets.only(
-                                  right: spaceXs, bottom: spaceLg + 52),
-                              child: _matchNav(t),
-                            ),
-                          ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final area = constraints.biggest;
+                            final bar = _navSize;
+                            final pos = _clampNav(
+                                _navPos ?? _defaultNavPos(area, bar), area, bar);
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!mounted) {
+                                return;
+                              }
+                              final size = _navKey.currentContext?.size;
+                              if (size != null && size != _navSize) {
+                                setState(() => _navSize = size);
+                              }
+                            });
+                            return Stack(
+                              children: [
+                                Positioned(
+                                  left: pos.dx,
+                                  top: pos.dy,
+                                  child: _matchNav(t),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                   ],
@@ -730,41 +803,51 @@ class _NoteViewState extends State<NoteView> {
 
   Widget _matchNav(InkTokens t) {
     final count = _highlight.matches.length;
-    return Material(
-      key: const ValueKey('matchNav'),
-      color: t.surfaceAlt,
-      borderRadius: BorderRadius.circular(radiusMd),
-      elevation: 4,
-      shadowColor: Colors.black54,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: spaceXs),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('${_matchIndex + 1}/$count',
-                style: Theme.of(context).textTheme.labelSmall),
-            Semantics(
-              button: true,
-              label: '上一个命中',
-              child: IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed:
-                    _matchIndex > 0 ? () => _jumpToMatch(_matchIndex - 1) : null,
-                icon: const Icon(Icons.keyboard_arrow_up, size: 18),
-              ),
+    return MouseRegion(
+      key: _navKey,
+      cursor: SystemMouseCursors.move,
+      child: GestureDetector(
+        onPanUpdate: (d) => _dragNav(d.delta),
+        onPanEnd: (_) => _saveNavPos(),
+        child: Material(
+          key: const ValueKey('matchNav'),
+          color: t.surfaceAlt,
+          borderRadius: BorderRadius.circular(radiusMd),
+          elevation: 4,
+          shadowColor: Colors.black54,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: spaceXs),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.drag_indicator, size: 14, color: t.inkFaint),
+                Text('${_matchIndex + 1}/$count',
+                    style: Theme.of(context).textTheme.labelSmall),
+                Semantics(
+                  button: true,
+                  label: '上一个命中',
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _matchIndex > 0
+                        ? () => _jumpToMatch(_matchIndex - 1)
+                        : null,
+                    icon: const Icon(Icons.keyboard_arrow_up, size: 18),
+                  ),
+                ),
+                Semantics(
+                  button: true,
+                  label: '下一个命中',
+                  child: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _matchIndex < count - 1
+                        ? () => _jumpToMatch(_matchIndex + 1)
+                        : null,
+                    icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+                  ),
+                ),
+              ],
             ),
-            Semantics(
-              button: true,
-              label: '下一个命中',
-              child: IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: _matchIndex < count - 1
-                    ? () => _jumpToMatch(_matchIndex + 1)
-                    : null,
-                icon: const Icon(Icons.keyboard_arrow_down, size: 18),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

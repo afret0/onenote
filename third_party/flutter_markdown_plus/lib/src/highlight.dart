@@ -27,14 +27,31 @@ class MarkdownHighlightController extends ChangeNotifier {
     if (context == null) {
       return null;
     }
-    final RenderObject? render = context.findRenderObject();
-    if (render is! RenderParagraph) {
+    final RenderObject? root = context.findRenderObject();
+    if (root == null) {
       return null;
     }
-    final Offset local = render.getOffsetForCaret(
-      TextPosition(offset: match.offset),
-      Rect.zero,
-    );
+    RenderObject? textRender;
+    void visit(RenderObject node) {
+      if (textRender != null) {
+        return;
+      }
+      if (node is RenderParagraph || node is RenderEditable) {
+        textRender = node;
+        return;
+      }
+      node.visitChildren(visit);
+    }
+
+    visit(root);
+    final RenderObject? render = textRender;
+    if (render is! RenderBox) {
+      return null;
+    }
+    final TextPosition position = TextPosition(offset: match.offset);
+    final Offset local = render is RenderParagraph
+        ? render.getOffsetForCaret(position, Rect.zero)
+        : (render as RenderEditable).getLocalRectForCaret(position).topLeft;
     return render.localToGlobal(local);
   }
 }

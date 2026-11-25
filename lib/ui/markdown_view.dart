@@ -14,6 +14,7 @@ class MarkdownView extends StatelessWidget {
     this.onAttachmentLink,
     this.onToggleTask,
     this.highlightQuery,
+    this.highlightActiveIndex = -1,
     this.highlightController,
   });
 
@@ -22,6 +23,7 @@ class MarkdownView extends StatelessWidget {
   final void Function(String id)? onAttachmentLink;
   final void Function(int ordinal)? onToggleTask;
   final String? highlightQuery;
+  final int highlightActiveIndex;
   final MarkdownHighlightController? highlightController;
 
   @override
@@ -65,7 +67,10 @@ class MarkdownView extends StatelessWidget {
       data: content,
       selectable: true,
       highlightQuery: highlightQuery,
-      highlightColor: highlightQuery == null ? null : t.accentSoft,
+      highlightColor: highlightQuery == null ? null : t.searchMark,
+      highlightActiveIndex: highlightActiveIndex,
+      highlightActiveColor: highlightQuery == null ? null : t.searchActive,
+      highlightActiveInk: highlightQuery == null ? null : t.searchActiveInk,
       highlightController: highlightController,
       blockSyntaxes: markdownTaskBlockSyntaxes,
       listItemCrossAxisAlignment: MarkdownListItemCrossAxisAlignment.start,

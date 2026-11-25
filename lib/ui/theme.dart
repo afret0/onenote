@@ -15,6 +15,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
     required this.onAccent,
     required this.danger,
     required this.navy,
+    required this.searchMark,
+    required this.searchActive,
+    required this.searchActiveInk,
     this.sans = miSansFamily,
     this.fontScale = 1.0,
     this.noteFontSize = 18,
@@ -33,6 +36,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
   final Color onAccent;
   final Color danger;
   final Color navy;
+  final Color searchMark;
+  final Color searchActive;
+  final Color searchActiveInk;
   final String sans;
   final double fontScale;
   final double noteFontSize;
@@ -51,6 +57,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
     onAccent: Color(0xFFFFFFFF),
     danger: Color(0xFFDC2626),
     navy: Color(0xFF241530),
+    searchMark: Color(0xFFFDE68A),
+    searchActive: Color(0xFFF59E0B),
+    searchActiveInk: Color(0xFF1C1917),
   );
 
   static const dark = InkTokens(
@@ -67,6 +76,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
     onAccent: Color(0xFFFFFFFF),
     danger: Color(0xFFF87171),
     navy: Color(0xFF232327),
+    searchMark: Color(0xFF6E5A1C),
+    searchActive: Color(0xFFFFC53D),
+    searchActiveInk: Color(0xFF1C1917),
   );
 
   @override
@@ -84,6 +96,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
     Color? onAccent,
     Color? danger,
     Color? navy,
+    Color? searchMark,
+    Color? searchActive,
+    Color? searchActiveInk,
     String? sans,
     double? fontScale,
     double? noteFontSize,
@@ -102,6 +117,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
         onAccent: onAccent ?? this.onAccent,
         danger: danger ?? this.danger,
         navy: navy ?? this.navy,
+        searchMark: searchMark ?? this.searchMark,
+        searchActive: searchActive ?? this.searchActive,
+        searchActiveInk: searchActiveInk ?? this.searchActiveInk,
         sans: sans ?? this.sans,
         fontScale: fontScale ?? this.fontScale,
         noteFontSize: noteFontSize ?? this.noteFontSize,
@@ -126,6 +144,9 @@ class InkTokens extends ThemeExtension<InkTokens> {
       onAccent: Color.lerp(onAccent, other.onAccent, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
       navy: Color.lerp(navy, other.navy, t)!,
+      searchMark: Color.lerp(searchMark, other.searchMark, t)!,
+      searchActive: Color.lerp(searchActive, other.searchActive, t)!,
+      searchActiveInk: Color.lerp(searchActiveInk, other.searchActiveInk, t)!,
       sans: t < 0.5 ? sans : other.sans,
       fontScale: fontScale + (other.fontScale - fontScale) * t,
       noteFontSize: noteFontSize + (other.noteFontSize - noteFontSize) * t,

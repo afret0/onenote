@@ -228,6 +228,9 @@ abstract class MarkdownWidget extends StatefulWidget {
     this.softLineBreak = false,
     this.highlightQuery,
     this.highlightColor,
+    this.highlightActiveIndex = -1,
+    this.highlightActiveColor,
+    this.highlightActiveInk,
     this.highlightController,
   });
 
@@ -348,6 +351,12 @@ abstract class MarkdownWidget extends StatefulWidget {
 
   final Color? highlightColor;
 
+  final int highlightActiveIndex;
+
+  final Color? highlightActiveColor;
+
+  final Color? highlightActiveInk;
+
   final MarkdownHighlightController? highlightController;
 
   /// Subclasses should override this function to display the given children,
@@ -376,6 +385,9 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
         widget.styleSheet != oldWidget.styleSheet ||
         widget.highlightQuery != oldWidget.highlightQuery ||
         widget.highlightColor != oldWidget.highlightColor ||
+        widget.highlightActiveIndex != oldWidget.highlightActiveIndex ||
+        widget.highlightActiveColor != oldWidget.highlightActiveColor ||
+        widget.highlightActiveInk != oldWidget.highlightActiveInk ||
         widget.highlightController != oldWidget.highlightController) {
       _parseMarkdown();
     }
@@ -424,6 +436,9 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
       softLineBreak: widget.softLineBreak,
       highlightQuery: widget.highlightQuery,
       highlightColor: widget.highlightColor,
+      highlightActiveIndex: widget.highlightActiveIndex,
+      highlightActiveColor: widget.highlightActiveColor,
+      highlightActiveInk: widget.highlightActiveInk,
       highlightController: widget.highlightController,
     );
 
@@ -503,6 +518,9 @@ class MarkdownBody extends MarkdownWidget {
     super.softLineBreak,
     super.highlightQuery,
     super.highlightColor,
+    super.highlightActiveIndex,
+    super.highlightActiveColor,
+    super.highlightActiveInk,
     super.highlightController,
   });
 
@@ -564,6 +582,9 @@ class Markdown extends MarkdownWidget {
     super.softLineBreak,
     super.highlightQuery,
     super.highlightColor,
+    super.highlightActiveIndex,
+    super.highlightActiveColor,
+    super.highlightActiveInk,
     super.highlightController,
   });
 

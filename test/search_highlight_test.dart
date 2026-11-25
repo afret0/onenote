@@ -199,4 +199,173 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.descendant(of: nav, matching: find.text('1/3')), findsOneWidget);
   });
+
+  testWidgets('active match uses active color and others use mark color',
+      (WidgetTester tester) async {
+    final controller = MarkdownHighlightController();
+    const t = InkTokens.dark;
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: Scaffold(
+        body: MarkdownView(
+          content: 'buffer one buffer two',
+          highlightQuery: 'buffer',
+          highlightActiveIndex: 1,
+          highlightController: controller,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(controller.matches.length, 2);
+    var mark = 0;
+    var active = 0;
+    void walk(InlineSpan s) {
+      if (s is! TextSpan) {
+        return;
+      }
+      final bg = s.style?.backgroundColor;
+      if (s.text != null && bg == t.searchMark) {
+        mark++;
+      }
+      if (s.text != null && bg == t.searchActive) {
+        active++;
+        expect(s.text, 'buffer');
+        expect(s.style?.color, t.searchActiveInk);
+      }
+      for (final k in s.children ?? <InlineSpan>[]) {
+        walk(k);
+      }
+    }
+
+    for (final w
+        in tester.widgetList<SelectableText>(find.byType(SelectableText))) {
+      walk(w.textSpan!);
+    }
+    expect(mark, 1);
+    expect(active, 1);
+  });
+
+  testWidgets('tapping next match scrolls to the hit line',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_match_jump');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    late String noteId;
+    await tester.runAsync(() async {
+      final nb = await db.createNotebook('甲');
+      now += 1000;
+      final note = await db.createNote(nb.id,
+          title: 't',
+          content:
+              'buffer head\n\n${List.filled(40, 'filler line').join('\n\n')}\n\nbuffer tail');
+      noteId = note.id;
+      now += 1000;
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'buffer');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(NoteCard).first);
+    await tester.pumpAndSettle();
+
+    final scroll = tester.widget<SingleChildScrollView>(
+        find.byKey(PageStorageKey<String>('noteScroll:$noteId')));
+    expect(scroll.controller!.position.pixels, 0);
+    final nav = find.byKey(const ValueKey('matchNav'));
+    await tester.tap(
+        find.descendant(of: nav, matching: find.byIcon(Icons.keyboard_arrow_down)));
+    await tester.pumpAndSettle();
+    expect(scroll.controller!.position.pixels, greaterThan(0));
+    await tester.tap(
+        find.descendant(of: nav, matching: find.byIcon(Icons.keyboard_arrow_up)));
+    await tester.pumpAndSettle();
+    expect(scroll.controller!.position.pixels, 0);
+  });
+
+  testWidgets('match nav drags, persists position and restores it',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_nav_drag');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    await tester.runAsync(() async {
+      final nb = await db.createNotebook('甲');
+      now += 1000;
+      await db.createNote(nb.id,
+          title: 't', content: 'buffer one buffer two buffer three');
+      now += 1000;
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'buffer');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(NoteCard).first);
+    await tester.pumpAndSettle();
+
+    final nav = find.byKey(const ValueKey('matchNav'));
+    final area = tester.getRect(find.byType(SingleChildScrollView).first);
+    final before = tester.getRect(nav);
+    expect(area.right - before.right, closeTo(spaceSm, 1));
+    await tester.drag(nav, const Offset(-120, -90));
+    await tester.pumpAndSettle();
+    final after = tester.getRect(nav);
+    expect(after.center.dx, closeTo(before.center.dx - 120, 1));
+    expect(after.center.dy, closeTo(before.center.dy - 90, 1));
+    String? saved;
+    await tester.runAsync(() async {
+      saved = await db.getSetting('searchNavPos');
+    });
+    expect(saved,
+        '${(after.left - area.left).round()},${(after.top - area.top).round()}');
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'buffer');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(NoteCard).first);
+    await tester.pumpAndSettle();
+    final restored = tester.getRect(nav);
+    expect(restored.left, closeTo(after.left, 1));
+    expect(restored.top, closeTo(after.top, 1));
+  });
 }

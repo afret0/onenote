@@ -119,6 +119,9 @@ class MarkdownBuilder implements md.NodeVisitor {
     this.softLineBreak = false,
     this.highlightQuery,
     this.highlightColor,
+    this.highlightActiveIndex = -1,
+    this.highlightActiveColor,
+    this.highlightActiveInk,
     this.highlightController,
   });
 
@@ -128,6 +131,12 @@ class MarkdownBuilder implements md.NodeVisitor {
   final String? highlightQuery;
 
   final Color? highlightColor;
+
+  final int highlightActiveIndex;
+
+  final Color? highlightActiveColor;
+
+  final Color? highlightActiveInk;
 
   final MarkdownHighlightController? highlightController;
 
@@ -224,41 +233,8 @@ class MarkdownBuilder implements md.NodeVisitor {
     assert(_tables.isEmpty);
     assert(_inlines.isEmpty);
     assert(!_isInBlockquote);
+    highlightController?.recorded();
     return _blocks.single.children;
-  }
-
-  void _recordWidgetMatches(Widget widget) {
-    final Key? key = widget.key;
-    if (key is! GlobalKey) {
-      return;
-    }
-    final InlineSpan? span = _getInlineSpanFromText(widget);
-    if (span is TextSpan) {
-      _recordSpanMatches(key, span);
-    }
-  }
-
-  void _recordSpanMatches(GlobalKey key, TextSpan span) {
-    int offset = 0;
-    void walk(InlineSpan node) {
-      if (node is TextSpan) {
-        final List<InlineSpan>? kids = node.children;
-        if (kids != null && kids.isNotEmpty) {
-          kids.forEach(walk);
-          return;
-        }
-        final String txt = node.text ?? '';
-        if (txt.isNotEmpty && node.style?.backgroundColor == highlightColor) {
-          highlightController!.matches.add(MarkdownHighlightMatch(key, offset));
-        }
-        offset += txt.length;
-      } else {
-        offset += 1;
-      }
-    }
-
-    walk(span);
-    highlightController!.recorded();
   }
 
   @override
@@ -409,8 +385,7 @@ class MarkdownBuilder implements md.NodeVisitor {
             final Widget rt = _buildRichText(
                 delegate.formatText(styleSheet, text.text),
                 highlight: true);
-            _recordWidgetMatches(rt);
-            return rt;
+            return _finalizeWidget(rt);
           }());
     } else {
       child = _buildRichText(
@@ -633,9 +608,8 @@ class MarkdownBuilder implements md.NodeVisitor {
             ),
             highlight: true,
           );
-          _recordWidgetMatches(richText);
           current.children.removeLast();
-          current.children.add(richText);
+          current.children.add(_finalizeWidget(richText));
         }
       }
 
@@ -942,8 +916,127 @@ class MarkdownBuilder implements md.NodeVisitor {
       lastIsText = true;
     }
 
-    mergedWidgets.forEach(_recordWidgetMatches);
-    return mergedWidgets;
+    return mergedWidgets.map(_finalizeWidget).toList();
+  }
+
+  Widget _finalizeWidget(Widget widget) {
+    final Key? key = widget.key;
+    if (key is! GlobalKey) {
+      return widget;
+    }
+    final InlineSpan? span = _getInlineSpanFromText(widget);
+    if (span is! TextSpan) {
+      return widget;
+    }
+    final int base = highlightController!.matches.length;
+    _recordSpanMatches(key, span);
+    final int active = highlightActiveIndex;
+    if (highlightActiveColor == null ||
+        active < base ||
+        active >= highlightController!.matches.length) {
+      return widget;
+    }
+    final TextSpan? recolored = _recolorActive(
+        span, highlightController!.matches[active].offset);
+    if (recolored == null) {
+      return widget;
+    }
+    if (widget is SelectableText) {
+      return SelectableText.rich(
+        recolored,
+        key: key,
+        textAlign: widget.textAlign,
+        strutStyle: widget.strutStyle,
+        textScaler: widget.textScaler,
+        onSelectionChanged: widget.onSelectionChanged,
+        onTap: widget.onTap,
+        contextMenuBuilder: widget.contextMenuBuilder,
+      );
+    }
+    if (widget is Text) {
+      return Text.rich(
+        recolored,
+        key: key,
+        textAlign: widget.textAlign,
+        strutStyle: widget.strutStyle,
+        textScaler: widget.textScaler,
+      );
+    }
+    return widget;
+  }
+
+  void _recordSpanMatches(GlobalKey key, TextSpan span) {
+    int offset = 0;
+    void walk(InlineSpan node) {
+      if (node is TextSpan) {
+        final List<InlineSpan>? kids = node.children;
+        if (kids != null && kids.isNotEmpty) {
+          kids.forEach(walk);
+          return;
+        }
+        final String txt = node.text ?? '';
+        final Color? bg = node.style?.backgroundColor;
+        if (txt.isNotEmpty &&
+            (bg == highlightColor ||
+                (highlightActiveColor != null && bg == highlightActiveColor))) {
+          highlightController!.matches.add(MarkdownHighlightMatch(key, offset));
+        }
+        offset += txt.length;
+      } else {
+        offset += 1;
+      }
+    }
+
+    walk(span);
+  }
+
+  TextSpan? _recolorActive(TextSpan root, int target) {
+    int offset = 0;
+    bool found = false;
+    TextSpan rebuild(TextSpan span) {
+      final List<InlineSpan>? kids = span.children;
+      if (kids != null && kids.isNotEmpty) {
+        final List<InlineSpan> rebuilt = <InlineSpan>[];
+        for (final InlineSpan child in kids) {
+          if (child is TextSpan) {
+            rebuilt.add(rebuild(child));
+          } else {
+            offset += 1;
+            rebuilt.add(child);
+          }
+        }
+        return TextSpan(
+          style: span.style,
+          children: rebuilt,
+          recognizer: span.recognizer,
+          mouseCursor: span.mouseCursor,
+        );
+      }
+      final String? txt = span.text;
+      if (txt == null || txt.isEmpty) {
+        return span;
+      }
+      final int start = offset;
+      offset += txt.length;
+      if (!found &&
+          start == target &&
+          span.style?.backgroundColor == highlightColor) {
+        found = true;
+        return TextSpan(
+          text: txt,
+          style: span.style!.copyWith(
+            backgroundColor: highlightActiveColor,
+            color: highlightActiveInk,
+          ),
+          recognizer: span.recognizer,
+          mouseCursor: span.mouseCursor,
+        );
+      }
+      return span;
+    }
+
+    final TextSpan out = rebuild(root);
+    return found ? out : null;
   }
 
   TextAlign _textAlignForBlockTag(String? blockTag) {
@@ -1060,6 +1153,7 @@ class MarkdownBuilder implements md.NodeVisitor {
   TextSpan _applyHighlight(TextSpan root) {
     final String needle = highlightQuery!.toLowerCase();
     final Color color = highlightColor!;
+    final Color? activeColor = highlightActiveColor;
     TextSpan rebuild(TextSpan span) {
       final List<InlineSpan>? children = span.children;
       if (children != null && children.isNotEmpty) {
@@ -1082,7 +1176,8 @@ class MarkdownBuilder implements md.NodeVisitor {
       if (txt == null || txt.isEmpty) {
         return span;
       }
-      if (span.style?.backgroundColor == color) {
+      final Color? bg = span.style?.backgroundColor;
+      if (bg == color || (activeColor != null && bg == activeColor)) {
         return span;
       }
       final String lower = txt.toLowerCase();
