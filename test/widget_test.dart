@@ -183,7 +183,7 @@ void main() {
     expect(find.byType(NoteView), findsNothing);
     expect(find.widgetWithText(NoteCard, 'second'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('菜单'));
+    await tester.tap(find.byIcon(Icons.menu));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ScopeTile, '工作'));
     await tester.pumpAndSettle();

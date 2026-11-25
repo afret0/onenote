@@ -175,7 +175,7 @@ class NoteCard extends StatelessWidget {
           padding: dense
               ? const EdgeInsets.fromLTRB(spaceMd, spaceSm, spaceMd, spaceSm)
               : const EdgeInsets.all(spaceMd),
-          child: _HighlightText(
+          child: HighlightText(
             text: title,
             needle: highlight,
             style: Theme.of(context).textTheme.titleMedium
@@ -188,8 +188,9 @@ class NoteCard extends StatelessWidget {
   }
 }
 
-class _HighlightText extends StatelessWidget {
-  const _HighlightText({
+class HighlightText extends StatelessWidget {
+  const HighlightText({
+    super.key,
     required this.text,
     required this.style,
     required this.maxLines,

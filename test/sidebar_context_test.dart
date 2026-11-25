@@ -92,7 +92,10 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    final button = find.byTooltip('新建笔记');
+    final button = find.ancestor(
+      of: find.byIcon(Icons.add),
+      matching: find.byType(OutlinedButton),
+    );
     expect(button, findsOneWidget);
     expect(
         find.descendant(of: button, matching: find.text('笔记')), findsNothing);

@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
+    show MarkdownHighlightController;
 import 'package:mime/mime.dart';
 import 'package:pasteboard/pasteboard.dart';
 
@@ -25,12 +27,14 @@ class NoteView extends StatefulWidget {
     required this.noteId,
     required this.showBack,
     required this.onBack,
+    this.highlightQuery,
   });
 
   final AppState state;
   final String noteId;
   final bool showBack;
   final VoidCallback onBack;
+  final String? highlightQuery;
 
   @override
   State<NoteView> createState() => _NoteViewState();
@@ -47,6 +51,9 @@ class _NoteViewState extends State<NoteView> {
   final ScrollController _renderScroll = ScrollController();
   final ScrollController _editScroll = ScrollController();
   bool _showScrollTop = false;
+  final MarkdownHighlightController _highlight = MarkdownHighlightController();
+  final GlobalKey _renderViewportKey = GlobalKey();
+  int _matchIndex = 0;
 
   AppState get state => widget.state;
 
@@ -56,7 +63,20 @@ class _NoteViewState extends State<NoteView> {
     _titleController = TextEditingController();
     _contentController = TextEditingController();
     _renderScroll.addListener(_onRenderScroll);
+    _highlight.addListener(_onHighlightChanged);
     _load();
+  }
+
+  void _onHighlightChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        final count = _highlight.matches.length;
+        _matchIndex = count == 0 ? 0 : _matchIndex.clamp(0, count - 1);
+      });
+    });
   }
 
   Future<void> _load() async {
@@ -69,6 +89,55 @@ class _NoteViewState extends State<NoteView> {
       _titleController.text = note.title;
       _contentController.text = note.content;
     });
+    _scheduleFirstMatch();
+  }
+
+  @override
+  void didUpdateWidget(covariant NoteView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.noteId != widget.noteId ||
+        oldWidget.highlightQuery != widget.highlightQuery) {
+      _matchIndex = 0;
+      _scheduleFirstMatch();
+    }
+  }
+
+  void _scheduleFirstMatch() {
+    if ((widget.highlightQuery ?? '').isEmpty) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _editing || _highlight.matches.isEmpty) {
+        return;
+      }
+      _jumpToMatch(0);
+    });
+  }
+
+  void _jumpToMatch(int index) {
+    final count = _highlight.matches.length;
+    if (count == 0) {
+      return;
+    }
+    final i = index.clamp(0, count - 1);
+    setState(() => _matchIndex = i);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_renderScroll.hasClients) {
+        return;
+      }
+      final viewport =
+          _renderViewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final global = _highlight.globalOffset(i);
+      if (viewport == null || global == null) {
+        return;
+      }
+      final top = viewport.localToGlobal(Offset.zero).dy;
+      final target = (_renderScroll.position.pixels + global.dy - top - 96)
+          .clamp(0.0, _renderScroll.position.maxScrollExtent);
+      _renderScroll.animateTo(target,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic);
+    });
   }
 
   @override
@@ -78,6 +147,7 @@ class _NoteViewState extends State<NoteView> {
     _contentController.dispose();
     _renderScroll.dispose();
     _editScroll.dispose();
+    _highlight.removeListener(_onHighlightChanged);
     super.dispose();
   }
 
@@ -425,10 +495,10 @@ class _NoteViewState extends State<NoteView> {
                       )
                     : Padding(
                         padding: const EdgeInsets.symmetric(horizontal: spaceSm),
-                        child: Text(
-                          noteDisplayTitle(note),
+                        child: HighlightText(
+                          text: noteDisplayTitle(note),
+                          needle: _editing ? null : widget.highlightQuery,
                           maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                           style: _titleStyle(context),
                         ),
                       ),
@@ -505,6 +575,7 @@ class _NoteViewState extends State<NoteView> {
           child: _editing
               ? _editorArea()
               : Stack(
+                  key: _renderViewportKey,
                   fit: StackFit.expand,
                   children: [
                     SingleChildScrollView(
@@ -550,6 +621,8 @@ class _NoteViewState extends State<NoteView> {
                                 attachments: state.attachments,
                                 onAttachmentLink: _openAttachment,
                                 onToggleTask: _toggleTask,
+                                highlightQuery: widget.highlightQuery,
+                                highlightController: _highlight,
                               ),
                             ],
                           ),
@@ -562,10 +635,58 @@ class _NoteViewState extends State<NoteView> {
                         bottom: spaceLg,
                         child: _scrollTopButton(t),
                       ),
+                    if (!_editing && _highlight.matches.isNotEmpty)
+                      Positioned(
+                        right: spaceLg,
+                        bottom: spaceLg + 52,
+                        child: _matchNav(t),
+                      ),
                   ],
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _matchNav(InkTokens t) {
+    final count = _highlight.matches.length;
+    return Material(
+      key: const ValueKey('matchNav'),
+      color: t.surfaceAlt,
+      borderRadius: BorderRadius.circular(radiusMd),
+      elevation: 4,
+      shadowColor: Colors.black54,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: spaceXs),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${_matchIndex + 1}/$count',
+                style: Theme.of(context).textTheme.labelSmall),
+            Semantics(
+              button: true,
+              label: '上一个命中',
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed:
+                    _matchIndex > 0 ? () => _jumpToMatch(_matchIndex - 1) : null,
+                icon: const Icon(Icons.keyboard_arrow_up, size: 18),
+              ),
+            ),
+            Semantics(
+              button: true,
+              label: '下一个命中',
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: _matchIndex < count - 1
+                    ? () => _jumpToMatch(_matchIndex + 1)
+                    : null,
+                icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

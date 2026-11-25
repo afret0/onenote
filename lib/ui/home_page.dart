@@ -175,7 +175,6 @@ class _HomePageState extends State<HomePage> {
                   backgroundColor: inkOf(context).accent,
                   foregroundColor: inkOf(context).onAccent,
                   onPressed: _newNote,
-                  tooltip: '新建笔记',
                   child: const Icon(Icons.edit_note),
                 )
               : null,
@@ -231,6 +230,8 @@ class _HomePageState extends State<HomePage> {
                             noteId: openId,
                             showBack: drawerNeeded,
                             onBack: state.closeNote,
+                            highlightQuery:
+                                searching ? _searchController.text.trim() : null,
                           )
                         : _contentPlaceholder(),
                   ),
@@ -279,7 +280,6 @@ class _HomePageState extends State<HomePage> {
               ),
               const Spacer(),
               IconButton(
-                tooltip: '设置',
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => SettingsPage(state: state)),
                 ),
@@ -318,7 +318,6 @@ class _HomePageState extends State<HomePage> {
                       child: IconButton(
                         padding: EdgeInsets.zero,
                         iconSize: 16,
-                        tooltip: '新建笔记本',
                         onPressed: _newNotebook,
                         icon: const Icon(Icons.add),
                       ),
@@ -410,7 +409,6 @@ class _HomePageState extends State<HomePage> {
             children: [
               if (!dense && MediaQuery.sizeOf(context).width < 900)
                 IconButton(
-                  tooltip: '菜单',
                   onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                   icon: const Icon(Icons.menu),
                 ),
@@ -423,7 +421,6 @@ class _HomePageState extends State<HomePage> {
                     prefixIcon: Icon(Icons.search, color: t.inkFaint, size: 20),
                     suffixIcon: searching
                         ? IconButton(
-                            tooltip: '清除搜索',
                             onPressed: () {
                               _searchController.clear();
                               setState(() => _searchHits = null);
@@ -470,37 +467,39 @@ class _HomePageState extends State<HomePage> {
                   isTrash: isTrash,
                   onNew: _newNote,
                 )
-              : ListView.separated(
+              : searching
+                  ? _searchList(list, dense: dense)
+                  : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(spaceMd, 0, spaceMd, 96),
-                  itemCount: list.length + (!searching && !isTrash ? 1 : 0),
+                  itemCount: list.length + (isTrash ? 0 : 1),
                   separatorBuilder: (_, _) => const SizedBox(height: spaceSm),
                   itemBuilder: (context, index) {
                     if (index == list.length) {
                       return Tooltip(
                         message: '新建笔记',
                         child: OutlinedButton(
-                          onPressed: _newNote,
-                          style: ButtonStyle(
-                            mouseCursor: const WidgetStatePropertyAll(
-                              SystemMouseCursors.click,
-                            ),
-                            foregroundColor: WidgetStatePropertyAll(
-                              t.accentText,
-                            ),
-                            overlayColor: WidgetStatePropertyAll(t.accentSoft),
-                            side: WidgetStatePropertyAll(
-                              BorderSide(color: t.hairline),
-                            ),
-                            minimumSize: const WidgetStatePropertyAll(
-                              Size(0, 44),
-                            ),
-                            shape: WidgetStatePropertyAll(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(radiusMd),
-                              ),
+                        onPressed: _newNote,
+                        style: ButtonStyle(
+                          mouseCursor: const WidgetStatePropertyAll(
+                            SystemMouseCursors.click,
+                          ),
+                          foregroundColor: WidgetStatePropertyAll(
+                            t.accentText,
+                          ),
+                          overlayColor: WidgetStatePropertyAll(t.accentSoft),
+                          side: WidgetStatePropertyAll(
+                            BorderSide(color: t.hairline),
+                          ),
+                          minimumSize: const WidgetStatePropertyAll(
+                            Size(0, 44),
+                          ),
+                          shape: WidgetStatePropertyAll(
+                            RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(radiusMd),
                             ),
                           ),
-                          child: const Icon(Icons.add, size: 18),
+                        ),
+                        child: const Icon(Icons.add, size: 18),
                         ),
                       );
                     }
@@ -522,6 +521,73 @@ class _HomePageState extends State<HomePage> {
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _searchList(List<Note> hits, {required bool dense}) {
+    final t = inkOf(context);
+    final entries = <_SearchEntry>[];
+    for (final notebook in state.notebooks) {
+      final group = hits.where((n) => n.notebookId == notebook.id).toList();
+      if (group.isEmpty) {
+        continue;
+      }
+      entries.add(_SearchEntry.header(notebook, group.length));
+      for (final note in group) {
+        entries.add(_SearchEntry.note(note));
+      }
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(spaceMd, 0, spaceMd, 96),
+      itemCount: entries.length,
+      separatorBuilder: (_, _) => const SizedBox(height: spaceSm),
+      itemBuilder: (context, index) {
+        final entry = entries[index];
+        final notebook = entry.notebook;
+        if (notebook != null) {
+          return Padding(
+            key: ValueKey('searchGroup:${notebook.id}'),
+            padding: EdgeInsets.only(top: index == 0 ? 0 : spaceMd),
+            child: Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: Color(notebook.color),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    notebook.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: t.inkMuted,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${entry.count}',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ],
+            ),
+          );
+        }
+        final note = entry.note!;
+        return NoteCard(
+          note: note,
+          highlight: _searchController.text.trim(),
+          selected: dense && note.id == state.openNoteId,
+          dense: dense,
+          onTap: () => _openHit(note),
+        );
+      },
     );
   }
 
@@ -585,6 +651,17 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+}
+
+class _SearchEntry {
+  const _SearchEntry.header(this.notebook, this.count) : note = null;
+  const _SearchEntry.note(this.note)
+    : notebook = null,
+      count = 0;
+
+  final Notebook? notebook;
+  final Note? note;
+  final int count;
 }
 
 class _PaneDivider extends StatefulWidget {

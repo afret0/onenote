@@ -13,12 +13,16 @@ class MarkdownView extends StatelessWidget {
     this.attachments,
     this.onAttachmentLink,
     this.onToggleTask,
+    this.highlightQuery,
+    this.highlightController,
   });
 
   final String content;
   final AttachmentStore? attachments;
   final void Function(String id)? onAttachmentLink;
   final void Function(int ordinal)? onToggleTask;
+  final String? highlightQuery;
+  final MarkdownHighlightController? highlightController;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +64,9 @@ class MarkdownView extends StatelessWidget {
     return MarkdownBody(
       data: content,
       selectable: true,
+      highlightQuery: highlightQuery,
+      highlightColor: highlightQuery == null ? null : t.accentSoft,
+      highlightController: highlightController,
       blockSyntaxes: markdownTaskBlockSyntaxes,
       listItemCrossAxisAlignment: MarkdownListItemCrossAxisAlignment.start,
       checkboxBuilder: (checked) {
