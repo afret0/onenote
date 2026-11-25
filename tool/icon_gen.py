@@ -1,98 +1,119 @@
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
-S = 1024
-
-
-def lerp(a, b, t):
-    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
-
-
-def diagonal_gradient(size, c0, c1):
-    img = Image.new('RGB', (size, size))
-    px = img.load()
-    for y in range(size):
-        for x in range(size):
-            px[x, y] = lerp(c0, c1, (x + y) / (2 * (size - 1)))
-    return img
-
-
-def rounded(size, radius, fill):
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=radius, fill=fill)
-    return img
+N = 32
+PAL = {
+    'bg': (46, 125, 91),
+    'K': (16, 20, 24),
+    'W': (255, 255, 255),
+    'C': (240, 234, 220),
+    'B': (125, 211, 252),
+    'G': (148, 163, 184),
+    'g': (203, 213, 225),
+    'P': (236, 72, 153),
+    'Y': (250, 204, 21),
+    'O': (245, 158, 11),
+    'F': (226, 232, 240),
+}
+px = [['bg'] * N for _ in range(N)]
 
 
-def soft_shadow(size, box, radius, blur, color, offset):
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    x0, y0, x1, y1 = box
-    d.rounded_rectangle(
-        [x0 + offset[0], y0 + offset[1], x1 + offset[0], y1 + offset[1]],
-        radius=radius, fill=color)
-    from PIL import ImageFilter
-    return img.filter(ImageFilter.GaussianBlur(blur))
+def s(x, y, c):
+    if 0 <= x < N and 0 <= y < N:
+        px[y][x] = c
 
 
-def vgradient_tile(size, radius, c0, c1):
-    grad = Image.new('RGBA', (size, size))
-    px = grad.load()
-    for y in range(size):
-        c = lerp(c0, c1, y / (size - 1)) + (255,)
-        for x in range(size):
-            px[x, y] = c
-    mask = Image.new('L', (size, size), 0)
-    ImageDraw.Draw(mask).rounded_rectangle(
-        [0, 0, size - 1, size - 1], radius=radius, fill=255)
-    grad.putalpha(mask)
-    return grad
+def r(x0, y0, x1, y1, c):
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            s(x, y, c)
 
 
-bg = diagonal_gradient(S, (64, 176, 122), (21, 104, 71)).convert('RGBA')
+r(7, 6, 24, 26, 'K')
+r(8, 7, 23, 25, 'W')
+r(23, 7, 23, 25, 'C')
+r(8, 25, 23, 25, 'C')
+for y in (10, 13, 16, 22, 24):
+    r(10, y, 21, y, 'B')
+for y in range(6, 11):
+    for x in range(20, 25):
+        dx, dy = x - 20, y - 6
+        if dx > dy:
+            s(x, y, 'bg')
+        elif dx == dy:
+            s(x, y, 'K')
+        else:
+            s(x, y, 'F')
+r(11, 14, 14, 17, 'K')
+r(18, 14, 21, 17, 'K')
+r(11, 14, 12, 15, 'W')
+r(18, 14, 19, 15, 'W')
+s(14, 19, 'K')
+s(15, 20, 'K')
+s(16, 20, 'K')
+s(17, 20, 'K')
+s(18, 19, 'K')
+r(9, 18, 10, 19, 'P')
+r(21, 18, 22, 19, 'P')
+r(11, 27, 14, 29, 'K')
+r(12, 28, 13, 28, 'W')
+r(18, 27, 21, 29, 'K')
+r(19, 28, 20, 28, 'W')
+for y0 in (9, 13, 17, 21):
+    r(4, y0, 7, y0 + 1, 'K')
+    r(5, y0, 6, y0 + 1, 'G')
+    s(5, y0, 'g')
+bolt = [
+    (26, 1), (27, 1), (28, 1),
+    (25, 2), (26, 2), (27, 2), (28, 2),
+    (24, 3), (25, 3), (26, 3), (27, 3),
+    (23, 4), (24, 4), (25, 4), (26, 4), (27, 4), (28, 4), (29, 4),
+    (25, 5), (26, 5), (27, 5), (28, 5), (29, 5),
+    (26, 6), (27, 6), (28, 6),
+    (25, 7), (26, 7), (27, 7),
+    (24, 8), (25, 8), (26, 8),
+    (23, 9), (24, 9),
+]
+cells = set(bolt)
+outline = set()
+for x, y in bolt:
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if (x + dx, y + dy) not in cells:
+                outline.add((x + dx, y + dy))
+for x, y in bolt:
+    s(x, y, 'Y')
+for x, y in outline:
+    s(x, y, 'K')
+for x, y in [(29, 4), (29, 5), (28, 6), (27, 7), (26, 8), (24, 9)]:
+    s(x, y, 'O')
+for x, y in [(26, 1), (25, 2), (24, 3)]:
+    s(x, y, 'W')
 
-page_back = rounded(470, 64, (214, 236, 224, 255))
-page_front = rounded(470, 64, (250, 253, 251, 255))
-d = ImageDraw.Draw(page_front)
-for i, y in enumerate((150, 230, 310)):
-    w = 300 if i < 2 else 210
-    d.rounded_rectangle([70, y, 70 + w, y + 26], radius=13,
-                        fill=(163, 209, 186, 255))
-
-art = bg.copy()
-art.alpha_composite(soft_shadow(S, (470, 170, 940, 640), 64, 24, (8, 54, 36, 90), (0, 18)))
-art.alpha_composite(page_back, (500, 150))
-art.alpha_composite(soft_shadow(S, (430, 210, 900, 680), 64, 24, (8, 54, 36, 110), (0, 18)))
-art.alpha_composite(page_front, (430, 210))
-
-tile = vgradient_tile(400, 92, (35, 122, 84), (17, 82, 56))
-art.alpha_composite(soft_shadow(S, (120, 490, 520, 890), 92, 30, (6, 44, 29, 140), (0, 24)))
-art.alpha_composite(tile, (120, 490))
-
-font = ImageFont.truetype('assets/fonts/Inter-700.ttf', 280)
-d = ImageDraw.Draw(art)
-bbox = d.textbbox((0, 0), 'N', font=font)
-w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-d.text((120 + (400 - w) / 2 - bbox[0], 490 + (400 - h) / 2 - bbox[1]), 'N',
-       font=font, fill=(255, 255, 255, 255))
-
+art = Image.new('RGB', (N, N))
+art.putdata([PAL[c] for row in px for c in row])
+art = art.resize((1024, 1024), Image.NEAREST).convert('RGBA')
 art.save('assets/images/logo.png')
 
-canvas = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+margined = Image.new('RGB', (N + 4, N + 4), PAL['bg'])
+margined.paste(art.resize((N, N), Image.NEAREST), (2, 2))
+big = margined.resize((1152, 1152), Image.NEAREST).convert('RGBA')
+canvas = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
 mask = Image.new('L', (824, 824), 0)
 ImageDraw.Draw(mask).rounded_rectangle([0, 0, 823, 823], radius=184, fill=255)
-canvas.paste(art.resize((824, 824), Image.LANCZOS), (100, 100), mask)
+canvas.paste(big.resize((824, 824), Image.LANCZOS), (100, 100), mask)
 out = 'macos/Runner/Assets.xcassets/AppIcon.appiconset'
-for s in (16, 32, 64, 128, 256, 512, 1024):
-    canvas.resize((s, s), Image.LANCZOS).save(f'{out}/app_icon_{s}.png')
-for s, name in ((192, 'Icon-192'), (512, 'Icon-512'),
-                (192, 'Icon-maskable-192'), (512, 'Icon-maskable-512')):
-    art.resize((s, s), Image.LANCZOS).save(f'web/icons/{name}.png')
-art.resize((512, 512), Image.LANCZOS).save('web/favicon.png')
-art.resize((256, 256), Image.LANCZOS).save(
+for size in (16, 32, 64, 128, 256, 512, 1024):
+    canvas.resize((size, size), Image.LANCZOS).save(f'{out}/app_icon_{size}.png')
+for size, name in ((192, 'Icon-192'), (512, 'Icon-512')):
+    art.resize((size, size), Image.NEAREST).save(f'web/icons/{name}.png')
+for size, name in ((192, 'Icon-maskable-192'), (512, 'Icon-maskable-512')):
+    big.resize((size, size), Image.LANCZOS).save(f'web/icons/{name}.png')
+art.resize((512, 512), Image.NEAREST).save('web/favicon.png')
+art.resize((256, 256), Image.NEAREST).save(
     'windows/runner/resources/app_icon.ico',
     sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-for folder, s in (('mdpi', 48), ('hdpi', 72), ('xhdpi', 96),
-                  ('xxhdpi', 144), ('xxxhdpi', 192)):
-    art.resize((s, s), Image.LANCZOS).save(
+for folder, size in (('mdpi', 48), ('hdpi', 72), ('xhdpi', 96),
+                     ('xxhdpi', 144), ('xxxhdpi', 192)):
+    art.resize((size, size), Image.NEAREST).save(
         f'android/app/src/main/res/mipmap-{folder}/ic_launcher.png')
-print('fluent vector icon deployed')
+print('pixel grid icon deployed')
