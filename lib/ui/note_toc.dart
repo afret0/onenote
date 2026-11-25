@@ -18,11 +18,13 @@ class NoteTocPanel extends StatelessWidget {
     required this.entries,
     required this.activeIndex,
     required this.onTap,
+    this.tint,
   });
 
   final List<MarkdownTocEntry> entries;
   final int activeIndex;
   final void Function(MarkdownTocEntry entry) onTap;
+  final Color? tint;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +50,7 @@ class NoteTocPanel extends StatelessWidget {
             itemBuilder: (context, i) => NoteTocRow(
               entry: entries[i],
               active: i == activeIndex,
+              tint: tint,
               onTap: () => onTap(entries[i]),
             ),
           ),
@@ -63,17 +66,25 @@ class NoteTocRow extends StatelessWidget {
     required this.entry,
     required this.active,
     required this.onTap,
+    this.tint,
   });
 
   final MarkdownTocEntry entry;
   final bool active;
   final VoidCallback onTap;
+  final Color? tint;
 
   @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
     final level = entry.level.clamp(1, noteTocMaxLevel);
     final fontSize = (level == 1 ? 14.0 : 13.0) * t.fontScale;
+    final activeText = tint == null
+        ? t.accentText
+        : readableOn(tint!, t.surfaceAlt);
+    final activeBar = tint == null
+        ? t.accent
+        : readableOn(tint!, t.surfaceAlt, ratio: 3);
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
@@ -100,7 +111,7 @@ class NoteTocRow extends StatelessWidget {
                     fontSize: fontSize,
                     height: 1.5,
                     color: active
-                        ? t.accentText
+                        ? activeText
                         : (level == 1 ? t.ink : t.inkMuted),
                     fontWeight: active
                         ? FontWeight.w600
@@ -118,7 +129,7 @@ class NoteTocRow extends StatelessWidget {
                       width: 3,
                       height: 20,
                       decoration: BoxDecoration(
-                        color: t.accent,
+                        color: activeBar,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -137,6 +148,7 @@ Future<void> showNoteTocSheet(
   required List<MarkdownTocEntry> entries,
   required int activeIndex,
   required void Function(MarkdownTocEntry entry) onSelect,
+  Color? tint,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -150,6 +162,7 @@ Future<void> showNoteTocSheet(
         child: NoteTocPanel(
           entries: entries,
           activeIndex: activeIndex,
+          tint: tint,
           onTap: (entry) {
             Navigator.of(sheetContext).pop();
             onSelect(entry);

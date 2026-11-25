@@ -382,12 +382,16 @@ class NoteViewState extends State<NoteView> {
   }
 
   void _openTocSheet() {
+    final note = _note;
     final entries = _tocEntries();
-    if (entries.isEmpty) {
+    if (note == null || entries.isEmpty) {
       return;
     }
     showNoteTocSheet(context,
-        entries: entries, activeIndex: _tocActive, onSelect: _jumpToTocEntry);
+        entries: entries,
+        activeIndex: _tocActive,
+        tint: Color(state.notebookColor(note.notebookId)),
+        onSelect: _jumpToTocEntry);
   }
 
   void _scrollToTop() {
@@ -918,6 +922,7 @@ class NoteViewState extends State<NoteView> {
       return const Center(child: CircularProgressIndicator());
     }
     final isWideWindow = MediaQuery.sizeOf(context).width >= 900;
+    final tocTint = Color(state.notebookColor(note.notebookId));
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1118,6 +1123,7 @@ class NoteViewState extends State<NoteView> {
                           child: NoteTocPanel(
                             entries: tocEntries,
                             activeIndex: _tocActive,
+                            tint: tocTint,
                             onTap: _jumpToTocEntry,
                           ),
                         ),

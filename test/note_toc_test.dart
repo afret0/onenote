@@ -244,4 +244,81 @@ void main() {
     expect(find.byType(NoteTocPanel), findsNothing);
     expect(find.bySemanticsLabel('目录'), findsNothing);
   });
+
+  testWidgets('readableOn keeps palette and arbitrary colors readable',
+      (tester) async {
+    for (final brightness in Brightness.values) {
+      late InkTokens t;
+      await tester.pumpWidget(MaterialApp(
+        theme: buildInkTheme(brightness),
+        home: Builder(builder: (context) {
+          t = inkOf(context);
+          return const SizedBox();
+        }),
+      ));
+      final values = [
+        ...notebookPalette,
+        0xFF808080,
+        0xFF000000,
+        0xFFFFFFFF,
+      ];
+      for (final value in values) {
+        final color = Color(value);
+        final text = readableOn(color, t.surfaceAlt);
+        expect(contrastRatio(text, t.surfaceAlt), greaterThanOrEqualTo(4.5),
+            reason: 'brightness: $brightness, color: $color');
+        final bar = readableOn(color, t.surfaceAlt, ratio: 3);
+        expect(contrastRatio(bar, t.surfaceAlt), greaterThanOrEqualTo(3),
+            reason: 'brightness: $brightness, color: $color');
+        if (contrastRatio(color, t.surfaceAlt) >= 4.5) {
+          expect(identical(text, color), isTrue);
+        }
+      }
+    }
+  });
+
+  testWidgets('toc row active colors use tint variants, default stays accent',
+      (tester) async {
+    const green = Color(0xFF16A34A);
+    late InkTokens t;
+    Widget host(Widget child) => MaterialApp(
+          theme: buildInkTheme(Brightness.dark),
+          home: Scaffold(body: Builder(builder: (context) {
+            t = inkOf(context);
+            return child;
+          })),
+        );
+    final entries = [MarkdownTocEntry(GlobalKey(), 1, 'A')];
+    await tester.pumpWidget(host(NoteTocPanel(
+        entries: entries, activeIndex: 0, tint: green, onTap: (_) {})));
+    Text rowText() => tester.widget<Text>(find.descendant(
+        of: find.byType(NoteTocRow), matching: find.text('A')));
+    Container bar() => tester.widget<Container>(find
+        .descendant(of: find.byType(NoteTocRow), matching: find.byType(Container))
+        .last);
+    expect(rowText().style!.color, readableOn(green, t.surfaceAlt));
+    expect((bar().decoration! as BoxDecoration).color,
+        readableOn(green, t.surfaceAlt, ratio: 3));
+
+    await tester.pumpWidget(host(NoteTocPanel(
+        entries: entries, activeIndex: 0, onTap: (_) {})));
+    expect(rowText().style!.color, t.accentText);
+    expect((bar().decoration! as BoxDecoration).color, t.accent);
+  });
+
+  testWidgets('toc tint follows notebook color changes', (tester) async {
+    wide(tester);
+    final (state, note) = await seed(tester, sections());
+    await tester.runAsync(
+        () => state.setNotebookColor(note.notebookId, 0xFF16A34A));
+    await tester.pumpWidget(app(state, note));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(NoteTocRow, '章节一'));
+    await tester.pumpAndSettle();
+    final t = inkOf(tester.element(find.byType(NoteTocPanel)));
+    final text = tester.widget<Text>(find.descendant(
+        of: find.widgetWithText(NoteTocRow, '章节一'),
+        matching: find.text('章节一')));
+    expect(text.style!.color, readableOn(const Color(0xFF16A34A), t.surfaceAlt));
+  });
 }

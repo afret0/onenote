@@ -157,6 +157,33 @@ class InkTokens extends ThemeExtension<InkTokens> {
 InkTokens inkOf(BuildContext context) =>
     Theme.of(context).extension<InkTokens>()!;
 
+double contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance();
+  final lb = b.computeLuminance();
+  return (la > lb ? la + 0.05 : lb + 0.05) /
+      (la > lb ? lb + 0.05 : la + 0.05);
+}
+
+Color readableOn(Color color, Color background, {double ratio = 4.5}) {
+  if (contrastRatio(color, background) >= ratio) {
+    return color;
+  }
+  final target = background.computeLuminance() < 0.5
+      ? const Color(0xFFFFFFFF)
+      : const Color(0xFF000000);
+  var lo = 0.0;
+  var hi = 1.0;
+  for (var i = 0; i < 24; i++) {
+    final mid = (lo + hi) / 2;
+    if (contrastRatio(Color.lerp(color, target, mid)!, background) >= ratio) {
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+  return Color.lerp(color, target, hi)!;
+}
+
 const interFamily = 'Inter';
 const miSansFamily = 'MiSans';
 const monoFamily = 'JetBrainsMono';

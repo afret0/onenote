@@ -52,7 +52,7 @@
 - **搜索悬浮栏与命中高亮（2026-11-25 用户拍板）**：matchNav 整栏可拖（pan 拖动、上下按钮仍可点），位置记 settings `searchNavPos`="x,y"（内容区局部坐标、**全局单位置**、恢复时 clamp 进边界）；默认贴内容区右缘（margin spaceSm）、底边避开回顶按钮（spaceLg+52）。命中高亮 = 全部命中 `searchMark` 黄底 + 当前命中 `searchActive` 橙底配 `searchActiveInk` 深字（dark #6E5A1C/#FFC53D、light #FDE68A/#F59E0B，对文字对比 5.81/11.08/14.04/8.14 均 ≥4.5）；上下按钮点击必须滚动到命中行。
 - **全局快捷键（2026-11-25 用户拍板）**：Cmd/Ctrl+F 聚焦全局搜索（遵循 searchScope 设置，缺省全部笔记本；窄屏开着笔记时先 `NoteViewState.flushEdits()` 落盘再 closeNote 回列表——GlobalKey 按 openId 重建保持每笔记独立 State）；Cmd/Ctrl+, 打开设置页；Cmd/Ctrl+R **仅笔记编辑态**弹查找替换面板（非编辑态忽略、不自动进编辑），**区分大小写**（与全局搜索的不敏感刻意不同），定位（上/下一处循环+选中+滚动到命中）+ 替换当前 + 全部替换，Esc 关闭回焦点正文；替换写入走 `_changed()` 800ms 防抖自动保存。**仅桌面原生注册**（`isDesktopWindow`，Web/Android 不占浏览器/系统键位）。⚠️ HomePage 外层包 `Focus(autofocus:true)` 后，编辑框 TextField 的 `autofocus` 不会再触发（autofocus 只在 scope 无焦点时生效）——`_enterEdit` 必须显式 `_contentFocus.requestFocus()`，否则进编辑后打字丢、Cmd+R 绑定不在焦点链上（真实教训，测试键盘绑定必须先验证 primaryFocus 落点）。
 
-- **笔记目录 TOC（2026-11-25 用户拍板）**：宽屏右侧固定栏（宽 240、正文让位；NoteView pane ≥600 才出栏，宽窗窄 pane 回退悬浮按钮），收录 **H1–H3**；显隐开关在**笔记标题右键菜单**（settings `tocVisible` '1'/'0'，缺省显示，同时管宽屏栏与窄屏按钮）；**窄屏悬浮按钮**（44×44 圆钮仿回顶钮，回顶钮出现时上移 52 堆叠）点开底部面板（maxHeight 0.6 屏高，沿用版本历史 sheet 先例）。编辑态隐藏、无 H1–H3 标题时栏/钮都不出。点条目平滑滚动到标题距视口顶 96px（250ms easeOutCubic，沿用搜索跳转先例）；scrollspy 高亮当前章节（距顶 ≤97px 的最后一个标题），active = surfaceAlt 底 + 左缘 3px 紫条 + accentText，行高 ≥44、H1 14px / H2-3 13px ×fontScale。标题锚点走 vendored 包 `MarkdownTocController`（builder 里 KeyedSubtree 包 heading、key 按序号复用）——**不能用自定义 builders['h1']**，它会整体替换默认 heading widget 丢掉搜索高亮（真实教训）。
+- **笔记目录 TOC（2026-11-25 用户拍板）**：宽屏右侧固定栏（宽 240、正文让位；NoteView pane ≥600 才出栏，宽窗窄 pane 回退悬浮按钮），收录 **H1–H3**；显隐开关在**笔记标题右键菜单**（settings `tocVisible` '1'/'0'，缺省显示，同时管宽屏栏与窄屏按钮）；**窄屏悬浮按钮**（44×44 圆钮仿回顶钮，回顶钮出现时上移 52 堆叠）点开底部面板（maxHeight 0.6 屏高，沿用版本历史 sheet 先例）。编辑态隐藏、无 H1–H3 标题时栏/钮都不出。点条目平滑滚动到标题距视口顶 96px（250ms easeOutCubic，沿用搜索跳转先例）；scrollspy 高亮当前章节（距顶 ≤97px 的最后一个标题），active = surfaceAlt 底 + 左缘 3px 紫条 + accentText，行高 ≥44、H1 14px / H2-3 13px ×fontScale。标题锚点走 vendored 包 `MarkdownTocController`（builder 里 KeyedSubtree 包 heading、key 按序号复用）——**不能用自定义 builders['h1']**，它会整体替换默认 heading widget 丢掉搜索高亮（真实教训）。**active 色跟随笔记本主题色（2026-11-25 用户拍板「目录也跟笔记本主题色一起」）**：左缘条 = `readableOn(tint, surfaceAlt, ratio: 3)`、文字 = `readableOn(tint, surfaceAlt)`（4.5:1），tint 取 `state.notebookColor(note.notebookId)`，宽屏栏与窄屏 sheet 都传；helper 在 theme.dart（`contrastRatio`/`readableOn`：向白/黑二分最小混合量达标，已达标原样返回），换色后随 state.refresh 联动。
 
 ## 目录与关键文件
 
@@ -63,7 +63,7 @@
 - `lib/state/app_state.dart`：列表/作用域/搜索范围状态、附件 store 生命周期、`notebookColor`；持有 SyncEngine，**所有写操作**走 `_pullBeforeWrite`/`_pushAfterWrite` 包装，saveNote 内嵌 diff3 合并保护；测试可传 `syncStoreOverride`。
 - `lib/window_metrics.dart`：窗口尺寸纯计算（`scaledDefaultWindowSize`/`fitWindowSize`/`parseWindowSize`/`formatWindowSize` + 常量），无平台依赖，表驱动单测在 `test/window_metrics_test.dart`。
 - `lib/window_setup.dart`：`WindowSizeController`（桌面启动设尺寸 + 事件防抖落库），`main()` 里 `isDesktopWindow` 时创建并 `await init()` 再 runApp，`OneNoteApp` dispose 时释放。
-- `lib/ui/theme.dart`：InkTokens 主题扩展（紫调纸色 + 墨色 + OneNote 紫），`accentText` 是保证 4.5:1 的正文用主色变体，文字场景用它、填充用 `accent`。
+- `lib/ui/theme.dart`：InkTokens 主题扩展（紫调纸色 + 墨色 + OneNote 紫），`accentText` 是保证 4.5:1 的正文用主色变体，文字场景用它、填充用 `accent`；`contrastRatio`/`readableOn` 把任意色（笔记本主题色）变到对某背景达标的文字/图形变体。
 - `lib/ui/`：home_page（宽屏三栏 / 窄屏 Drawer + 导航、侧栏同步按钮）、note_view（渲染/编辑/版本历史/附件上传/冲突横幅/目录接入）、note_toc（目录面板 NoteTocPanel/NoteTocRow + showNoteTocSheet）、settings_page、sync_settings_page（协议/凭据/轮询/立即同步/以远端为准重建）、conflict_panel、markdown_view、attachment_image。
 
 ## 命令与坑
