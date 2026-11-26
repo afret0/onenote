@@ -8,6 +8,7 @@ import '../lock/biometrics.dart';
 import '../state/app_state.dart';
 import '../state/lock_attempts.dart';
 import 'dialogs.dart';
+import 'password_field.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -48,132 +49,6 @@ Future<String?> promptNewPassword(
       confirmLabel: confirmLabel,
     ),
   );
-}
-
-class _PasswordField extends StatefulWidget {
-  const _PasswordField({
-    required this.controller,
-    required this.focusNode,
-    required this.label,
-    required this.obscure,
-    required this.onToggle,
-    this.autofocus = false,
-    this.onSubmitted,
-    this.onChanged,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final String label;
-  final bool obscure;
-  final VoidCallback onToggle;
-  final bool autofocus;
-  final ValueChanged<String>? onSubmitted;
-  final ValueChanged<String>? onChanged;
-
-  @override
-  State<_PasswordField> createState() => _PasswordFieldState();
-}
-
-class _PasswordFieldState extends State<_PasswordField> {
-  bool _empty = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _empty = widget.controller.text.isEmpty;
-    widget.controller.addListener(_syncEmpty);
-  }
-
-  @override
-  void didUpdateWidget(_PasswordField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_syncEmpty);
-      widget.controller.addListener(_syncEmpty);
-      _syncEmpty();
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_syncEmpty);
-    super.dispose();
-  }
-
-  void _syncEmpty() {
-    final empty = widget.controller.text.isEmpty;
-    if (empty != _empty) {
-      setState(() => _empty = empty);
-    }
-  }
-
-  void _clear() {
-    widget.controller.clear();
-    widget.focusNode.requestFocus();
-    developer.log('done, 密码框一键清空');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = inkOf(context);
-    return TextField(
-      controller: widget.controller,
-      focusNode: widget.focusNode,
-      autofocus: widget.autofocus,
-      obscureText: widget.obscure,
-      enableSuggestions: false,
-      autocorrect: false,
-      decoration: InputDecoration(
-        labelText: widget.label,
-        suffixIcon: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _suffixButton(
-              t,
-              label: '清空密码',
-              icon: Icons.clear,
-              onPressed: _empty ? null : _clear,
-            ),
-            _suffixButton(
-              t,
-              label: widget.obscure ? '显示密码' : '隐藏密码',
-              icon: widget.obscure
-                  ? Icons.visibility_outlined
-                  : Icons.visibility_off_outlined,
-              onPressed: widget.onToggle,
-            ),
-          ],
-        ),
-      ),
-      onSubmitted: widget.onSubmitted,
-      onChanged: widget.onChanged,
-    );
-  }
-
-  Widget _suffixButton(
-    InkTokens t, {
-    required String label,
-    required IconData icon,
-    required VoidCallback? onPressed,
-  }) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: Focus(
-        canRequestFocus: false,
-        skipTraversal: true,
-        child: IconButton(
-          onPressed: onPressed,
-          style: const ButtonStyle(
-            mouseCursor:
-                WidgetStatePropertyAll(SystemMouseCursors.click),
-          ),
-          icon: Icon(icon, size: 20, color: onPressed == null ? null : t.inkMuted),
-        ),
-      ),
-    );
-  }
 }
 
 class _PasswordDialog extends StatefulWidget {
@@ -370,7 +245,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                       ?.copyWith(color: t.inkMuted)),
               const SizedBox(height: spaceMd),
             ],
-            _PasswordField(
+            PasswordField(
               controller: _controller,
               focusNode: _focus,
               label: '密码',
@@ -495,7 +370,7 @@ class _NewPasswordDialogState extends State<_NewPasswordDialog> {
                       ?.copyWith(color: t.inkMuted)),
               const SizedBox(height: spaceMd),
             ],
-            _PasswordField(
+            PasswordField(
               controller: _first,
               focusNode: _firstFocus,
               label: '新密码',
@@ -504,7 +379,7 @@ class _NewPasswordDialogState extends State<_NewPasswordDialog> {
               onToggle: () => setState(() => _obscure = !_obscure),
             ),
             const SizedBox(height: spaceMd),
-            _PasswordField(
+            PasswordField(
               controller: _second,
               focusNode: _secondFocus,
               label: '确认新密码',

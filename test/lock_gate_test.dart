@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -375,5 +376,129 @@ void main() {
             .buildTextSpan(context: spanContext, withComposing: false)
             .text,
         'abc123');
+  });
+
+  testWidgets('锁定页密码框一键清空且焦点不丢', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+    });
+    await pumpGate(tester, db, (d, s) {});
+    IconButton clearButton() => tester.widget<IconButton>(find.ancestor(
+        of: find.byIcon(Icons.clear), matching: find.byType(IconButton)));
+    expect(clearButton().onPressed, isNull);
+    await tester.enterText(find.byType(TextField), 'abc123');
+    await tester.pump();
+    expect(clearButton().onPressed, isNotNull);
+    await tester.tap(find.byIcon(Icons.clear));
+    await tester.pump();
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, isEmpty);
+    expect(field.focusNode!.hasFocus, isTrue);
+    expect(clearButton().onPressed, isNull);
+  });
+
+  testWidgets('锁定页点眼睛不抢输入框焦点', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+    });
+    await pumpGate(tester, db, (d, s) {});
+    await tester.enterText(find.byType(TextField), 'abc');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.visibility_outlined));
+    await tester.pump();
+    expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
+    expect(
+        tester
+            .widget<TextField>(find.byType(TextField))
+            .focusNode!
+            .hasFocus,
+        isTrue);
+  });
+
+  testWidgets('锁定页掩码态 Cmd+A 全选', (WidgetTester tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final db = track(AppDb(NativeDatabase.memory()));
+      await tester.runAsync(() async {
+        await db.setSetting(
+            AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+      });
+      await pumpGate(tester, db, (d, s) {});
+      await tester.enterText(find.byType(TextField), 'abc123');
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pump();
+      final controller =
+          tester.widget<TextField>(find.byType(TextField)).controller!;
+      expect(controller.selection.baseOffset, 0);
+      expect(controller.selection.extentOffset, 6);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('锁定页掩码态 Ctrl+A 全选', (WidgetTester tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    try {
+      final db = track(AppDb(NativeDatabase.memory()));
+      await tester.runAsync(() async {
+        await db.setSetting(
+            AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+      });
+      await pumpGate(tester, db, (d, s) {});
+      await tester.enterText(find.byType(TextField), 'abc123');
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      final controller =
+          tester.widget<TextField>(find.byType(TextField)).controller!;
+      expect(controller.selection.baseOffset, 0);
+      expect(controller.selection.extentOffset, 6);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('锁定页掩码态全选后菜单无复制剪切', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+    });
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.getData') {
+        return <String, dynamic>{'text': 'clip'};
+      }
+      if (call.method == 'Clipboard.hasStrings') {
+        return <String, dynamic>{'value': true};
+      }
+      return null;
+    });
+    addTearDown(() => binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    await pumpGate(tester, db, (d, s) {});
+    await tester.enterText(find.byType(TextField), 'abc123');
+    await tester.pump();
+    final state =
+        tester.state<EditableTextState>(find.byType(EditableText));
+    state.widget.controller.selection =
+        const TextSelection(baseOffset: 0, extentOffset: 6);
+    await tester.pumpAndSettle();
+    state.showToolbar();
+    await tester.pumpAndSettle();
+    expect(find.text('Copy'), findsNothing);
+    expect(find.text('Cut'), findsNothing);
+    expect(find.text('Paste'), findsOneWidget);
   });
 }

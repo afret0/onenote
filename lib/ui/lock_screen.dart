@@ -8,32 +8,8 @@ import '../data/password_lock.dart';
 import '../lock/biometrics.dart';
 import '../state/lock_attempts.dart';
 import '../sync/sync_engine.dart';
+import 'password_field.dart';
 import 'theme.dart';
-
-class _MaskedPasswordController extends TextEditingController {
-  bool _masked = true;
-
-  set masked(bool value) {
-    if (_masked == value) {
-      return;
-    }
-    _masked = value;
-    notifyListeners();
-  }
-
-  @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
-    if (!_masked) {
-      return super.buildTextSpan(
-          context: context, style: style, withComposing: withComposing);
-    }
-    return TextSpan(text: '•' * text.length, style: style);
-  }
-}
 
 class LockGate extends StatefulWidget {
   const LockGate(
@@ -51,7 +27,7 @@ class LockGate extends StatefulWidget {
 }
 
 class _LockGateState extends State<LockGate> {
-  final _controller = _MaskedPasswordController();
+  final _controller = MaskedPasswordController();
   final _focus = FocusNode();
   bool _preparing = true;
   bool _obscure = true;
@@ -386,38 +362,17 @@ class _LockGateState extends State<LockGate> {
                       ?.copyWith(color: t.inkMuted),
                 ),
                 const SizedBox(height: spaceLg),
-                TextField(
+                PasswordField(
                   controller: _controller,
                   focusNode: _focus,
+                  label: '密码',
+                  obscure: _obscure,
+                  customMask: true,
                   autofocus: true,
-                  obscureText: false,
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  enableInteractiveSelection: !_obscure,
-                  decoration: InputDecoration(
-                    labelText: '密码',
-                    suffixIcon: Semantics(
-                      button: true,
-                      label: _obscure ? '显示密码' : '隐藏密码',
-                      child: IconButton(
-                        onPressed: () => setState(() {
-                          _obscure = !_obscure;
-                          _controller.masked = _obscure;
-                        }),
-                        style: const ButtonStyle(
-                          mouseCursor: WidgetStatePropertyAll(
-                              SystemMouseCursors.click),
-                        ),
-                        icon: Icon(
-                          _obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          size: 20,
-                          color: t.inkMuted,
-                        ),
-                      ),
-                    ),
-                  ),
+                  onToggle: () => setState(() {
+                    _obscure = !_obscure;
+                    _controller.masked = _obscure;
+                  }),
                   onChanged: _autoSubmit,
                   onSubmitted: (_) => _submit(),
                 ),
