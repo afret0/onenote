@@ -14,6 +14,9 @@ class Biometrics {
           Platform.isAndroid ||
           Platform.isIOS);
 
+  static bool get systemAppLockSupported =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   static Future<bool> available() async {
     if (!supported) {
       return false;
@@ -56,6 +59,7 @@ class Biometrics {
       final ok = await _auth.authenticate(
         localizedReason: reason,
         biometricOnly: false,
+        sensitiveTransaction: false,
       );
       developer.log('done, 生物识别结果, ok: $ok');
       return ok;

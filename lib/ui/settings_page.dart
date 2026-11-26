@@ -842,6 +842,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: state.setLockBio,
                 ),
               ],
+              if (Biometrics.systemAppLockSupported) ...[
+                Divider(height: 1, color: t.hairline),
+                _SwitchRow(
+                  icon: Icons.face_outlined,
+                  title: '信任系统应用锁',
+                  subtitle:
+                      '先在系统设置把本应用加入应用锁（可人脸）；开启后启动与回前台不再弹本应用锁屏，笔记本/单篇锁保留',
+                  value: state.trustSystemLock,
+                  onChanged: state.setTrustSystemLock,
+                ),
+              ],
               Divider(height: 1, color: t.hairline),
               _SettingRow(
                 icon: Icons.lock_clock,

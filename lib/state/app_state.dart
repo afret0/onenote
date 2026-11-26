@@ -109,6 +109,7 @@ class AppState extends ChangeNotifier {
   bool appBackgroundLock = true;
   bool appBlurLock = true;
   bool lockBio = true;
+  bool trustSystemLock = false;
   PasswordLock? appLock;
   PrivacySpaceRef? privacyRef;
   final Map<String, int> _unlockUntil = {};
@@ -146,6 +147,8 @@ class AppState extends ChangeNotifier {
       developer.log('done, 失焦即锁继承后台开关值, enabled: $appBlurLock');
     }
     lockBio = await globalDb.getSetting(AppDb.lockBioKey) != '0';
+    trustSystemLock =
+        await globalDb.getSetting(AppDb.trustSystemLockKey) == '1';
     await reloadLockMarkers();
     notebooks = await db.listNotebooks();
     sidebarWidth = _loadedDouble(await db.getSetting(AppDb.paneWidthSidebarKey),
@@ -500,6 +503,16 @@ class AppState extends ChangeNotifier {
     lockBio = enabled;
     await globalDb.setSetting(AppDb.lockBioKey, enabled ? '1' : '0');
     developer.log('done, 生物识别解锁已更新, enabled: $enabled');
+    notifyListeners();
+  }
+
+  Future<void> setTrustSystemLock(bool enabled) async {
+    if (enabled == trustSystemLock) {
+      return;
+    }
+    trustSystemLock = enabled;
+    await globalDb.setSetting(AppDb.trustSystemLockKey, enabled ? '1' : '0');
+    developer.log('done, 信任系统应用锁已更新, enabled: $enabled');
     notifyListeners();
   }
 

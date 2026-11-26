@@ -191,6 +191,7 @@ class AppDb extends _$AppDb {
   static const lockLeaseMinutesKey = 'lockLeaseMinutes';
   static const lockBioKey = 'lockBio';
   static const lockBioSpaceKey = 'lockBioSpace';
+  static const trustSystemLockKey = 'trustSystemLock';
   static const lockFailCountKey = 'lockFailCount';
   static const lockCooldownUntilKey = 'lockCooldownUntil';
   static const spaceIdKey = 'spaceId';

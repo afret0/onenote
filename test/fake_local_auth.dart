@@ -14,6 +14,7 @@ class FakeLocalAuth extends LocalAuthPlatform {
   bool authResult;
   int authCalls = 0;
   String? lastReason;
+  AuthenticationOptions? lastOptions;
 
   @override
   Future<bool> authenticate({
@@ -23,6 +24,7 @@ class FakeLocalAuth extends LocalAuthPlatform {
   }) async {
     authCalls++;
     lastReason = localizedReason;
+    lastOptions = options;
     return authResult;
   }
 

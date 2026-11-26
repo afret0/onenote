@@ -87,6 +87,11 @@ class _LockGateState extends State<LockGate> {
       widget.onUnlocked(widget.globalDb, null);
       return;
     }
+    if (Biometrics.systemAppLockSupported &&
+        await widget.globalDb.getSetting(AppDb.trustSystemLockKey) == '1') {
+      await _enterTrustedSpace();
+      return;
+    }
     final bioEnabled =
         await widget.globalDb.getSetting(AppDb.lockBioKey) != '0';
     final bio = bioEnabled && await Biometrics.available();
@@ -267,6 +272,34 @@ class _LockGateState extends State<LockGate> {
       return;
     }
     widget.onUnlocked(db, spaceId);
+  }
+
+  Future<void> _enterTrustedSpace() async {
+    final remembered =
+        await widget.globalDb.getSetting(AppDb.lockBioSpaceKey) ?? '';
+    var db = widget.globalDb;
+    String? spaceId;
+    if (remembered.isNotEmpty) {
+      final child =
+          AppDb(AppDb.openExecutor(name: AppDb.spaceDbName(remembered)));
+      final lock = PasswordLock.parse(await child.getSetting(AppDb.appLockKey));
+      if (lock != null && lock.active) {
+        db = child;
+        spaceId = remembered;
+      } else {
+        developer.log(
+            'skip, 托管解锁记忆空间已不存在回日常空间, spaceId: $remembered');
+        await child.close();
+      }
+    }
+    if (!mounted) {
+      if (db != widget.globalDb) {
+        await db.close();
+      }
+      return;
+    }
+    developer.log('hit, 系统应用锁托管启动解锁, spaceId: ${spaceId ?? ''}');
+    await _enter(db, spaceId, []);
   }
 
   Future<void> _bioUnlock() async {
