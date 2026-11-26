@@ -26,6 +26,7 @@ Future<String?> promptPassword(
       title: title,
       subtitle: subtitle,
       confirmLabel: confirmLabel,
+      lock: lock,
       onSubmit: (password) => attempts.verify(lock, password),
       cooldownOf: attempts.cooldownRemainingMs,
       onBiometric: onBiometric,
@@ -57,6 +58,7 @@ class _PasswordField extends StatelessWidget {
     required this.onToggle,
     this.autofocus = false,
     this.onSubmitted,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -65,6 +67,7 @@ class _PasswordField extends StatelessWidget {
   final VoidCallback onToggle;
   final bool autofocus;
   final ValueChanged<String>? onSubmitted;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -95,6 +98,7 @@ class _PasswordField extends StatelessWidget {
         ),
       ),
       onSubmitted: onSubmitted,
+      onChanged: onChanged,
     );
   }
 }
@@ -104,6 +108,7 @@ class _PasswordDialog extends StatefulWidget {
     required this.title,
     required this.subtitle,
     required this.confirmLabel,
+    required this.lock,
     required this.onSubmit,
     required this.cooldownOf,
     this.onBiometric,
@@ -112,6 +117,7 @@ class _PasswordDialog extends StatefulWidget {
   final String title;
   final String? subtitle;
   final String confirmLabel;
+  final PasswordLock lock;
   final Future<LockVerifyResult> Function(String password) onSubmit;
   final Future<int> Function() cooldownOf;
   final Future<bool> Function()? onBiometric;
@@ -222,6 +228,21 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     });
   }
 
+  void _autoSubmit(String value) {
+    if (_busy || _cooldownMs > 0 || value.isEmpty) {
+      return;
+    }
+    if (widget.lock.len != value.length) {
+      return;
+    }
+    if (widget.lock.verify(value)) {
+      developer.log('hit, 弹窗静默校验通过自动提交, len: ${value.length}');
+      _submit();
+      return;
+    }
+    developer.log('skip, 长度达标静默校验未通过, len: ${value.length}');
+  }
+
   Future<void> _submit() async {
     if (_busy || _cooldownMs > 0) {
       return;
@@ -283,6 +304,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
               autofocus: true,
               onToggle: () => setState(() => _obscure = !_obscure),
               onSubmitted: (_) => _submit(),
+              onChanged: _autoSubmit,
             ),
             if (cooling) ...[
               const SizedBox(height: spaceSm),

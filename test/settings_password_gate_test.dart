@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -61,7 +62,7 @@ void main() {
     expect(find.text('验证应用密码'), findsNothing);
   });
 
-  testWidgets('已设密码: 取消不进入, 错误提示重试, 正确进入且退出再进需再验证',
+  testWidgets('已设密码: 取消不进入, 错误提示重试, 输对自动进入且退出再进需再验证',
       (tester) async {
     final state = await seed(tester, password: 'pw-123');
     await pumpHome(tester, state);
@@ -84,7 +85,6 @@ void main() {
     expect(find.byType(SettingsPage), findsNothing);
 
     await tester.enterText(dialogField, 'pw-123');
-    await tester.tap(find.text('验证'));
     await tester.runAsync(() async {
       final deadline = DateTime.now().add(const Duration(seconds: 10));
       while (find.byType(SettingsPage).evaluate().isEmpty &&
@@ -104,6 +104,72 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('验证应用密码'), findsOneWidget);
     expect(find.byType(SettingsPage), findsNothing);
+  });
+
+  testWidgets('输错同长密码不提示不计次, 按钮才计次', (tester) async {
+    final state = await seed(tester, password: 'pw-123');
+    await pumpHome(tester, state);
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    final dialogField = find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField));
+    await tester.runAsync(() async {
+      await tester.enterText(dialogField, 'pw-124');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await tester.pump();
+    });
+    expect(find.text('密码错误，请重试'), findsNothing);
+    expect(find.text('验证应用密码'), findsOneWidget);
+    expect(find.byType(SettingsPage), findsNothing);
+    await tester.runAsync(() async {
+      expect(await state.db.getSetting(AppDb.lockFailCountKey), isNull);
+      await tester.tap(find.text('验证'));
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (find.text('密码错误，请重试').evaluate().isEmpty &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await tester.pump();
+      }
+      expect(await state.db.getSetting(AppDb.lockFailCountKey), '1');
+    });
+    expect(find.byType(SettingsPage), findsNothing);
+  });
+
+  testWidgets('旧锁无长度不自动提交仍走按钮', (tester) async {
+    final state = await seed(tester);
+    await tester.runAsync(() async {
+      final lock = PasswordLock.create('pw-123', 1700000001000);
+      final raw = jsonEncode({
+        'salt': lock.salt,
+        'hash': lock.hash,
+        'updateAt': lock.updateAt
+      });
+      await state.db.setSetting(AppDb.appLockKey, raw);
+      state.appLock = PasswordLock.parse(raw);
+    });
+    await pumpHome(tester, state);
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    final dialogField = find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField));
+    await tester.runAsync(() async {
+      await tester.enterText(dialogField, 'pw-123');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await tester.pump();
+    });
+    expect(find.text('验证应用密码'), findsOneWidget);
+    expect(find.byType(SettingsPage), findsNothing);
+    await tester.tap(find.text('验证'));
+    await tester.runAsync(() async {
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (find.byType(SettingsPage).evaluate().isEmpty &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await tester.pump();
+      }
+    });
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
   });
 
   testWidgets('cmd+comma 同样过密码门', (tester) async {
