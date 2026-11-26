@@ -60,7 +60,7 @@ void main() {
     await tester.tap(bufferCard, buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.text('版本历史'), findsOneWidget);
-    expect(find.text('移入回收站'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
 
     await tester.tapAt(const Offset(1200, 60));
     await tester.pumpAndSettle();
@@ -69,7 +69,7 @@ void main() {
     await tester.longPress(bufferCard);
     await tester.pumpAndSettle();
     expect(find.text('版本历史'), findsOneWidget);
-    expect(find.text('移入回收站'), findsOneWidget);
+    expect(find.text('删除'), findsOneWidget);
   });
 
   testWidgets('history menu on an unopened note shows its versions',
@@ -128,7 +128,7 @@ void main() {
     await tester.tap(find.widgetWithText(NoteCard, 'buffer'),
         buttons: kSecondaryButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('移入回收站'));
+    await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
 
     expect(find.text('「buffer」将保留 90 天，可随时恢复。'), findsOneWidget);

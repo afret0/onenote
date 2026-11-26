@@ -1377,7 +1377,7 @@ class NoteViewState extends State<NoteView> {
             child: Text(hasPassword ? '修改密码' : '设置密码')),
         if (hasPassword)
           const PopupMenuItem(value: 'removePassword', child: Text('移除密码')),
-        const PopupMenuItem(value: 'trash', child: Text('移入回收站')),
+        const PopupMenuItem(value: 'trash', child: Text('删除')),
       ],
     );
     if (!mounted) {

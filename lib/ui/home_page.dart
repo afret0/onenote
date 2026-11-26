@@ -258,7 +258,7 @@ class _HomePageState extends State<HomePage> {
         PopupMenuItem(
             value: 'trash',
             enabled: !locked,
-            child: const Text('移入回收站')),
+            child: const Text('删除')),
       ],
     );
     if (!mounted || value == null) {
