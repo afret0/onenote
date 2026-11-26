@@ -15,6 +15,7 @@
 
 - **版本号自动递增（2026-11-25 用户拍板）**：每次交付构建前把 `pubspec.yaml` 的 `version: X.Y.Z+N` **patch（Z）+1**（1.0.0 → 1.0.1 → 1.0.2 这种），`+N` build 号保持不变。macOS 的 `CFBundleShortVersionString`/`CFBundleVersion` 经 `FLUTTER_BUILD_NAME`/`FLUTTER_BUILD_NUMBER` 自动取自 pubspec，改 pubspec 即生效。版本号改动随当轮提交入库。
 - **app 直接装进「应用程序」（2026-11-26 用户拍板，取代 .app 拷 Downloads 的旧规矩）**：`flutter build macos --release` 后把 `build/macos/Build/Products/Release/onenote.app` **整包覆盖成 `/Applications/onenote.app`**（固定名不带版本号——这是用户已安装的入口，Dock/Spotlight 保持稳定；版本看 Info.plist）。**删旧只留最新**：拷前 `rm -rf /Applications/onenote*.app` 再 `cp -R`；**Downloads 不再放 .app**（历史遗留 `~/Downloads/onenote*.app` 顺手清掉）。bundle 可执行名仍是 `onenote`，`pgrep -x onenote` 不受影响。dmg/apk 仍带版本号放 Downloads。
+- **dmg + apk 一并出包（2026-11-26 用户拍板：dmg+apk 放 Downloads；.app 改装 /Applications 承担重启，见上条）**：每轮交付在已安装的 .app 之外还要产出 macOS dmg 与 Android apk，命名带版本号 `~/Downloads/onenote_<X.Y.Z>.dmg` / `~/Downloads/onenote_<X.Y.Z>.apk`，拷前 `rm -rf ~/Downloads/onenote*.dmg ~/Downloads/onenote*.apk` 删旧只留最新。dmg 用系统自带 hdiutil（不引入 create-dmg）：staging 目录放 `onenote.app` + `Applications` 符号链接，`hdiutil create -volname onenote -srcfolder <staging> -ov -format UDZO <dmg>`；apk 用 `flutter build apk --release`（产物 `build/app/outputs/flutter-apk/app-release.apk`，release 沿用 Flutter 模板的 debug 签名、可直接安装，正式签名未配置），cp 时重命名带版本号。
 - **直接 kill 旧运行实例并把新包运行起来，不必询问**：`pgrep -x onenote` 拿 PID 逐个 `kill <PID>`（禁 pkill/killall），`open /Applications/onenote.app`，再 pgrep 确认新进程在跑。
 - 构建失败不递增版本号、不拷不跑，先报告失败原因。
 
