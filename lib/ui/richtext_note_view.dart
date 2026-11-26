@@ -125,7 +125,9 @@ class RichTextNoteViewState extends State<RichTextNoteView> {
       _save(silent: true);
       _load();
     } else if (oldWidget.highlightQuery != widget.highlightQuery) {
+      _matchIndex = 0;
       _rebuildMatches();
+      _scheduleFirstMatch();
     }
   }
 
@@ -159,6 +161,7 @@ class RichTextNoteViewState extends State<RichTextNoteView> {
     });
     _rebuildToc();
     _rebuildMatches();
+    _scheduleFirstMatch();
     unawaited(_syncOnOpen());
   }
 
@@ -380,6 +383,23 @@ class RichTextNoteViewState extends State<RichTextNoteView> {
     });
   }
 
+  void _scheduleFirstMatch([int attempt = 0]) {
+    if ((widget.highlightQuery ?? '').isEmpty) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _matches.isEmpty) {
+        return;
+      }
+      if (_revealMatch(_matches[_matchIndex])) {
+        return;
+      }
+      if (attempt < 10) {
+        _scheduleFirstMatch(attempt + 1);
+      }
+    });
+  }
+
   void _stepMatch(int delta) {
     if (_matches.isEmpty) {
       return;
@@ -393,10 +413,10 @@ class RichTextNoteViewState extends State<RichTextNoteView> {
     _revealMatch(_matches[_matchIndex]);
   }
 
-  void _revealMatch(RichtextMatch match) {
+  bool _revealMatch(RichtextMatch match) {
     final node = _document?.nodeAtPath(match.path);
     if (node == null) {
-      return;
+      return false;
     }
     _editorState?.selection = Selection.single(
       path: match.path,
@@ -409,13 +429,14 @@ class RichTextNoteViewState extends State<RichTextNoteView> {
     final viewport = _viewportKey.currentContext?.findRenderObject();
     final position = _scrollPosition;
     if (box is! RenderBox || viewport is! RenderBox || position == null) {
-      return;
+      return false;
     }
     final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
     final target = (position.pixels + top - _revealOffset)
         .clamp(0.0, position.maxScrollExtent);
     position.animateTo(target,
         duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+    return true;
   }
 
   InlineSpan _decorateSpan(BuildContext context, Node node, int index,
@@ -1002,12 +1023,20 @@ class RichTextNoteViewState extends State<RichTextNoteView> {
       ),
     );
 
+    final activeMatch = _matches.isEmpty ? null : _matches[_matchIndex];
     final editor = AppFlowyEditor(
       key: _editorKey,
       editorState: editorState,
       editorScrollController: _editorScroll,
       shrinkWrap: true,
       autoFocus: true,
+      focusedSelection: activeMatch == null
+          ? null
+          : Selection.single(
+              path: activeMatch.path,
+              startOffset: activeMatch.start,
+              endOffset: activeMatch.end,
+            ),
       focusNode: _editorFocus,
       editorStyle: editorStyle,
       blockComponentBuilders: richtextBlockBuilders(

@@ -63,6 +63,8 @@ class _HomePageState extends State<HomePage> {
   GlobalKey<NoteViewState> _noteViewKey = GlobalKey<NoteViewState>();
   String? _noteViewKeyId;
   List<Note>? _searchHits;
+  int _searchSeq = 0;
+  bool _refreshingHits = false;
 
   AppState get state => widget.state;
 
@@ -70,6 +72,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     state.onAppLocking = _flushOpenEdits;
+    state.addListener(_refreshSearchHits);
   }
 
   Future<void> _flushOpenEdits() async {
@@ -81,6 +84,7 @@ class _HomePageState extends State<HomePage> {
     if (state.onAppLocking == _flushOpenEdits) {
       state.onAppLocking = null;
     }
+    state.removeListener(_refreshSearchHits);
     _searchController.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -393,11 +397,48 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _searchChanged(String value) async {
     final query = value.trim();
+    final seq = ++_searchSeq;
     final hits = query.isEmpty ? null : await state.search(query);
-    if (!mounted) {
+    if (!mounted || seq != _searchSeq) {
       return;
     }
     setState(() => _searchHits = hits);
+  }
+
+  void _refreshSearchHits() {
+    if (_searchHits == null || _refreshingHits) {
+      return;
+    }
+    final query = _searchController.text.trim();
+    if (query.isEmpty) {
+      return;
+    }
+    final seq = _searchSeq;
+    _refreshingHits = true;
+    state.search(query).then((hits) {
+      _refreshingHits = false;
+      if (!mounted || seq != _searchSeq || _searchHits == null) {
+        return;
+      }
+      if (_sameHits(_searchHits!, hits)) {
+        return;
+      }
+      developer.log(
+          'done, 数据变化后重建搜索结果, query: $query, ${_searchHits!.length} -> ${hits.length}');
+      setState(() => _searchHits = hits);
+    });
+  }
+
+  bool _sameHits(List<Note> a, List<Note> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> _openHit(Note hit) async {
@@ -808,6 +849,7 @@ class _HomePageState extends State<HomePage> {
                         suffixIcon: searching
                             ? IconButton(
                                 onPressed: () {
+                                  _searchSeq++;
                                   _searchController.clear();
                                   setState(() => _searchHits = null);
                                 },

@@ -83,4 +83,39 @@ void main() {
     expect(find.byType(RichTextNoteView), findsNothing);
     expect(find.byType(AppFlowyEditor), findsNothing);
   });
+
+  testWidgets('搜索打开富文本笔记自动滚动并选中首个命中', (WidgetTester tester) async {
+    final (db, state, _, richtext) = await seed(tester);
+    final filler = List.generate(80, (i) => '填充段落 $i').join('\n\n');
+    await tester.runAsync(() async {
+      await db.saveNote(richtext.id, 'rt', '$filler\n\n目标词\n');
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: Scaffold(
+        body: NoteView(
+          state: state,
+          noteId: richtext.id,
+          showBack: false,
+          onBack: () {},
+          highlightQuery: '目标词',
+        ),
+      ),
+    ));
+    for (var i = 0; i < 6; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    final editor =
+        tester.widget<AppFlowyEditor>(find.byType(AppFlowyEditor));
+    final position = editor.editorState.scrollableState?.position;
+    expect(position, isNotNull);
+    expect(position!.pixels, greaterThan(0));
+    final selection = editor.editorState.selection;
+    expect(selection, isNotNull);
+    expect(selection!.isCollapsed, isFalse);
+  });
 }
