@@ -100,6 +100,7 @@ class _OneNoteAppState extends State<OneNoteApp> {
       return;
     }
     _relocking = true;
+    _navKey.currentState?.popUntil((route) => route.isFirst);
     final db = _spaceDb;
     _backgroundLock?.dispose();
     _backgroundLock = null;

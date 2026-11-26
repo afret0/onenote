@@ -199,6 +199,8 @@ class AppState extends ChangeNotifier {
 
   bool _disposed = false;
 
+  bool get isDisposed => _disposed;
+
   void _onSyncChanged() {
     if (!_disposed) {
       notifyListeners();
@@ -413,6 +415,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> lockApp() async {
     await onAppLocking?.call();
+    if (_disposed) {
+      developer.log('skip, 重复锁定请求落在已销毁状态上');
+      return;
+    }
     _unlockUntil.clear();
     _leaseSweep?.cancel();
     _leaseSweep = null;

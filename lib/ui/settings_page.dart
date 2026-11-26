@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -62,6 +64,10 @@ class _SettingsPageState extends State<SettingsPage> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => SyncSettingsPage(state: state)),
     );
+    if (!mounted || state.isDisposed) {
+      developer.log('skip, 同步子页返回时已上锁不再读库');
+      return;
+    }
     await _loadRetention();
   }
 
