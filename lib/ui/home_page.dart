@@ -964,6 +964,7 @@ class _HomePageState extends State<HomePage> {
                           : null,
                       selected: dense && note.id == state.openNoteId,
                       dense: dense,
+                      recessed: dense && state.openNoteId != null,
                       onTap: () async {
                         if (searching) {
                           await _openHit(note);
@@ -1053,6 +1054,7 @@ class _HomePageState extends State<HomePage> {
           highlight: _searchController.text.trim(),
           selected: dense && note.id == state.openNoteId,
           dense: dense,
+          recessed: dense && state.openNoteId != null,
           onTap: () => _openHit(note),
           onContext: (position) => _noteContext(note, position),
         );

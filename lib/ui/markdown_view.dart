@@ -111,6 +111,7 @@ class _MarkdownViewState extends State<MarkdownView> {
       );
       _sheet = MarkdownStyleSheet(
         p: body,
+        blockSpacing: 14,
         h1: headingSerif.copyWith(fontSize: 30 * contentScale, height: 1.3),
         h2: headingSerif.copyWith(fontSize: 24 * contentScale, height: 1.35),
         h3: headingSerif.copyWith(fontSize: 20 * contentScale, height: 1.4),

@@ -183,6 +183,7 @@ class NoteCard extends StatelessWidget {
     this.highlight,
     this.selected = false,
     this.dense = false,
+    this.recessed = false,
     this.conflicted = false,
     this.locked = false,
   });
@@ -195,6 +196,7 @@ class NoteCard extends StatelessWidget {
   final String? highlight;
   final bool selected;
   final bool dense;
+  final bool recessed;
   final bool conflicted;
   final bool locked;
 
@@ -207,7 +209,9 @@ class NoteCard extends StatelessWidget {
           ? null
           : (details) => onContext!(details.globalPosition),
       child: Material(
-        color: selected ? t.surfaceAlt : t.surface,
+        color: selected
+            ? t.surfaceAlt
+            : (recessed ? Color.lerp(t.surface, t.paper, 0.5)! : t.surface),
         borderRadius: BorderRadius.circular(radiusMd),
         child: InkWell(
           borderRadius: BorderRadius.circular(radiusMd),

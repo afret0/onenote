@@ -31,7 +31,7 @@ import 'richtext_note_view.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-const _noteColumnWidth = 760.0;
+const _noteColumnWidth = 684.0;
 const _tocColumnMinWidth = 600.0;
 const _navPosSettingKey = 'searchNavPos';
 const _tocVisibleSettingKey = 'tocVisible';
