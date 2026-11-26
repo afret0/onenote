@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -323,6 +324,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _backToList() async {
+    developer.log('hit, 系统返回拦截, 笔记页回列表, noteId: ${state.openNoteId}');
+    await _flushOpenEdits();
+    if (!mounted) {
+      return;
+    }
+    await state.closeNote();
+  }
+
   Future<void> _searchChanged(String value) async {
     final query = value.trim();
     final hits = query.isEmpty ? null : await state.search(query);
@@ -464,8 +474,22 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         );
+        final guarded = PopScope(
+          canPop: isWide || openId == null,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) {
+              return;
+            }
+            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+              Navigator.of(context).pop();
+              return;
+            }
+            _backToList();
+          },
+          child: scaffold,
+        );
         if (!isDesktopWindow) {
-          return scaffold;
+          return guarded;
         }
         return CallbackShortcuts(
           bindings: {
@@ -478,7 +502,7 @@ class _HomePageState extends State<HomePage> {
             const SingleActivator(LogicalKeyboardKey.comma, control: true):
                 _openSettings,
           },
-          child: Focus(autofocus: true, child: scaffold),
+          child: Focus(autofocus: true, child: guarded),
         );
       },
     );

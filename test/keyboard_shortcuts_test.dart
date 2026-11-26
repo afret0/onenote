@@ -102,6 +102,22 @@ void main() {
 
   Finder replacePanel() => find.byKey(const ValueKey('replacePanel'));
 
+  List<MethodCall> captureSystemExits() {
+    final calls = <MethodCall>[];
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemNavigator.pop') {
+          calls.add(call);
+        }
+        return null;
+      },
+    );
+    addTearDown(() => binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    return calls;
+  }
+
   testWidgets('cmd+f focuses global search on wide layout', (tester) async {
     wide(tester);
     final (state, _, _) = await seed(tester);
@@ -223,6 +239,77 @@ void main() {
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
     final fresh = await db.findNote(note.id);
     expect(fresh!.content, 'pending edit');
+  });
+
+  testWidgets('system back on narrow closes drawer, then note, then exits',
+      (tester) async {
+    narrow(tester);
+    final (state, _, _) = await seed(tester);
+    final exits = captureSystemExits();
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(NoteCard, 't'));
+    await tester.pumpAndSettle();
+    expect(state.openNoteId, isNotNull);
+
+    await tester.dragFrom(const Offset(2, 300), const Offset(400, 0));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ScopeTile, 'work'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ScopeTile, 'work'), findsNothing);
+    expect(state.openNoteId, isNotNull);
+    expect(exits, isEmpty);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(state.openNoteId, isNull);
+    expect(find.byType(NoteView), findsNothing);
+    expect(find.widgetWithText(NoteCard, 't'), findsOneWidget);
+    expect(exits, isEmpty);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(exits, hasLength(1));
+  });
+
+  testWidgets('system back on narrow flushes pending edits then closes note',
+      (tester) async {
+    narrow(tester);
+    final (state, db, note) = await seed(tester);
+    captureSystemExits();
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(NoteCard, 't'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(contentField(), 'pending edit');
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(state.openNoteId, isNull);
+    expect(find.byType(NoteView), findsNothing);
+    final fresh = await db.findNote(note.id);
+    expect(fresh!.content, 'pending edit');
+  });
+
+  testWidgets('system back on wide keeps default exit behavior',
+      (tester) async {
+    wide(tester);
+    final (state, _, _) = await seed(tester);
+    final exits = captureSystemExits();
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+    expect(state.openNoteId, isNotNull);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(exits, hasLength(1));
   });
 
   testWidgets('cmd+comma opens settings page', (tester) async {
