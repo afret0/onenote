@@ -7,16 +7,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:onenote/data/attachment_store.dart';
 import 'package:onenote/ui/clip_page_view.dart';
 import 'package:onenote/ui/theme.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
 class _FakeController extends PlatformWebViewController {
   _FakeController(super.params) : super.implementation();
 
   bool loaded = false;
+  _FakeNavigationDelegate? delegate;
 
   @override
   Future<void> loadHtmlString(String html, {String? baseUrl}) async {
+    final callback = delegate?.onNavigationRequest;
+    if (callback != null) {
+      final decision = await callback(
+        NavigationRequest(url: baseUrl ?? 'about:blank', isMainFrame: true),
+      );
+      if (decision != NavigationDecision.navigate) {
+        return;
+      }
+    }
     loaded = true;
   }
 
@@ -31,16 +40,22 @@ class _FakeController extends PlatformWebViewController {
   @override
   Future<void> setPlatformNavigationDelegate(
     PlatformNavigationDelegate handler,
-  ) async {}
+  ) async {
+    delegate = handler as _FakeNavigationDelegate;
+  }
 }
 
 class _FakeNavigationDelegate extends PlatformNavigationDelegate {
   _FakeNavigationDelegate(super.params) : super.implementation();
 
+  NavigationRequestCallback? onNavigationRequest;
+
   @override
   Future<void> setOnNavigationRequest(
     NavigationRequestCallback onNavigationRequest,
-  ) async {}
+  ) async {
+    this.onNavigationRequest = onNavigationRequest;
+  }
 }
 
 class _FakeWebViewWidget extends PlatformWebViewWidget {
@@ -76,7 +91,7 @@ class _FakeWebViewPlatform extends WebViewPlatform {
 }
 
 void main() {
-  testWidgets('mac 内嵌剪藏页不调 setBackgroundColor, 页面正常加载', (tester) async {
+  testWidgets('mac 内嵌剪藏页跳过背景色且放行初始加载, 其余导航拦截', (tester) async {
     final platform = _FakeWebViewPlatform();
     WebViewPlatform.instance = platform;
 
@@ -110,5 +125,16 @@ void main() {
     expect(find.textContaining('页面解析失败'), findsNothing);
     expect(find.byKey(const Key('fake-webview')), findsOneWidget);
     expect(platform.controllers.single.loaded, isTrue);
+
+    final callback = platform.controllers.single.delegate!.onNavigationRequest!;
+    expect(
+      await callback(
+          NavigationRequest(url: 'https://example.com/', isMainFrame: true)),
+      NavigationDecision.prevent,
+    );
+    expect(
+      await callback(NavigationRequest(url: 'about:blank', isMainFrame: true)),
+      NavigationDecision.prevent,
+    );
   });
 }

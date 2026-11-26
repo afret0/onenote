@@ -111,10 +111,19 @@ class _ClipPageEmbedState extends State<ClipPageEmbed> {
       if (!mounted || id != widget.id) {
         return;
       }
+      var initialLoaded = false;
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.disabled)
         ..setNavigationDelegate(NavigationDelegate(
-          onNavigationRequest: (request) => NavigationDecision.prevent,
+          onNavigationRequest: (request) {
+            if (!initialLoaded &&
+                request.isMainFrame &&
+                request.url == 'about:blank') {
+              initialLoaded = true;
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          },
         ));
       if (!Platform.isMacOS) {
         controller.setBackgroundColor(inkOf(context).paper);
