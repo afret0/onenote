@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:markdown/markdown.dart' as md;
 
 import '../data/attachment_refs.dart';
 import '../data/attachment_store.dart';
 import '../data/markdown_tasks.dart';
 import 'attachment_image.dart';
 import 'attachment_link.dart';
+import 'clip_page_view.dart';
 import 'theme.dart';
 
 class MarkdownView extends StatefulWidget {
@@ -169,9 +171,12 @@ class _MarkdownViewState extends State<MarkdownView> {
       attachmentBuilders = {
         'img': AttachmentImageBuilder(store,
             refCounter: counter, onTap: imageTap, onContext: onContext),
-        if (onContext != null && pdfTap != null)
-          'a': AttachmentLinkBuilder(
-              onTap: pdfTap, onContext: onContext, refCounter: counter),
+        'a': _ChainLinkBuilder([
+          if (onContext != null && pdfTap != null)
+            AttachmentLinkBuilder(
+                onTap: pdfTap, onContext: onContext, refCounter: counter),
+          ClipPageLinkBuilder(store, onOpenExternal: widget.onAttachmentLink),
+        ]),
       };
     }
     final toggle = widget.onToggleTask;
@@ -318,5 +323,27 @@ class _TaskCheckboxState extends State<_TaskCheckbox> {
         ),
       ),
     );
+  }
+}
+class _ChainLinkBuilder extends MarkdownElementBuilder {
+  _ChainLinkBuilder(this._chain);
+
+  final List<MarkdownElementBuilder> _chain;
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    for (final builder in _chain) {
+      final built = builder.visitElementAfterWithContext(
+          context, element, preferredStyle, parentStyle);
+      if (built != null) {
+        return built;
+      }
+    }
+    return null;
   }
 }
