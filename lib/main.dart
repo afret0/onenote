@@ -3,12 +3,14 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 
 import 'data/app_db.dart';
+import 'data/container_migration.dart';
 import 'data/font_store.dart';
 import 'data/password_lock.dart';
 import 'lock/background_lock.dart';
 import 'state/app_state.dart';
 import 'sync/sync_engine.dart';
 import 'synthetic_paste.dart';
+import 'update/update_flow.dart';
 import 'ui/dialogs.dart';
 import 'ui/home_page.dart';
 import 'ui/lock_screen.dart';
@@ -18,6 +20,7 @@ import 'window_setup.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SyntheticPaste.install();
+  await migrateLegacyMacContainer();
   final db = AppDb(AppDb.openExecutor());
   await db.purgeExpired();
   WindowSizeController? windowController;
@@ -67,6 +70,12 @@ class _OneNoteAppState extends State<OneNoteApp> {
       _forcePassword = false;
     });
     s.init();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _navKey.currentContext;
+      if (state != null && ctx != null) {
+        checkUpdateSilently(widget.db, ctx);
+      }
+    });
     _backgroundLock?.dispose();
     _backgroundLock = BackgroundLock.install(_onBackground, _onBlur);
     developer.log('done, 已进入空间, spaceId: ${spaceId ?? ''}');

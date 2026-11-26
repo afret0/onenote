@@ -10,6 +10,7 @@ import '../data/app_db.dart';
 import '../data/font_store.dart';
 import '../lock/biometrics.dart';
 import '../state/app_state.dart';
+import '../update/update_flow.dart';
 import '../window_setup.dart' show isDesktopWindow;
 import 'dialogs.dart';
 import 'font_catalog_dialog.dart';
@@ -1097,6 +1098,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
+            ),
+            Divider(height: 1, color: t.hairline),
+            _SettingRow(
+              icon: Icons.system_update_outlined,
+              title: '检查更新',
+              subtitle: '从 GitHub Release 获取新版本，可应用内安装',
+              action: '',
+              onTap: () => checkUpdateManually(context, state),
             ),
           ]),
         ]),

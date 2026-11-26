@@ -92,6 +92,17 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
+      - name: Setup release signing
+        env:
+          KS_B64: ${{ secrets.ONENOTE_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ONENOTE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > android/app/onenote-release.keystore
+            printf 'storeFile=onenote-release.keystore\nstorePassword=%s\nkeyPassword=%s\nkeyAlias=onenote\n' "$KS_PASS" "$KS_PASS" > android/key.properties
+          else
+            echo "no signing secrets, fallback to debug signing"
+          fi
       - name: Build apk (one retry for flaky JdkImageTransform)
         run: flutter build apk --release --target-platform android-arm64 || (sleep 10 && flutter build apk --release --target-platform android-arm64)
       - run: mv build/app/outputs/flutter-apk/app-release.apk "onenote_$VER.apk"
