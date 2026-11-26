@@ -75,7 +75,14 @@ class _NotebookColorPickerState extends State<_NotebookColorPicker> {
   @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
+    final accent = readableOn(_color, t.surface);
+    final fill = readableOn(_color, t.surface, ratio: 3);
+    final onFill = contrastRatio(Colors.white, fill) >=
+            contrastRatio(Colors.black, fill)
+        ? Colors.white
+        : Colors.black;
     return AlertDialog(
+      scrollable: true,
       title: const Text('自定义背景色'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 380),
@@ -148,19 +155,43 @@ class _NotebookColorPickerState extends State<_NotebookColorPicker> {
               ],
             ),
             const SizedBox(height: spaceSm),
-            _sliderRow('色相', _hsv.hue, 360, 360,
-                (v) => _hsvChanged(_hsv.withHue(v))),
-            _sliderRow('饱和', _hsv.saturation, 1, 100,
-                (v) => _hsvChanged(_hsv.withSaturation(v))),
-            _sliderRow('明度', _hsv.value, 1, 100,
-                (v) => _hsvChanged(_hsv.withValue(v))),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: fill,
+                inactiveTrackColor: fill.withValues(alpha: 0.24),
+                thumbColor: fill,
+                overlayColor: fill.withValues(alpha: 0.12),
+                valueIndicatorColor: fill,
+                valueIndicatorTextStyle: Theme.of(context)
+                    .textTheme
+                    .labelLarge
+                    ?.copyWith(color: onFill),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _sliderRow('色相', _hsv.hue, 360, 360,
+                      (v) => _hsvChanged(_hsv.withHue(v))),
+                  _sliderRow('饱和', _hsv.saturation, 1, 100,
+                      (v) => _hsvChanged(_hsv.withSaturation(v))),
+                  _sliderRow('明度', _hsv.value, 1, 100,
+                      (v) => _hsvChanged(_hsv.withValue(v))),
+                ],
+              ),
+            ),
             const SizedBox(height: spaceSm),
             TextField(
               controller: _hexController,
               onChanged: _hexChanged,
+              cursorColor: accent,
               decoration: InputDecoration(
                 labelText: 'Hex',
                 prefixText: '# ',
+                floatingLabelStyle: TextStyle(color: accent),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radiusMd),
+                  borderSide: BorderSide(color: accent, width: 1.5),
+                ),
                 errorText: _hexError ? '6 位十六进制颜色' : null,
               ),
             ),
@@ -170,12 +201,15 @@ class _NotebookColorPickerState extends State<_NotebookColorPicker> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
+          style: TextButton.styleFrom(foregroundColor: accent),
           child: const Text('取消'),
         ),
         FilledButton(
           onPressed: _hexError
               ? null
               : () => Navigator.of(context).pop(_color.toARGB32()),
+          style: FilledButton.styleFrom(
+              backgroundColor: fill, foregroundColor: onFill),
           child: const Text('确定'),
         ),
       ],
@@ -235,8 +269,8 @@ class _PaletteSwatch extends StatelessWidget {
             ? Icon(
                 Icons.check,
                 size: 16,
-                color: ThemeData.estimateBrightnessForColor(color) ==
-                        Brightness.dark
+                color: contrastRatio(Colors.white, color) >=
+                        contrastRatio(Colors.black, color)
                     ? Colors.white
                     : Colors.black,
               )
