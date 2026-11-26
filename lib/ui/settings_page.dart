@@ -381,16 +381,6 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _toggleScope(String notebookId, bool checked) async {
-    final next = {...state.searchScope};
-    if (checked) {
-      next.add(notebookId);
-    } else {
-      next.remove(notebookId);
-    }
-    await state.setSearchScope(next);
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
@@ -762,7 +752,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _SectionTitle('搜索范围'),
           Text(
             state.searchScope.isEmpty
-                ? '当前搜索全部笔记本。勾选后只搜索所选笔记本。'
+                ? '当前搜索全部笔记本（全不选或全选均为全部）。'
                 : '当前只搜索勾选的 ${state.searchScope.length} 个笔记本。',
             style: Theme.of(context)
                 .textTheme
@@ -774,9 +764,21 @@ class _SettingsPageState extends State<SettingsPage> {
             for (var i = 0; i < state.notebooks.length; i++) ...[
               if (i > 0) Divider(height: 1, color: t.hairline),
               CheckboxListTile(
-                value: state.searchScope.contains(state.notebooks[i].id),
-                onChanged: (checked) =>
-                    _toggleScope(state.notebooks[i].id, checked ?? false),
+                value: state.searchScope.isEmpty ||
+                    state.searchScope.contains(state.notebooks[i].id),
+                onChanged: (checked) {
+                  final allIds =
+                      state.notebooks.map((n) => n.id).toSet();
+                  final current = state.searchScope.isEmpty
+                      ? allIds
+                      : {...state.searchScope};
+                  if (checked ?? false) {
+                    current.add(state.notebooks[i].id);
+                  } else {
+                    current.remove(state.notebooks[i].id);
+                  }
+                  state.setSearchScope(current);
+                },
                 title: Text(state.notebooks[i].name),
                 secondary: Container(
                   width: 10,
@@ -798,17 +800,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         ?.copyWith(color: t.inkFaint)),
               ),
           ]),
-          if (state.searchScope.isNotEmpty) ...[
-            const SizedBox(height: spaceSm),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => state.setSearchScope({}),
-                icon: const Icon(Icons.select_all, size: 18),
-                label: const Text('恢复为搜索全部'),
-              ),
-            ),
-          ],
         ]),
       ];
 }

@@ -42,6 +42,44 @@ void main() {
     return fresh;
   }
 
+  test('search scope 全选归一为全部且新笔记本自动纳入', () async {
+    final work = await db.createNotebook('work');
+    now += 1000;
+    final notes = await db.createNotebook('notes');
+    await state.init();
+    await state.setSearchScope({work.id, notes.id});
+    expect(state.searchScope, isEmpty);
+    expect(await db.getSetting(AppDb.searchScopeKey), '');
+    final restarted = await restartedState();
+    expect(restarted.searchScope, isEmpty);
+
+    now += 1000;
+    final fresh = await db.createNotebook('fresh');
+    await state.refresh();
+    await seed(fresh, 'hidden');
+    expect((await state.search('hidden')).map((n) => n.title), ['hidden']);
+  });
+
+  test('search scope 全不选为全部, 部分勾选只搜所选且重启保留', () async {
+    await state.init();
+    final work = await db.createNotebook('work');
+    now += 1000;
+    final life = await db.createNotebook('life');
+    await state.refresh();
+    final workNote = await seed(work, 'shared');
+    await seed(life, 'shared');
+
+    await state.setSearchScope({});
+    expect(await state.search('shared'), hasLength(2));
+
+    await state.setSearchScope({work.id});
+    expect(state.searchScope, {work.id});
+    final hits = await state.search('shared');
+    expect(hits.map((n) => n.id), [workNote.id]);
+    final restarted = await restartedState();
+    expect(restarted.searchScope, {work.id});
+  });
+
   test('startup auto-opens remembered note across restart', () async {
     final work = await db.createNotebook('work');
     final first = await seed(work, 'first');

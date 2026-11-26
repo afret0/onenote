@@ -318,7 +318,25 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.ensureVisualUpdate();
   }
 
-  void _openSettings() {
+  Future<void> _openSettings() async {
+    final lock = state.appLock;
+    if (lock != null && lock.active) {
+      final password = await promptPassword(
+        context,
+        title: '验证应用密码',
+        subtitle: '进入设置前验证',
+        attempts: state.attempts,
+        lock: lock,
+        confirmLabel: '验证',
+      );
+      if (password == null || !mounted) {
+        developer.log('skip, 设置页密码验证未通过不进入');
+        return;
+      }
+    }
+    if (!mounted) {
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => SettingsPage(state: state)),
     );

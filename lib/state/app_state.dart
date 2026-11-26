@@ -959,8 +959,13 @@ class AppState extends ChangeNotifier {
   Future<List<Note>> search(String query) => db.searchNotes(query, searchScope);
 
   Future<void> setSearchScope(Set<String> ids) async {
-    searchScope = ids;
-    await db.setSetting(AppDb.searchScopeKey, ids.join(','));
+    final allIds = notebooks.map((n) => n.id).toSet();
+    final coversAll = ids.isNotEmpty && allIds.every(ids.contains);
+    searchScope = coversAll ? <String>{} : ids;
+    if (coversAll) {
+      developer.log('hit, 勾选覆盖全部笔记本, 归一为搜索全部, count: ${ids.length}');
+    }
+    await db.setSetting(AppDb.searchScopeKey, searchScope.join(','));
     notifyListeners();
   }
 
