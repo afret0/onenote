@@ -32,6 +32,10 @@ class _SettingsPageState extends State<SettingsPage> {
   String _syncProtocol = AppDb.syncProtocolOff;
   bool _bioAvailable = false;
   String _appVersion = '';
+  int _versionTaps = 0;
+  bool _privacyEntryUnlocked = false;
+
+  static const int _privacyUnlockTaps = 10;
 
   AppState get state => widget.state;
 
@@ -88,6 +92,31 @@ class _SettingsPageState extends State<SettingsPage> {
   void _snack(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _onVersionTap() {
+    if (_privacyEntryUnlocked) {
+      return;
+    }
+    _versionTaps += 1;
+    final remaining = _privacyUnlockTaps - _versionTaps;
+    if (remaining > 3) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    if (remaining <= 0) {
+      developer.log('done, 隐私空间入口已解锁显示, taps: $_privacyUnlockTaps');
+      setState(() {
+        _privacyEntryUnlocked = true;
+        _versionTaps = 0;
+      });
+      messenger.showSnackBar(
+          const SnackBar(content: Text('隐私空间入口已显示')));
+      return;
+    }
+    messenger.showSnackBar(
+        SnackBar(content: Text('再点击 $remaining 次显示隐私空间入口')));
   }
 
   Future<void> _setAppPassword() async {
@@ -862,23 +891,25 @@ class _SettingsPageState extends State<SettingsPage> {
                 onTap: () => state.lockApp(),
               ),
             ],
-            Divider(height: 1, color: t.hairline),
-            if (state.privacyRef?.active == true)
-              _SettingRow(
-                icon: Icons.delete_forever_outlined,
-                title: '销毁隐私空间',
-                subtitle: '永久删除隐私空间的全部本地与云端数据',
-                action: '',
-                onTap: _destroyPrivacySpace,
-              )
-            else
-              _SettingRow(
-                icon: Icons.enhanced_encryption_outlined,
-                title: '创建隐私空间',
-                subtitle: '另一个密码打开一份独立数据，外观与日常空间一致',
-                action: '',
-                onTap: _createPrivacySpace,
-              ),
+            if (_privacyEntryUnlocked) ...[
+              Divider(height: 1, color: t.hairline),
+              if (state.privacyRef?.active == true)
+                _SettingRow(
+                  icon: Icons.delete_forever_outlined,
+                  title: '销毁隐私空间',
+                  subtitle: '永久删除隐私空间的全部本地与云端数据',
+                  action: '',
+                  onTap: _destroyPrivacySpace,
+                )
+              else
+                _SettingRow(
+                  icon: Icons.enhanced_encryption_outlined,
+                  title: '创建隐私空间',
+                  subtitle: '另一个密码打开一份独立数据，外观与日常空间一致',
+                  action: '',
+                  onTap: _createPrivacySpace,
+                ),
+            ],
           ]),
         ]),
         if (isDesktopWindow)
@@ -1031,26 +1062,30 @@ class _SettingsPageState extends State<SettingsPage> {
         _group([
           _SectionTitle('关于'),
           _SettingCard(children: [
-            Padding(
-              padding: const EdgeInsets.all(spaceMd),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 20, color: t.inkMuted),
-                  const SizedBox(width: spaceMd),
-                  Expanded(
-                    child: Text('版本',
-                        style: Theme.of(context).textTheme.bodyMedium),
-                  ),
-                  const SizedBox(width: spaceSm),
-                  Text(_appVersion,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(
-                              color: t.accentText,
-                              fontFamily: monoFamily,
-                              fontWeight: FontWeight.w600)),
-                ],
+            InkWell(
+              onTap: _onVersionTap,
+              borderRadius: BorderRadius.circular(radiusLg),
+              child: Padding(
+                padding: const EdgeInsets.all(spaceMd),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 20, color: t.inkMuted),
+                    const SizedBox(width: spaceMd),
+                    Expanded(
+                      child: Text('版本',
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ),
+                    const SizedBox(width: spaceSm),
+                    Text(_appVersion,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(
+                                color: t.accentText,
+                                fontFamily: monoFamily,
+                                fontWeight: FontWeight.w600)),
+                  ],
+                ),
               ),
             ),
           ]),
