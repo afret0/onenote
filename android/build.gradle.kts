@@ -21,6 +21,16 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects {
+    if (name == "keyboard_height_plugin") {
+        afterEvaluate {
+            extensions.findByName("android")?.withGroovyBuilder {
+                "compileSdkVersion"(36)
+            }
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
