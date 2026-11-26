@@ -324,7 +324,7 @@ class _LockGateState extends State<LockGate> {
                 TextField(
                   controller: _controller,
                   focusNode: _focus,
-                  autofocus: true,
+                  autofocus: false,
                   obscureText: _obscure,
                   enableSuggestions: false,
                   autocorrect: false,
