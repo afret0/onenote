@@ -877,7 +877,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   icon: Icons.face_outlined,
                   title: '信任系统应用锁',
                   subtitle:
-                      '先在系统设置把本应用加入应用锁（可人脸）；开启后启动与回前台不再弹本应用锁屏，笔记本/单篇锁保留',
+                      '先在系统设置把本应用加入应用锁（可人脸）；开启后启动/回前台/设置/笔记本/单篇解锁都交给系统锁，本应用不再重复验证；隐私空间仍用密码区分数据',
                   value: state.trustSystemLock,
                   onChanged: state.setTrustSystemLock,
                 ),
@@ -892,16 +892,25 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
             if (_privacyEntryUnlocked) ...[
-              Divider(height: 1, color: t.hairline),
-              if (state.privacyRef?.active == true)
+              if (state.privacyRef?.active == true) ...[
+                Divider(height: 1, color: t.hairline),
+                _SettingRow(
+                  icon: Icons.login_outlined,
+                  title: '进入隐私空间',
+                  subtitle: '回到锁屏输入隐私空间密码，打开那份独立数据',
+                  action: '',
+                  onTap: () => state.switchSpaceHandler?.call(),
+                ),
+                Divider(height: 1, color: t.hairline),
                 _SettingRow(
                   icon: Icons.delete_forever_outlined,
                   title: '销毁隐私空间',
                   subtitle: '永久删除隐私空间的全部本地与云端数据',
                   action: '',
                   onTap: _destroyPrivacySpace,
-                )
-              else
+                ),
+              ] else ...[
+                Divider(height: 1, color: t.hairline),
                 _SettingRow(
                   icon: Icons.enhanced_encryption_outlined,
                   title: '创建隐私空间',
@@ -909,6 +918,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   action: '',
                   onTap: _createPrivacySpace,
                 ),
+              ],
             ],
           ]),
         ]),

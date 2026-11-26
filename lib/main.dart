@@ -44,6 +44,7 @@ class _OneNoteAppState extends State<OneNoteApp> {
   BackgroundLock? _backgroundLock;
   final _navKey = GlobalKey<NavigatorState>();
   bool _relocking = false;
+  bool _forcePassword = false;
 
   @override
   void dispose() {
@@ -58,10 +59,12 @@ class _OneNoteAppState extends State<OneNoteApp> {
   void _enter(AppDb db, String? spaceId) {
     final s = AppState(db, spaceId: spaceId, globalDb: widget.db);
     s.lockHandler = _relock;
+    s.switchSpaceHandler = _switchSpace;
     s.destroyChildSpaceHandler = () => _destroyCurrentSpace(s);
     setState(() {
       state = s;
       _spaceDb = spaceId == null || spaceId.isEmpty ? null : db;
+      _forcePassword = false;
     });
     s.init();
     _backgroundLock?.dispose();
@@ -72,6 +75,10 @@ class _OneNoteAppState extends State<OneNoteApp> {
   void _onBackground() {
     final s = state;
     if (s == null || _relocking) {
+      return;
+    }
+    if (s.systemLockTrusted) {
+      developer.log('skip, 信任系统应用锁退后台不自锁, 门禁全托管系统锁');
       return;
     }
     if (!s.appBackgroundLock || s.appLock?.active != true) {
@@ -85,6 +92,10 @@ class _OneNoteAppState extends State<OneNoteApp> {
   void _onBlur() {
     final s = state;
     if (s == null || _relocking) {
+      return;
+    }
+    if (s.systemLockTrusted) {
+      developer.log('skip, 信任系统应用锁失焦不自锁, 门禁全托管系统锁');
       return;
     }
     if (!s.appBlurLock || s.appLock?.active != true) {
@@ -113,6 +124,27 @@ class _OneNoteAppState extends State<OneNoteApp> {
     db?.close();
     _relocking = false;
     developer.log('done, 已回到锁屏');
+  }
+
+  void _switchSpace() {
+    final s = state;
+    if (s == null || _relocking) {
+      return;
+    }
+    _relocking = true;
+    _navKey.currentState?.popUntil((route) => route.isFirst);
+    final db = _spaceDb;
+    _backgroundLock?.dispose();
+    _backgroundLock = null;
+    setState(() {
+      state = null;
+      _spaceDb = null;
+      _forcePassword = true;
+    });
+    s.dispose();
+    db?.close();
+    _relocking = false;
+    developer.log('done, 切换空间回锁屏强制密码');
   }
 
   Future<void> _destroyCurrentSpace(AppState child) async {
@@ -199,7 +231,11 @@ class _OneNoteAppState extends State<OneNoteApp> {
           sans: sans, fontScale: fontScale, noteFontSize: noteFontSize),
       themeMode: ThemeMode.dark,
       home: s == null
-          ? LockGate(globalDb: widget.db, onUnlocked: _enter)
+          ? LockGate(
+              key: ValueKey(_forcePassword),
+              globalDb: widget.db,
+              onUnlocked: _enter,
+              forcePassword: _forcePassword)
           : ListenableBuilder(
               listenable: s,
               builder: (context, _) => HomePage(state: s),

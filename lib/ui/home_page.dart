@@ -365,7 +365,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _openSettings() async {
     final lock = state.appLock;
-    if (lock != null && lock.active) {
+    if (!state.systemLockTrusted && lock != null && lock.active) {
       var bioUnlocked = false;
       final password = await promptPassword(
         context,

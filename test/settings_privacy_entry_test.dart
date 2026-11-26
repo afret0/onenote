@@ -115,4 +115,29 @@ void main() {
     expect(find.text('销毁隐私空间'), findsOneWidget);
     expect(find.text('创建隐私空间'), findsNothing);
   });
+
+  testWidgets('已有隐私空间解锁后显示进入入口, 点击触发切空间', (tester) async {
+    tester.view.physicalSize = const Size(800, 2800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final state = await seed(tester);
+    await tester.runAsync(() async {
+      await state.setAppPassword('1234');
+      await state.createPrivacySpace('5678');
+    });
+    var switched = 0;
+    state.switchSpaceHandler = () => switched++;
+    await pumpSettings(tester, state);
+    expect(find.text('进入隐私空间'), findsNothing);
+    for (var i = 0; i < 10; i++) {
+      await tapVersion(tester);
+    }
+    await tester.pumpAndSettle();
+    final row = find.text('进入隐私空间');
+    expect(row, findsOneWidget);
+    expect(find.text('销毁隐私空间'), findsOneWidget);
+    await tester.tap(row);
+    await tester.pump();
+    expect(switched, 1);
+  });
 }

@@ -36,10 +36,15 @@ class _MaskedPasswordController extends TextEditingController {
 }
 
 class LockGate extends StatefulWidget {
-  const LockGate({super.key, required this.globalDb, required this.onUnlocked});
+  const LockGate(
+      {super.key,
+      required this.globalDb,
+      required this.onUnlocked,
+      this.forcePassword = false});
 
   final AppDb globalDb;
   final void Function(AppDb db, String? spaceId) onUnlocked;
+  final bool forcePassword;
 
   @override
   State<LockGate> createState() => _LockGateState();
@@ -87,7 +92,8 @@ class _LockGateState extends State<LockGate> {
       widget.onUnlocked(widget.globalDb, null);
       return;
     }
-    if (Biometrics.systemAppLockSupported &&
+    if (!widget.forcePassword &&
+        Biometrics.systemAppLockSupported &&
         await widget.globalDb.getSetting(AppDb.trustSystemLockKey) == '1') {
       await _enterTrustedSpace();
       return;
@@ -95,7 +101,8 @@ class _LockGateState extends State<LockGate> {
     final bioEnabled =
         await widget.globalDb.getSetting(AppDb.lockBioKey) != '0';
     final bio = bioEnabled && await Biometrics.available();
-    final autoBio = bio && await Biometrics.hasEnrolledBiometrics();
+    final autoBio =
+        !widget.forcePassword && bio && await Biometrics.hasEnrolledBiometrics();
     final cooling = await _rootAttempts.cooldownRemainingMs();
     final autoLocks = await _collectAutoLocks();
     if (!mounted) {

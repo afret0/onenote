@@ -536,7 +536,7 @@ class _NewPasswordDialogState extends State<_NewPasswordDialog> {
 Future<bool> unlockNotebookDialog(
     BuildContext context, AppState state, String notebookId) async {
   final lock = state.notebookLock(notebookId);
-  if (lock == null || !lock.active) {
+  if (state.systemLockTrusted || lock == null || !lock.active) {
     return true;
   }
   final name = state.notebookName(notebookId);
@@ -582,7 +582,7 @@ Future<bool> unlockNoteDialog(
     }
   }
   final lock = state.noteLock(noteId);
-  if (lock == null || !lock.active) {
+  if (state.systemLockTrusted || lock == null || !lock.active) {
     return true;
   }
   var bioUnlocked = false;

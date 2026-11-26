@@ -288,4 +288,84 @@ void main() {
     expect(find.text('信任系统应用锁'), findsNothing);
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets('信任系统锁时进设置免密码门禁', (tester) async {
+    useAndroid();
+    final state = await seedState(tester, password: 'pw-123');
+    await tester.runAsync(() async {
+      await state.setTrustSystemLock(true);
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.runAsync(() async {
+      await waitUntil(
+          tester, () => find.byType(SettingsPage).evaluate().isNotEmpty);
+    });
+    await tester.pumpAndSettle();
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('信任系统锁时笔记本与单篇锁视为已解锁', (tester) async {
+    useAndroid();
+    var now = 1700000000000;
+    final db = track(AppDb(NativeDatabase.memory(), clock: () => now));
+    final state = AppState(db);
+    addTearDown(state.dispose);
+    late String nbId;
+    late String noteId;
+    await tester.runAsync(() async {
+      now += 1000;
+      final nb = await db.createNotebook('locked');
+      nbId = nb.id;
+      now += 1000;
+      final note = await db.createNote(nbId, title: 'secret');
+      noteId = note.id;
+      await db.setNotebookLock(nbId, PasswordLock.create('nb', now).encode());
+      await db.setNoteLock(noteId, PasswordLock.create('nt', now).encode());
+      await state.init();
+    });
+    expect(state.isNotebookLocked(nbId), isTrue);
+    expect(state.isNoteLocked(noteId), isTrue);
+    state.trustSystemLock = true;
+    expect(state.systemLockTrusted, isTrue);
+    expect(state.isNotebookLocked(nbId), isFalse);
+    expect(state.isNoteLocked(noteId), isFalse);
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    expect(state.systemLockTrusted, isFalse);
+    expect(state.isNotebookLocked(nbId), isTrue);
+    expect(state.isNoteLocked(noteId), isTrue);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('forcePassword 锁屏强制密码不托管不自动生物', (tester) async {
+    useAndroid();
+    final fake = FakeLocalAuth(enrolled: const [BiometricType.fingerprint]);
+    LocalAuthPlatform.instance = fake;
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('pass', 1000).encode());
+      await db.setSetting(AppDb.trustSystemLockKey, '1');
+    });
+    AppDb? entered;
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: LockGate(
+          globalDb: db,
+          onUnlocked: (d, s) => entered = d,
+          forcePassword: true),
+    ));
+    await pumpUntil(
+        tester, () => find.text('onenote 已锁定').evaluate().isNotEmpty);
+    expect(find.text('onenote 已锁定'), findsOneWidget);
+    expect(entered, isNull);
+    expect(fake.authCalls, 0);
+    debugDefaultTargetPlatformOverride = null;
+  });
 }

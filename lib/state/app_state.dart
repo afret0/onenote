@@ -13,6 +13,7 @@ import '../data/attachment_store.dart';
 import '../data/font_catalog.dart';
 import '../data/font_store.dart';
 import '../data/password_lock.dart';
+import '../lock/biometrics.dart';
 import '../richtext/markdown_codec.dart';
 import '../sync/diff3.dart';
 import '../sync/remote_store.dart';
@@ -119,6 +120,10 @@ class AppState extends ChangeNotifier {
   VoidCallback? lockHandler;
   Future<void> Function()? onAppLocking;
   Future<void> Function()? destroyChildSpaceHandler;
+  VoidCallback? switchSpaceHandler;
+
+  bool get systemLockTrusted =>
+      trustSystemLock && Biometrics.systemAppLockSupported;
 
   bool get isChildSpace => spaceId != null && spaceId!.isNotEmpty;
 
@@ -341,6 +346,9 @@ class AppState extends ChangeNotifier {
   }
 
   bool isNotebookLocked(String notebookId) {
+    if (systemLockTrusted) {
+      return false;
+    }
     final lock = notebookLock(notebookId);
     if (lock == null || !lock.active) {
       return false;
@@ -349,6 +357,9 @@ class AppState extends ChangeNotifier {
   }
 
   bool isNoteLocked(String noteId) {
+    if (systemLockTrusted) {
+      return false;
+    }
     final note = _noteIndex[noteId];
     if (note == null) {
       return false;
