@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/app_db.dart';
+import '../lock/biometrics.dart';
 import '../richtext/markdown_codec.dart';
 import '../state/app_state.dart';
 import '../sync/sync_engine.dart';
@@ -365,6 +366,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _openSettings() async {
     final lock = state.appLock;
     if (lock != null && lock.active) {
+      var bioUnlocked = false;
       final password = await promptPassword(
         context,
         title: '验证应用密码',
@@ -372,8 +374,18 @@ class _HomePageState extends State<HomePage> {
         attempts: state.attempts,
         lock: lock,
         confirmLabel: '验证',
+        onBiometric: state.lockBio
+            ? () async {
+                final ok = await Biometrics.authenticate('进入设置');
+                if (ok) {
+                  await state.attempts.succeed();
+                  bioUnlocked = true;
+                }
+                return ok;
+              }
+            : null,
       );
-      if (password == null || !mounted) {
+      if (!mounted || (!bioUnlocked && password == null)) {
         developer.log('skip, 设置页密码验证未通过不进入');
         return;
       }
