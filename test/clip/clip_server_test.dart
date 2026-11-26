@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -133,6 +134,111 @@ void main() {
     final note =
         await db.getNote((jsonDecode(text) as Map)['id'] as String);
     expect(note.content, '<https://example.com>');
+  });
+
+  test('image attachment clip stores asset and embeds markdown', () async {
+    now += 1000;
+    final work = await db.createNotebook('工作');
+    await state.refresh();
+    final bytes = Uint8List.fromList([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    final id = sha256.convert(bytes).toString();
+
+    now += 1000;
+    final (status, text, _) = await hit('POST', '/clips',
+        token: state.clipToken,
+        body: {
+          'notebookId': work.id,
+          'title': '示例页面 截图',
+          'markdown': '',
+          'sourceUrl': 'https://example.com/shot',
+          'attachment': {
+            'name': 'shot.png',
+            'mime': 'image/png',
+            'data': base64Encode(bytes),
+          },
+        });
+    expect(status, 200);
+    final note = await db.getNote((jsonDecode(text) as Map)['id'] as String);
+    expect(note.title, '示例页面 截图');
+    expect(note.content,
+        '<https://example.com/shot>\n\n![shot.png](onenote-asset://$id)');
+    expect(await state.attachments!.read(id), bytes);
+    expect(await state.attachments!.nameOf(id), 'shot.png');
+  });
+
+  test('mhtml attachment clip stores file link', () async {
+    now += 1000;
+    final work = await db.createNotebook('工作');
+    await state.refresh();
+    final bytes = Uint8List.fromList(utf8.encode('From: <Saved by onenote>\n'));
+    final id = sha256.convert(bytes).toString();
+
+    now += 1000;
+    final (status, text, _) = await hit('POST', '/clips',
+        token: state.clipToken,
+        body: {
+          'notebookId': work.id,
+          'title': '整页',
+          'markdown': '',
+          'sourceUrl': 'https://example.com/full',
+          'attachment': {
+            'name': '整页.mhtml',
+            'mime': 'multipart/related',
+            'data': base64Encode(bytes),
+          },
+        });
+    expect(status, 200);
+    final note = await db.getNote((jsonDecode(text) as Map)['id'] as String);
+    expect(note.content,
+        '<https://example.com/full>\n\n[整页.mhtml](onenote-asset://$id)');
+    expect(await state.attachments!.read(id), bytes);
+  });
+
+  test('attachment rejects oversize bad base64 and empty name', () async {
+    now += 1000;
+    final work = await db.createNotebook('工作');
+    await state.refresh();
+
+    now += 1000;
+    final (oversize, _, _) = await hit('POST', '/clips',
+        token: state.clipToken,
+        body: {
+          'notebookId': work.id,
+          'title': '大',
+          'markdown': '',
+          'attachment': {
+            'name': 'big.mhtml',
+            'mime': 'multipart/related',
+            'data': 'A' * (20 * 1024 * 1024 * 4 ~/ 3 + 8),
+          },
+        });
+    expect(oversize, 413);
+
+    now += 1000;
+    final (badBase64, _, _) = await hit('POST', '/clips',
+        token: state.clipToken,
+        body: {
+          'notebookId': work.id,
+          'title': '坏',
+          'markdown': '',
+          'attachment': {'name': 'x.png', 'mime': 'image/png', 'data': '!!!'},
+        });
+    expect(badBase64, 400);
+
+    now += 1000;
+    final (noName, _, _) = await hit('POST', '/clips',
+        token: state.clipToken,
+        body: {
+          'notebookId': work.id,
+          'title': '无名',
+          'markdown': '',
+          'attachment': {
+            'name': ' ',
+            'mime': 'image/png',
+            'data': base64Encode([1]),
+          },
+        });
+    expect(noName, 400);
   });
 
   test('clip rejects unknown notebook empty content and bad payloads',

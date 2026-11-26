@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:typed_data';
 
+import '../data/attachment_store.dart';
 import '../state/app_state.dart';
 
 class ClipException implements Exception {
@@ -70,10 +72,59 @@ class ClipServer {
         if (sourceUrl != null && sourceUrl is! String) {
           throw ClipException(400, 'sourceUrl 必须是字符串');
         }
+        Uint8List? attachment;
+        String? attachmentName;
+        String? attachmentMime;
+        final attachmentPayload = payload['attachment'];
+        if (attachmentPayload != null) {
+          if (attachmentPayload is! Map<String, dynamic>) {
+            throw ClipException(400, 'attachment 必须是对象');
+          }
+          final name = attachmentPayload['name'];
+          final mime = attachmentPayload['mime'];
+          final data = attachmentPayload['data'];
+          if (name is! String || mime is! String || data is! String) {
+            throw ClipException(400, 'attachment 缺少 name/mime/data 字符串字段');
+          }
+          if (data.length > AttachmentStore.maxAttachmentBytes * 4 / 3 + 4) {
+            throw ClipException(413, '附件超过 20MB 上限，整页可改用「剪藏正文」');
+          }
+          try {
+            attachment = base64Decode(data);
+          } on FormatException {
+            throw ClipException(400, 'attachment.data 不是合法 base64');
+          }
+          attachmentName = name;
+          attachmentMime = mime;
+        }
+        var body = markdown;
+        if (attachment != null) {
+          final store = state.attachments;
+          if (store == null) {
+            throw ClipException(500, '附件存储不可用，无法保存截图/整页');
+          }
+          final name = (attachmentName ?? '').trim();
+          if (name.isEmpty) {
+            throw ClipException(400, '附件缺少文件名');
+          }
+          final String id;
+          try {
+            id = await store.save(attachment, name);
+          } on AttachmentTooLargeException {
+            throw ClipException(413, '附件超过 20MB 上限，整页可改用「剪藏正文」');
+          }
+          final isImage = (attachmentMime ?? '').startsWith('image/');
+          final ref = isImage
+              ? AttachmentStore.imageMarkdown(id, name)
+              : AttachmentStore.fileMarkdown(id, name);
+          body = body.isEmpty ? ref : '$body\n\n$ref';
+          developer.log(
+              'hit, 剪藏附件已入库, name: $name, mime: $attachmentMime, size: ${attachment.length}, id: $id');
+        }
         final note = await state.clipNote(
             notebookId: notebookId,
             title: title,
-            markdown: markdown,
+            markdown: body,
             sourceUrl: sourceUrl as String?);
         developer.log(
             'done, 剪藏已入库, noteId: ${note.id}, notebookId: $notebookId, title: ${note.title}, contentLength: ${note.content.length}');

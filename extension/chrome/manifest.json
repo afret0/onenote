@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "把网页正文、选中内容或网址剪藏到本地 onenote 应用（127.0.0.1 直连，不经云端）",
   "minimum_chrome_version": "103",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "pageCapture", "clipboard-read"],
   "host_permissions": ["http://127.0.0.1/*"],
   "action": {
     "default_popup": "popup.html",

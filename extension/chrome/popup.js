@@ -1,14 +1,19 @@
 const DEFAULT_PORT = 41190;
 const REQUEST_TIMEOUT_MS = 15000;
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 const ui = {
   mainView: document.getElementById('mainView'),
   settingsView: document.getElementById('settingsView'),
   connStatus: document.getElementById('connStatus'),
   notebookSelect: document.getElementById('notebookSelect'),
+  titleInput: document.getElementById('titleInput'),
   clipArticle: document.getElementById('clipArticle'),
   clipSelection: document.getElementById('clipSelection'),
+  clipFullpage: document.getElementById('clipFullpage'),
+  clipShot: document.getElementById('clipShot'),
   clipBookmark: document.getElementById('clipBookmark'),
+  shotFile: document.getElementById('shotFile'),
   result: document.getElementById('result'),
   openSettings: document.getElementById('openSettings'),
   closeSettings: document.getElementById('closeSettings'),
@@ -88,8 +93,170 @@ function setActionsEnabled(enabled) {
   const usable = enabled && !busy;
   ui.clipArticle.disabled = !usable;
   ui.clipSelection.disabled = !usable;
+  ui.clipFullpage.disabled = !usable;
+  ui.clipShot.disabled = !usable;
   ui.clipBookmark.disabled = !usable;
   ui.notebookSelect.disabled = !usable;
+  ui.titleInput.disabled = !usable;
+}
+
+async function prefillTitle() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  ui.titleInput.value = tab && tab.title ? tab.title : '';
+}
+
+function titleFor(tab) {
+  const typed = ui.titleInput.value.trim();
+  return typed || (tab && tab.title ? tab.title : '') || '无标题';
+}
+
+function sanitizeName(name) {
+  return name.replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) || '附件';
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result);
+      resolve(url.slice(url.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(new Error('读取附件数据失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function readClipboardImage() {
+  try {
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const type = item.types.find((t) => t.startsWith('image/'));
+      if (type) {
+        const blob = await item.getType(type);
+        const ext = (type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        return { blob, mime: type, name: `截图.${ext}` };
+      }
+    }
+  } catch (err) {
+    return null;
+  }
+  return null;
+}
+
+function pickImageFile() {
+  return new Promise((resolve) => {
+    const input = ui.shotFile;
+    const done = (value) => {
+      input.removeEventListener('change', onChange);
+      input.removeEventListener('cancel', onCancel);
+      input.value = '';
+      resolve(value);
+    };
+    const onChange = () => {
+      const file = input.files && input.files[0];
+      done(file ? { blob: file, mime: file.type || 'image/png', name: file.name } : null);
+    };
+    const onCancel = () => done(null);
+    input.addEventListener('change', onChange);
+    input.addEventListener('cancel', onCancel);
+    input.click();
+  });
+}
+
+async function sendClip(body) {
+  const { payload } = await api('/clips', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  config.lastNotebookId = body.notebookId;
+  await chrome.storage.local.set({ lastNotebookId: body.notebookId });
+  const name = ui.notebookSelect.selectedOptions[0]?.textContent || '笔记本';
+  setResult(ui.result, `已存入「${name}」：${payload.title || '无标题'}`, 'ok');
+}
+
+function requireNotebook() {
+  const notebookId = ui.notebookSelect.value;
+  if (!notebookId) {
+    throw new Error('请先在应用里创建笔记本');
+  }
+  return notebookId;
+}
+
+async function clipShot() {
+  if (busy || !connected) {
+    return;
+  }
+  busy = true;
+  setActionsEnabled(false);
+  setResult(ui.result, '正在剪藏截图…');
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    let image = await readClipboardImage();
+    if (!image) {
+      image = await pickImageFile();
+    }
+    if (!image) {
+      throw new Error('没有可剪藏的截图：请先截图到剪贴板（⌘⌃⇧4）或选择图片文件');
+    }
+    if (image.blob.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error('截图超过 20MB 上限');
+    }
+    const data = await blobToBase64(image.blob);
+    const sourceUrl = tab && tab.url ? tab.url : undefined;
+    await sendClip({
+      notebookId: requireNotebook(),
+      title: titleFor(tab),
+      markdown: '',
+      sourceUrl,
+      attachment: {
+        name: sanitizeName(image.name),
+        mime: image.mime,
+        data,
+      },
+    });
+  } catch (err) {
+    setResult(ui.result, friendlyError(err), 'bad');
+  } finally {
+    busy = false;
+    setActionsEnabled(connected);
+  }
+}
+
+async function clipFullpage() {
+  if (busy || !connected) {
+    return;
+  }
+  busy = true;
+  setActionsEnabled(false);
+  setResult(ui.result, '正在保存整页…');
+  try {
+    const tab = await activeTab();
+    const blob = await chrome.pageCapture.saveAsMHTML({ tabId: tab.id });
+    if (!blob || !blob.size) {
+      throw new Error('整页保存失败，请刷新页面后重试');
+    }
+    if (blob.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error('整页超过 20MB 上限，可改用「剪藏正文」');
+    }
+    const data = await blobToBase64(blob);
+    await sendClip({
+      notebookId: requireNotebook(),
+      title: titleFor(tab),
+      markdown: '',
+      sourceUrl: tab.url,
+      attachment: {
+        name: sanitizeName(`${tab.title || '整页'}.mhtml`),
+        mime: 'multipart/related',
+        data,
+      },
+    });
+  } catch (err) {
+    setResult(ui.result, friendlyError(err), 'bad');
+  } finally {
+    busy = false;
+    setActionsEnabled(connected);
+  }
 }
 
 function friendlyError(err) {
@@ -190,21 +357,12 @@ async function clip(mode) {
     if (extracted.error) {
       throw new Error(extracted.error);
     }
-    const { payload } = await api('/clips', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: {
-        notebookId,
-        title: extracted.title,
-        markdown: extracted.markdown,
-        sourceUrl: extracted.url,
-      },
+    await sendClip({
+      notebookId,
+      title: ui.titleInput.value.trim() || extracted.title,
+      markdown: extracted.markdown,
+      sourceUrl: extracted.url,
     });
-    config.lastNotebookId = notebookId;
-    await chrome.storage.local.set({ lastNotebookId: notebookId });
-    const name =
-      ui.notebookSelect.selectedOptions[0]?.textContent || '笔记本';
-    setResult(ui.result, `已存入「${name}」：${payload.title || '无标题'}`, 'ok');
   } catch (err) {
     setResult(ui.result, friendlyError(err), 'bad');
   } finally {
@@ -257,8 +415,17 @@ ui.clipArticle.addEventListener('click', () => {
 ui.clipSelection.addEventListener('click', () => {
   void clip('selection');
 });
+ui.clipFullpage.addEventListener('click', () => {
+  void clipFullpage();
+});
+ui.clipShot.addEventListener('click', () => {
+  void clipShot();
+});
 ui.clipBookmark.addEventListener('click', () => {
   void clip('bookmark');
 });
 
-void loadConfig().then(refreshConnection);
+void loadConfig().then(async () => {
+  await prefillTitle();
+  await refreshConnection();
+});

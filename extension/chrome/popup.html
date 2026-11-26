@@ -20,11 +20,18 @@
       <label for="notebookSelect">存入笔记本</label>
       <select id="notebookSelect" disabled></select>
     </div>
+    <div class="field">
+      <label for="titleInput">笔记标题</label>
+      <input id="titleInput" autocomplete="off" placeholder="默认使用网页标题">
+    </div>
     <div class="actions">
       <button id="clipArticle" class="primary" type="button" disabled>剪藏正文</button>
       <button id="clipSelection" type="button" disabled>剪藏选中内容</button>
+      <button id="clipFullpage" type="button" disabled>剪藏整页</button>
+      <button id="clipShot" type="button" disabled>剪藏截图</button>
       <button id="clipBookmark" type="button" disabled>收藏网址</button>
     </div>
+    <input id="shotFile" type="file" accept="image/*" hidden>
     <p id="result" class="result" role="status" aria-live="polite"></p>
   </main>
   <section id="settingsView" hidden>
