@@ -189,6 +189,7 @@ async function clipShot() {
   }
   busy = true;
   setActionsEnabled(false);
+  setStatus('已连接应用', 'ok');
   setResult(ui.result, '正在剪藏截图…');
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -229,6 +230,7 @@ async function clipFullpage() {
   }
   busy = true;
   setActionsEnabled(false);
+  setStatus('已连接应用', 'ok');
   setResult(ui.result, '正在保存整页…');
   try {
     const tab = await activeTab();
@@ -272,6 +274,7 @@ function friendlyError(err) {
 async function refreshConnection() {
   connected = false;
   setActionsEnabled(false);
+  setResult(ui.result, '');
   if (!config.token) {
     setStatus('未配置配对令牌：请先在设置里粘贴应用设置页的令牌', 'bad');
     ui.notebookSelect.replaceChildren();
@@ -329,6 +332,7 @@ async function clip(mode) {
   }
   busy = true;
   setActionsEnabled(false);
+  setStatus('已连接应用', 'ok');
   setResult(ui.result, '正在剪藏…');
   try {
     const tab = await activeTab();
