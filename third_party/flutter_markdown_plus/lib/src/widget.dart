@@ -233,6 +233,7 @@ abstract class MarkdownWidget extends StatefulWidget {
     this.highlightActiveInk,
     this.highlightController,
     this.tocController,
+    this.linkRefOrdinal,
   });
 
   /// The Markdown to display.
@@ -362,6 +363,9 @@ abstract class MarkdownWidget extends StatefulWidget {
 
   final MarkdownTocController? tocController;
 
+  /// Assigns an attachment occurrence ordinal to a link href, or -1.
+  final int Function(String href, String text)? linkRefOrdinal;
+
   /// Subclasses should override this function to display the given children,
   /// which are the parsed representation of [data].
   @protected
@@ -476,6 +480,7 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
       highlightActiveInk: widget.highlightActiveInk,
       highlightController: widget.highlightController,
       tocController: widget.tocController,
+      linkRefOrdinal: widget.linkRefOrdinal,
     );
 
     _children = builder.build(astNodes);
@@ -559,6 +564,7 @@ class MarkdownBody extends MarkdownWidget {
     super.highlightActiveInk,
     super.highlightController,
     super.tocController,
+    super.linkRefOrdinal,
   });
 
   /// If [shrinkWrap] is `true`, [MarkdownBody] will take the minimum height

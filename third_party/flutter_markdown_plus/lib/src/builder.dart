@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '_functions_io.dart' if (dart.library.js_interop) '_functions_web.dart';
@@ -107,6 +109,76 @@ abstract class MarkdownBuilderDelegate {
   GlobalKey paragraphKey(int ordinal);
 }
 
+/// A [TextSpan] for a markdown link that behaves as plain selectable text.
+///
+/// Carries [href] (and an optional attachment [refOrdinal]) so the host app can
+/// implement modifier-click / right-click gestures without attaching a gesture
+/// recognizer (which would steal taps from selection and force a click cursor).
+class MarkdownLinkSpan extends TextSpan {
+  const MarkdownLinkSpan({
+    this.href,
+    this.refOrdinal = -1,
+    super.text,
+    super.children,
+    super.style,
+    super.recognizer,
+    super.mouseCursor,
+    super.semanticsLabel,
+  });
+
+  final String? href;
+  final int refOrdinal;
+
+  MarkdownLinkSpan rebuild({
+    String? text,
+    List<InlineSpan>? children,
+    TextStyle? style,
+    GestureRecognizer? recognizer,
+    MouseCursor? mouseCursor,
+    String? semanticsLabel,
+  }) =>
+      MarkdownLinkSpan(
+        href: href,
+        refOrdinal: refOrdinal,
+        text: text ?? this.text,
+        children: children ?? this.children,
+        style: style ?? this.style,
+        recognizer: recognizer ?? this.recognizer,
+        mouseCursor: mouseCursor ?? this.mouseCursor,
+        semanticsLabel: semanticsLabel ?? this.semanticsLabel,
+      );
+}
+
+/// Rebuilds [src] preserving link metadata when it is a [MarkdownLinkSpan].
+TextSpan preserveLinkSpan(
+  TextSpan src, {
+  String? text,
+  List<InlineSpan>? children,
+  TextStyle? style,
+  GestureRecognizer? recognizer,
+  MouseCursor? mouseCursor,
+  String? semanticsLabel,
+}) {
+  if (src is MarkdownLinkSpan) {
+    return src.rebuild(
+      text: text,
+      children: children,
+      style: style,
+      recognizer: recognizer,
+      mouseCursor: mouseCursor,
+      semanticsLabel: semanticsLabel,
+    );
+  }
+  return TextSpan(
+    text: text ?? src.text,
+    children: children ?? src.children,
+    style: style ?? src.style,
+    recognizer: recognizer ?? src.recognizer,
+    mouseCursor: mouseCursor ?? src.mouseCursor,
+    semanticsLabel: semanticsLabel ?? src.semanticsLabel,
+  );
+}
+
 /// Builds a [Widget] tree from parsed Markdown.
 ///
 /// See also:
@@ -137,10 +209,14 @@ class MarkdownBuilder implements md.NodeVisitor {
     this.highlightActiveInk,
     this.highlightController,
     this.tocController,
+    this.linkRefOrdinal,
   });
 
   /// A delegate that controls how link and `pre` elements behave.
   final MarkdownBuilderDelegate delegate;
+
+  /// Assigns an attachment occurrence ordinal to a link href, or -1.
+  final int Function(String href, String text)? linkRefOrdinal;
 
   final String? highlightQuery;
 
@@ -215,6 +291,8 @@ class MarkdownBuilder implements md.NodeVisitor {
   final List<_TableElement> _tables = <_TableElement>[];
   final List<_InlineElement> _inlines = <_InlineElement>[];
   final List<GestureRecognizer> _linkHandlers = <GestureRecognizer>[];
+  final List<String?> _linkHrefs = <String?>[];
+  final List<int> _linkOrdinals = <int>[];
   int _highlightParagraphOrdinal = 0;
   int _paragraphOrdinal = 0;
   String? _currentBlockTag;
@@ -324,6 +402,10 @@ class MarkdownBuilder implements md.NodeVisitor {
         _linkHandlers.add(
           delegate.createLink(text, destination, title),
         );
+        _linkHrefs.add(destination);
+        _linkOrdinals.add(destination == null
+            ? -1
+            : (linkRefOrdinal?.call(destination, text) ?? -1));
       }
 
       _addParentInlineIfNeeded(_blocks.last.tag);
@@ -411,13 +493,17 @@ class MarkdownBuilder implements md.NodeVisitor {
           }());
     } else {
       child = _buildRichText(
-        TextSpan(
-          style: _inlines.last.style,
-          text: trimText(text.text),
-          recognizer: _linkHandlers.isNotEmpty ? _linkHandlers.last : null,
-          mouseCursor:
-              _linkHandlers.isNotEmpty ? SystemMouseCursors.click : null,
-        ),
+        _linkHandlers.isNotEmpty
+            ? MarkdownLinkSpan(
+                href: _linkHrefs.last,
+                refOrdinal: _linkOrdinals.last,
+                style: _inlines.last.style,
+                text: trimText(text.text),
+              )
+            : TextSpan(
+                style: _inlines.last.style,
+                text: trimText(text.text),
+              ),
         textAlign: _textAlignForBlockTag(_currentBlockTag),
       );
     }
@@ -572,6 +658,8 @@ class MarkdownBuilder implements md.NodeVisitor {
         // default link spans (child == null).
         if (tag == 'a') {
           _linkHandlers.removeLast();
+          _linkHrefs.removeLast();
+          _linkOrdinals.removeLast();
         }
         if (child != null) {
           // The returned widget represents the entire element, so discard all
@@ -712,8 +800,19 @@ class MarkdownBuilder implements md.NodeVisitor {
     if (_linkHandlers.isNotEmpty) {
       final TapGestureRecognizer recognizer = _linkHandlers.last as TapGestureRecognizer;
       return MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(onTap: recognizer.onTap, child: child),
+        cursor: SystemMouseCursors.text,
+        child: GestureDetector(
+          onTap: () {
+            final bool opened = defaultTargetPlatform == TargetPlatform.macOS ||
+                    defaultTargetPlatform == TargetPlatform.iOS
+                ? HardwareKeyboard.instance.isMetaPressed
+                : HardwareKeyboard.instance.isControlPressed;
+            if (opened) {
+              recognizer.onTap?.call();
+            }
+          },
+          child: child,
+        ),
       );
     } else {
       return child;
@@ -871,6 +970,10 @@ class MarkdownBuilder implements md.NodeVisitor {
   Iterable<InlineSpan> _getInlineSpansFromSpan(InlineSpan span) {
     // If the span is not a TextSpan or it has no children, return the span
     if (span is! TextSpan || span.children == null) {
+      return <InlineSpan>[span];
+    }
+    // Keep link spans intact so href/ordinal and inline children survive merging.
+    if (span is MarkdownLinkSpan) {
       return <InlineSpan>[span];
     }
 
@@ -1043,12 +1146,7 @@ class MarkdownBuilder implements md.NodeVisitor {
             rebuilt.add(child);
           }
         }
-        return TextSpan(
-          style: span.style,
-          children: rebuilt,
-          recognizer: span.recognizer,
-          mouseCursor: span.mouseCursor,
-        );
+        return preserveLinkSpan(span, children: rebuilt);
       }
       final String? txt = span.text;
       if (txt == null || txt.isEmpty) {
@@ -1060,15 +1158,12 @@ class MarkdownBuilder implements md.NodeVisitor {
           start == target &&
           span.style?.backgroundColor == highlightColor) {
         found = true;
-        return TextSpan(
-          text: txt,
-          style: span.style!.copyWith(
-            backgroundColor: highlightActiveColor,
-            color: highlightActiveInk,
-          ),
-          recognizer: span.recognizer,
-          mouseCursor: span.mouseCursor,
-        );
+        return preserveLinkSpan(span,
+            text: txt,
+            style: span.style!.copyWith(
+              backgroundColor: highlightActiveColor,
+              color: highlightActiveInk,
+            ));
       }
       return span;
     }
@@ -1166,18 +1261,19 @@ class MarkdownBuilder implements md.NodeVisitor {
         continue;
       }
 
+      final bool sameLink = (previous is MarkdownLinkSpan) ==
+              (nextChild is MarkdownLinkSpan) &&
+          (previous is! MarkdownLinkSpan ||
+              (previous.href == (nextChild as MarkdownLinkSpan).href &&
+                  previous.refOrdinal == nextChild.refOrdinal));
       final bool matchStyle = nextChild.recognizer == previous.recognizer &&
           nextChild.semanticsLabel == previous.semanticsLabel &&
-          nextChild.style == previous.style;
+          nextChild.style == previous.style &&
+          sameLink;
 
       if (matchStyle) {
-        mergedSpans.add(TextSpan(
-          text: previous.toPlainText() + nextChild.toPlainText(),
-          recognizer: previous.recognizer,
-          mouseCursor: previous.mouseCursor,
-          semanticsLabel: previous.semanticsLabel,
-          style: previous.style,
-        ));
+        mergedSpans.add(preserveLinkSpan(previous,
+            text: previous.toPlainText() + nextChild.toPlainText()));
       } else {
         mergedSpans.addAll(<InlineSpan>[previous, nextChild]);
       }
@@ -1203,12 +1299,7 @@ class MarkdownBuilder implements md.NodeVisitor {
             rebuilt.add(child);
           }
         }
-        return TextSpan(
-          style: span.style,
-          children: rebuilt,
-          recognizer: span.recognizer,
-          mouseCursor: span.mouseCursor,
-        );
+        return preserveLinkSpan(span, children: rebuilt);
       }
       final String? txt = span.text;
       if (txt == null || txt.isEmpty) {
@@ -1227,37 +1318,19 @@ class MarkdownBuilder implements md.NodeVisitor {
       while (true) {
         final int i = lower.indexOf(needle, start);
         if (i < 0) {
-          parts.add(TextSpan(
-            text: txt.substring(start),
-            style: span.style,
-            recognizer: span.recognizer,
-            mouseCursor: span.mouseCursor,
-          ));
+          parts.add(preserveLinkSpan(span, text: txt.substring(start)));
           break;
         }
         if (i > start) {
-          parts.add(TextSpan(
-            text: txt.substring(start, i),
-            style: span.style,
-            recognizer: span.recognizer,
-            mouseCursor: span.mouseCursor,
-          ));
+          parts.add(preserveLinkSpan(span, text: txt.substring(start, i)));
         }
-        parts.add(TextSpan(
-          text: txt.substring(i, i + needle.length),
-          style: (span.style ?? const TextStyle())
-              .copyWith(backgroundColor: color),
-          recognizer: span.recognizer,
-          mouseCursor: span.mouseCursor,
-        ));
+        parts.add(preserveLinkSpan(span,
+            text: txt.substring(i, i + needle.length),
+            style: (span.style ?? const TextStyle())
+                .copyWith(backgroundColor: color)));
         start = i + needle.length;
       }
-      return TextSpan(
-        style: span.style,
-        children: parts,
-        recognizer: span.recognizer,
-        mouseCursor: span.mouseCursor,
-      );
+      return preserveLinkSpan(span, children: parts);
     }
 
     return rebuild(root);

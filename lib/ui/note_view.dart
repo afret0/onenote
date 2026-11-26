@@ -6,7 +6,9 @@ import 'dart:math' as math;
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart'
     show MarkdownHighlightController, MarkdownTocController, MarkdownTocEntry;
@@ -67,6 +69,8 @@ class NoteViewState extends State<NoteView> {
   final ScrollController _editScroll = ScrollController();
   bool _showScrollTop = false;
   final MarkdownHighlightController _highlight = MarkdownHighlightController();
+  bool _pendingFirstMatch = false;
+  int _editorButtons = 0;
   final MarkdownTocController _toc = MarkdownTocController();
   bool _tocVisible = true;
   int _tocActive = -1;
@@ -166,6 +170,15 @@ class NoteViewState extends State<NoteView> {
         return;
       }
       final count = _highlight.matches.length;
+      if (_pendingFirstMatch && count > 0 && !_editing) {
+        _pendingFirstMatch = false;
+        setState(() {
+          _matchCount = count;
+          _matchIndex = 0;
+        });
+        _jumpToMatch(0);
+        return;
+      }
       final next = count == 0 ? 0 : _matchIndex.clamp(0, count - 1);
       if (count == _matchCount && next == _matchIndex) {
         return;
@@ -204,12 +217,15 @@ class NoteViewState extends State<NoteView> {
 
   void _scheduleFirstMatch() {
     if ((widget.highlightQuery ?? '').isEmpty) {
+      _pendingFirstMatch = false;
       return;
     }
+    _pendingFirstMatch = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _editing || _highlight.matches.isEmpty) {
         return;
       }
+      _pendingFirstMatch = false;
       _jumpToMatch(0);
     });
   }
@@ -835,6 +851,82 @@ class NoteViewState extends State<NoteView> {
     }
   }
 
+  void _onEditorPointerUp(PointerUpEvent e) {
+    final buttons = _editorButtons;
+    _editorButtons = 0;
+    if (buttons != kPrimaryButton) {
+      return;
+    }
+    final pressed = Platform.isMacOS
+        ? HardwareKeyboard.instance.isMetaPressed
+        : HardwareKeyboard.instance.isControlPressed;
+    if (!pressed) {
+      return;
+    }
+    final root = _editorFieldKey.currentContext?.findRenderObject();
+    RenderEditable? editable;
+    void visit(RenderObject node) {
+      if (editable != null) {
+        return;
+      }
+      if (node is RenderEditable) {
+        editable = node;
+        return;
+      }
+      node.visitChildren(visit);
+    }
+
+    if (root != null) {
+      visit(root);
+    }
+    final ed = editable;
+    if (ed == null) {
+      return;
+    }
+    final offset = ed.getPositionForPoint(e.position).offset;
+    final href = _hrefAtOffset(_contentController.text, offset);
+    if (href == null) {
+      return;
+    }
+    final match = AttachmentStore.refPattern.firstMatch(href);
+    if (match != null) {
+      _openAttachment(match.group(1)!);
+      return;
+    }
+    _launchHref(href);
+  }
+
+  String? _hrefAtOffset(String text, int offset) {
+    for (final m in RegExp(r'\[[^\]]*\]\(([^)\s]+)\)').allMatches(text)) {
+      if (offset >= m.start && offset <= m.end) {
+        return m.group(1);
+      }
+    }
+    for (final m in RegExp(r'https?://[^\s)\]]+').allMatches(text)) {
+      if (offset >= m.start && offset <= m.end) {
+        return m.group(0);
+      }
+    }
+    return null;
+  }
+
+  void _launchHref(String href) {
+    if (kIsWeb) {
+      return;
+    }
+    final uri = Uri.tryParse(href);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return;
+    }
+    if (Platform.isMacOS) {
+      Process.run('open', [href]);
+    } else if (Platform.isLinux) {
+      Process.run('xdg-open', [href]);
+    } else if (Platform.isWindows) {
+      Process.run('cmd', ['/c', 'start', '', href]);
+    }
+  }
+
   Future<void> _openAttachment(String id) async {
     final store = state.attachments;
     if (store == null) {
@@ -999,7 +1091,10 @@ class NoteViewState extends State<NoteView> {
     final editor = Container(
       color: t.paper,
       padding: const EdgeInsets.symmetric(horizontal: spaceSm),
-      child: TextField(
+      child: Listener(
+        onPointerDown: (e) => _editorButtons = e.buttons,
+        onPointerUp: _onEditorPointerUp,
+        child: TextField(
         key: _editorFieldKey,
         controller: _contentController,
         focusNode: _contentFocus,
@@ -1019,6 +1114,7 @@ class NoteViewState extends State<NoteView> {
           focusedBorder: InputBorder.none,
           contentPadding: EdgeInsets.all(spaceMd),
         ),
+      ),
       ),
     );
     final area = Column(

@@ -12,14 +12,19 @@ import 'package:onenote/ui/markdown_view.dart';
 import 'package:onenote/ui/theme.dart';
 import 'package:onenote/ui/widgets.dart';
 
-bool _hasClickCursor(InlineSpan span) {
-  if (span is TextSpan) {
-    if (span.mouseCursor == SystemMouseCursors.click) {
-      return true;
-    }
-    return (span.children ?? const <InlineSpan>[]).any(_hasClickCursor);
+MarkdownLinkSpan? _findLinkSpan(InlineSpan span) {
+  if (span is MarkdownLinkSpan) {
+    return span;
   }
-  return false;
+  if (span is TextSpan) {
+    for (final child in span.children ?? const <InlineSpan>[]) {
+      final hit = _findLinkSpan(child);
+      if (hit != null) {
+        return hit;
+      }
+    }
+  }
+  return null;
 }
 
 void main() {
@@ -43,7 +48,7 @@ void main() {
     expect(offsets, orderedEquals(offsets.toList()..sort()));
   });
 
-  testWidgets('markdown link span uses click cursor',
+  testWidgets('markdown link span is plain selectable text',
       (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: buildInkTheme(Brightness.dark),
@@ -51,7 +56,17 @@ void main() {
     ));
     await tester.pumpAndSettle();
     final texts = tester.widgetList<SelectableText>(find.byType(SelectableText));
-    expect(texts.any((w) => _hasClickCursor(w.textSpan!)), isTrue);
+    MarkdownLinkSpan? link;
+    for (final w in texts) {
+      link = _findLinkSpan(w.textSpan!);
+      if (link != null) {
+        break;
+      }
+    }
+    expect(link, isNotNull);
+    expect(link!.href, 'https://e.com');
+    expect(link.mouseCursor, isNot(SystemMouseCursors.click));
+    expect(link.recognizer, isNull);
   });
 
   testWidgets('search results group by notebook in creation order',

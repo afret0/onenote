@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,19 +36,22 @@ void main() {
     return opened;
   }
 
-  testWidgets('plain click keeps the url snack bar', (tester) async {
+  testWidgets('plain click selects text without opening or snack',
+      (tester) async {
     final opened = await pumpLink(tester);
-    await tester.tap(find.text('v2ray 搭建记录'));
+    await tester.tap(find.text('v2ray 搭建记录'),
+        kind: PointerDeviceKind.mouse);
     await tester.pump();
     expect(opened, isEmpty);
-    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('open modifier click launches the default browser',
       (tester) async {
     final opened = await pumpLink(tester);
     await tester.sendKeyDownEvent(openKey);
-    await tester.tap(find.text('v2ray 搭建记录'));
+    await tester.tap(find.text('v2ray 搭建记录'),
+        kind: PointerDeviceKind.mouse);
     await tester.pump();
     await tester.sendKeyUpEvent(openKey);
     expect(opened, [href]);
@@ -57,18 +61,19 @@ void main() {
   testWidgets('non-matching modifier click does not launch', (tester) async {
     final opened = await pumpLink(tester);
     await tester.sendKeyDownEvent(otherKey);
-    await tester.tap(find.text('v2ray 搭建记录'));
+    await tester.tap(find.text('v2ray 搭建记录'),
+        kind: PointerDeviceKind.mouse);
     await tester.pump();
     await tester.sendKeyUpEvent(otherKey);
     expect(opened, isEmpty);
-    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
   });
 
   testWidgets('non-http links stay on the snack bar path', (tester) async {
     final opened =
         await pumpLink(tester, data: '[mail](mailto:a@example.com)');
     await tester.sendKeyDownEvent(openKey);
-    await tester.tap(find.text('mail'));
+    await tester.tap(find.text('mail'), kind: PointerDeviceKind.mouse);
     await tester.pump();
     await tester.sendKeyUpEvent(openKey);
     expect(opened, isEmpty);
@@ -85,7 +90,7 @@ void main() {
       onAttachmentLink: attached.add,
     );
     await tester.sendKeyDownEvent(openKey);
-    await tester.tap(find.text('file'));
+    await tester.tap(find.text('file'), kind: PointerDeviceKind.mouse);
     await tester.pump();
     await tester.sendKeyUpEvent(openKey);
     expect(attached, [id]);

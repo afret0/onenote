@@ -199,8 +199,10 @@ void main() {
   testWidgets('pdf link renders interactive and opens context menu',
       (WidgetTester tester) async {
     await seed(tester);
-    final link = find.descendant(
-        of: find.byType(MarkdownView), matching: find.text('doc.pdf'));
+    final link = find.byWidgetPredicate((w) =>
+        w is SelectableText &&
+        w.textSpan != null &&
+        w.textSpan!.toPlainText().contains('doc.pdf'));
     expect(link, findsOneWidget);
 
     await tester.tap(link, buttons: kSecondaryButton);

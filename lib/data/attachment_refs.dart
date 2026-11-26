@@ -23,8 +23,7 @@ int _renderedRefCount(List<md.Node> nodes, String id) {
     } else if (node.tag == 'a') {
       if (AttachmentStore.refPattern.firstMatch(node.attributes['href'] ?? '')
               ?.group(1) ==
-          id &&
-          isPdfLinkText(node.textContent)) {
+          id) {
         count++;
       }
     }

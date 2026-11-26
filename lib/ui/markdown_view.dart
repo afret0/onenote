@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -61,6 +63,9 @@ class _MarkdownViewState extends State<MarkdownView> {
   List<bool> _taskStates = const [];
   String? _refContent;
   Map<String, int> _refTotals = const {};
+  final GlobalKey _bodyKey = GlobalKey();
+  int _pointerButtons = 0;
+  bool _suppressContextMenu = false;
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +161,7 @@ class _MarkdownViewState extends State<MarkdownView> {
       _taskContent = content;
     }
     final store = widget.attachments;
+    int Function(String href, String text)? linkOrdinal;
     Map<String, MarkdownElementBuilder>? attachmentBuilders;
     if (store != null) {
       if (!identical(_refContent, content)) {
@@ -165,6 +171,13 @@ class _MarkdownViewState extends State<MarkdownView> {
         _refContent = content;
       }
       final counter = AttachmentRefCounter(_refTotals);
+      linkOrdinal = (href, text) {
+        final m = AttachmentStore.refPattern.firstMatch(href);
+        if (m == null || isPdfLinkText(text)) {
+          return -1;
+        }
+        return counter.next(m.group(1)!);
+      };
       final imageTap = widget.onAttachmentImageTap;
       final onContext = widget.onAttachmentContext;
       final pdfTap = widget.onAttachmentPdfTap;
@@ -173,8 +186,7 @@ class _MarkdownViewState extends State<MarkdownView> {
             refCounter: counter, onTap: imageTap, onContext: onContext),
         'a': _ChainLinkBuilder([
           if (onContext != null && pdfTap != null)
-            AttachmentLinkBuilder(
-                onTap: pdfTap, onContext: onContext, refCounter: counter),
+            AttachmentLinkBuilder(store: store, refCounter: counter),
           ClipPageLinkBuilder(store, onOpenExternal: widget.onAttachmentLink),
         ]),
       };
@@ -183,9 +195,17 @@ class _MarkdownViewState extends State<MarkdownView> {
     final taskCount = toggle == null ? 0 : _taskStates.length;
     final lineHeight = sheet.p!.fontSize! * sheet.p!.height!;
     var checkboxCalls = 0;
-    return MarkdownBody(
+    return Listener(
+      onPointerDown: (e) => _pointerButtons = e.buttons,
+      onPointerUp: _onPointerUp,
+      child: KeyedSubtree(
+        key: _bodyKey,
+        child: MarkdownBody(
       data: content,
       selectable: true,
+      fitContent: false,
+      linkRefOrdinal: linkOrdinal,
+      contextMenuBuilder: _contextMenu,
       highlightQuery: widget.highlightQuery,
       highlightColor: widget.highlightQuery == null ? null : t.searchMark,
       highlightActiveIndex: widget.highlightActiveIndex,
@@ -226,7 +246,177 @@ class _MarkdownViewState extends State<MarkdownView> {
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));
       },
+        ),
+      ),
     );
+  }
+
+  Widget _contextMenu(BuildContext context, EditableTextState state) {
+    if (_suppressContextMenu) {
+      return const SizedBox.shrink();
+    }
+    return AdaptiveTextSelectionToolbar.editableText(editableTextState: state);
+  }
+
+  void _releaseSuppress() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _suppressContextMenu = false;
+        }
+      });
+    });
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    final buttons = _pointerButtons;
+    _pointerButtons = 0;
+    final link = _linkAt(e.position);
+    if (buttons == kSecondaryButton) {
+      final href = link?.href;
+      if (link == null || href == null) {
+        return;
+      }
+      _suppressContextMenu = true;
+      _releaseSuppress();
+      final match = AttachmentStore.refPattern.firstMatch(href);
+      if (match != null) {
+        widget.onAttachmentContext
+            ?.call(match.group(1)!, link.refOrdinal, e.position);
+        return;
+      }
+      _showWebLinkMenu(href, e.position);
+      return;
+    }
+    if (buttons == kPrimaryButton) {
+      final pressed = Platform.isMacOS
+          ? HardwareKeyboard.instance.isMetaPressed
+          : HardwareKeyboard.instance.isControlPressed;
+      final href = link?.href;
+      if (!pressed || link == null || href == null) {
+        return;
+      }
+      final match = AttachmentStore.refPattern.firstMatch(href);
+      if (match != null) {
+        final id = match.group(1)!;
+        if (isPdfLinkText(link.toPlainText().replaceAll(RegExp(r'[\uFFFC]'), ''))) {
+          widget.onAttachmentPdfTap?.call(id, link.refOrdinal);
+        } else {
+          widget.onAttachmentLink?.call(id);
+        }
+        return;
+      }
+      if (!_launchBrowser(href)) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));
+      }
+    }
+  }
+
+  Future<void> _showWebLinkMenu(String href, Offset pos) async {
+    final value = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx, pos.dy),
+      items: const [
+        PopupMenuItem(value: 'open', child: Text('打开')),
+        PopupMenuItem(value: 'copy', child: Text('复制链接')),
+      ],
+    );
+    if (!mounted || value == null) {
+      return;
+    }
+    if (value == 'open') {
+      if (!_launchBrowser(href)) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));
+      }
+    } else if (value == 'copy') {
+      await Clipboard.setData(ClipboardData(text: href));
+    }
+  }
+
+  MarkdownLinkSpan? _linkAt(Offset global) {
+    final root = _bodyKey.currentContext?.findRenderObject();
+    if (root == null) {
+      return null;
+    }
+    MarkdownLinkSpan? found;
+    void visit(RenderObject node) {
+      if (found != null) {
+        return;
+      }
+      if (node is RenderParagraph) {
+        final local = node.globalToLocal(global);
+        if (local.dx >= 0 &&
+            local.dy >= 0 &&
+            local.dx <= node.size.width &&
+            local.dy <= node.size.height) {
+          final pos = node.getPositionForOffset(local);
+          found = _findLinkSpan(node.text, pos.offset, 0, null);
+        }
+      } else if (node is RenderEditable) {
+        final local = node.globalToLocal(global);
+        if (local.dx >= 0 &&
+            local.dy >= 0 &&
+            local.dx <= node.size.width &&
+            local.dy <= node.size.height) {
+          final pos = node.getPositionForPoint(global);
+          found = _findLinkSpan(node.text ?? const TextSpan(), pos.offset, 0, null);
+        }
+      }
+      node.visitChildren(visit);
+    }
+
+    visit(root);
+    return found;
+  }
+
+  MarkdownLinkSpan? _findLinkSpan(
+      InlineSpan node, int offset, int base, MarkdownLinkSpan? link) {
+    final nextLink = node is MarkdownLinkSpan ? node : link;
+    if (node is TextSpan && node.children == null) {
+      final text = node.text ?? '';
+      if (offset >= base && offset < base + text.length) {
+        return nextLink;
+      }
+      return null;
+    }
+    if (node is TextSpan) {
+      var cur = base;
+      for (final child in node.children!) {
+        final hit = _findLinkSpan(child, offset, cur, nextLink);
+        if (hit != null) {
+          return hit;
+        }
+        cur += child.toPlainText().length;
+      }
+      return null;
+    }
+    if (offset >= base && offset < base + node.toPlainText().length) {
+      return nextLink;
+    }
+    return null;
+  }
+
+  bool _launchBrowser(String href) {
+    if (kIsWeb) {
+      return false;
+    }
+    final uri = Uri.tryParse(href);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return false;
+    }
+    final override = widget.browserLauncherOverride;
+    if (override != null) {
+      override(href);
+    } else if (Platform.isMacOS) {
+      Process.run('open', [href]);
+    } else if (Platform.isLinux) {
+      Process.run('xdg-open', [href]);
+    } else if (Platform.isWindows) {
+      Process.run('cmd', ['/c', 'start', '', href]);
+    } else {
+      return false;
+    }
+    return true;
   }
 
   bool _openInBrowser(String href) {

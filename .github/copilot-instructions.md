@@ -159,6 +159,10 @@ flutter build web --release                                # web 产物在 build
 
 - **Dart raw string 写不了含两种引号的正则**（`r'...\'...'` 非法）：含单双引号的 pattern 用普通字符串双转义。`flutter test` 设 `FLUTTER_TEST` 环境变量，WebView 等原生通道组件用它+平台判断做测试闸门。markdown builders 的 'a' 键只有一个：多链接 builder 用 _ChainLinkBuilder 串联，返回 null 落默认。
 
+- **链接=纯文本契约（2026-11-26 用户拍板）**：渲染态链接不挂 TapGestureRecognizer/点击光标（recognizer 抢手势竞技场→链接上选不中字）；vendored 包用 `MarkdownLinkSpan`(href/refOrdinal) 带元数据，**所有 span 重建点走 `preserveLinkSpan`** 否则合并/高亮丢元数据。打开与菜单由 `MarkdownView` 外层 Listener 指针命中（`_linkAt` 遍历 RenderParagraph/RenderEditable；WidgetSpan 占位符也归入链接范围）：Cmd/Ctrl+点击=打开（web 走浏览器、资源走默认应用），右键=菜单（web 打开+复制链接；资源 另存为/复制/删除，复用附件语义）。**`MarkdownBody` 必须 `fitContent: false`**：true 让段落 shrink-wrap，行尾空白不可命中→边缘字选不中（真实教训）。编辑态 Cmd+点击也打开（note_view `_onEditorPointerUp` + RenderEditable.getPositionForPoint）。
+- **PDF 内联（2026-11-26 用户拍板）**：`PdfInline` 全页平铺随笔记滚动（pdfx `openData→getPage→render` png，宽度变化重渲），文件名 caption 保留为可选中/可高亮的文本 span；渲染失败回退 `SizedBox.shrink`。pdfx 文档生命周期是 `close()` 不是 dispose()。附件 ordinal 计数含**所有**资源 a 链接（不再只 pdf），与 builder `linkRefOrdinal`/refCounter 顺序一致。
+- **搜索首命中跳转确定性（2026-11-26）**：`_pendingFirstMatch` 标志在 highlight notify 回调里消费；旧实现单次 postFrame 时 matches 尚空就放弃，导致切换笔记忽而首行忽而命中（真实教训）。
+
 ## 未实现（下一阶段，动工前先与用户确认边界值）
 
 加密正文（内容级 AES-GCM，门禁哈希已落地）、Web 端附件（web 上 attachment store 为 null）。

@@ -9,9 +9,9 @@ void main() {
   String link(String id, String name) => '[$name](onenote-asset://$id)';
 
   group('renderedAttachmentRefCount', () {
-    test('counts image and pdf link, skips non-pdf link', () {
+    test('counts image and asset links', () {
       final content = '${img(a)}\n\n${link(a, 'doc.pdf')}\n\n${link(a, 'note.txt')}';
-      expect(renderedAttachmentRefCount(content, a), 2);
+      expect(renderedAttachmentRefCount(content, a), 3);
     });
 
     test('ignores refs inside fenced and inline code', () {
@@ -19,9 +19,9 @@ void main() {
       expect(renderedAttachmentRefCount(content, a), 1);
     });
 
-    test('pdf check is case insensitive', () {
+    test('asset link counted regardless of extension', () {
       expect(renderedAttachmentRefCount(link(a, 'DOC.PDF'), a), 1);
-      expect(renderedAttachmentRefCount(link(a, 'doc.pdfx'), a), 0);
+      expect(renderedAttachmentRefCount(link(a, 'doc.pdfx'), a), 1);
     });
 
     test('counts nested image inside emphasis', () {
@@ -71,8 +71,8 @@ void main() {
       expect(removeAttachmentRefAt(img(a), b, 0), isNull);
     });
 
-    test('non-pdf link is not removable', () {
-      expect(removeAttachmentRefAt(link(a, 'note.txt'), a, 0), isNull);
+    test('non-pdf asset link is removable', () {
+      expect(removeAttachmentRefAt(link(a, 'note.txt'), a, 0), '');
     });
   });
 

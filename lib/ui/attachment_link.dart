@@ -4,16 +4,15 @@ import 'package:markdown/markdown.dart' as md;
 
 import '../data/attachment_refs.dart';
 import '../data/attachment_store.dart';
+import 'pdf_inline.dart';
 
 class AttachmentLinkBuilder extends MarkdownElementBuilder {
   AttachmentLinkBuilder({
-    required this.onTap,
-    required this.onContext,
+    required this.store,
     this.refCounter,
   });
 
-  final void Function(String id, int ordinal) onTap;
-  final void Function(String id, int ordinal, Offset position) onContext;
+  final AttachmentStore store;
   final AttachmentRefCounter? refCounter;
 
   @override
@@ -33,65 +32,23 @@ class AttachmentLinkBuilder extends MarkdownElementBuilder {
       return null;
     }
     final id = match.group(1)!;
-    return _PdfAttachmentLink(
-      id: id,
-      text: text,
-      ordinal: refCounter?.next(id) ?? 0,
-      style: parentStyle?.merge(preferredStyle) ?? preferredStyle,
-      onTap: onTap,
-      onContext: onContext,
-    );
-  }
-}
-
-class _PdfAttachmentLink extends StatefulWidget {
-  const _PdfAttachmentLink({
-    required this.id,
-    required this.text,
-    required this.ordinal,
-    required this.style,
-    required this.onTap,
-    required this.onContext,
-  });
-
-  final String id;
-  final String text;
-  final int ordinal;
-  final TextStyle? style;
-  final void Function(String id, int ordinal) onTap;
-  final void Function(String id, int ordinal, Offset position) onContext;
-
-  @override
-  State<_PdfAttachmentLink> createState() => _PdfAttachmentLinkState();
-}
-
-class _PdfAttachmentLinkState extends State<_PdfAttachmentLink> {
-  bool _hover = false;
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() {
-        _hover = false;
-        _pressed = false;
-      }),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => widget.onTap(widget.id, widget.ordinal),
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        onSecondaryTapUp: (d) =>
-            widget.onContext(widget.id, widget.ordinal, d.globalPosition),
-        onLongPressStart: (d) =>
-            widget.onContext(widget.id, widget.ordinal, d.globalPosition),
-        child: Opacity(
-          opacity: _pressed ? 0.7 : (_hover ? 0.85 : 1),
-          child: Text(widget.text, style: widget.style),
-        ),
+    final ordinal = refCounter?.next(id) ?? 0;
+    final style = parentStyle?.merge(preferredStyle) ?? preferredStyle;
+    return Text.rich(
+      MarkdownLinkSpan(
+        href: href,
+        refOrdinal: ordinal,
+        children: [
+          TextSpan(text: text, style: style),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.top,
+            child: PdfInline(
+              store: store,
+              id: id,
+              ordinal: ordinal,
+            ),
+          ),
+        ],
       ),
     );
   }
