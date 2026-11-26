@@ -171,6 +171,14 @@ class _LockGateState extends State<LockGate> {
       _focus.requestFocus();
       return;
     }
+    final cooling = await _rootAttempts.cooldownRemainingMs();
+    if (cooling > 0) {
+      developer.log('skip, 冷却期内拒绝提交, cooldownMs: $cooling');
+      if (mounted) {
+        _startCooldown(cooling);
+      }
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -179,21 +187,14 @@ class _LockGateState extends State<LockGate> {
     try {
       var db = widget.globalDb;
       String? spaceId;
-      var cooldown = 0;
       for (var depth = 0; depth < 16; depth++) {
         final lock =
             PasswordLock.parse(await db.getSetting(AppDb.appLockKey));
-        if (lock != null && lock.active) {
-          final result = await LockAttempts(db).verify(lock, password);
-          if (result.ok) {
-            developer.log(
-                'done, 密码解锁成功, spaceId: ${spaceId ?? ''}, depth: $depth');
-            await _enter(db, spaceId, opened);
-            return;
-          }
-          if (result.cooldownMs > cooldown) {
-            cooldown = result.cooldownMs;
-          }
+        if (lock == null || !lock.active || lock.verify(password)) {
+          developer.log(
+              'done, 密码解锁成功, spaceId: ${spaceId ?? ''}, depth: $depth');
+          await _enter(db, spaceId, opened);
+          return;
         }
         final ref = PrivacySpaceRef.parse(
             await db.getSetting(AppDb.privacySpaceKey));
@@ -211,6 +212,8 @@ class _LockGateState extends State<LockGate> {
         db = child;
         spaceId = ref.id;
       }
+      final cooldown = await _rootAttempts.fail();
+      developer.log('skip, 整链密码均未命中记一次错误, cooldownMs: $cooldown');
       if (!mounted) {
         return;
       }
@@ -249,6 +252,7 @@ class _LockGateState extends State<LockGate> {
       }
     }
     opened.clear();
+    await _rootAttempts.succeed();
     await widget.globalDb
         .setSetting(AppDb.lockBioSpaceKey, spaceId ?? '');
     if (!mounted) {
@@ -322,7 +326,6 @@ class _LockGateState extends State<LockGate> {
       }
       return;
     }
-    await _rootAttempts.succeed();
     developer.log('done, 生物识别解锁成功, spaceId: $spaceId');
     await _enter(db, spaceId.isEmpty ? null : spaceId, []);
   }

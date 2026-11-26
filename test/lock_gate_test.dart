@@ -346,6 +346,84 @@ void main() {
     track(entered!);
   });
 
+  testWidgets('隐私空间密码连切五次不触发冷却', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('daily-pass', 1000).encode());
+      final ref = PrivacySpaceRef(
+          id: 'gate-space-loop',
+          lock: PasswordLock.create('secret-pass', 2000),
+          createAt: 2000);
+      final engine = SyncEngine(db);
+      await engine.provisionPrivacySpace(ref);
+      engine.dispose();
+      await db.setSetting(AppDb.privacySpaceKey, ref.encode());
+    });
+    for (var round = 0; round < AppDb.lockFailMax; round++) {
+      AppDb? entered;
+      String? enteredSpace;
+      await tester.pumpWidget(MaterialApp(
+        key: ValueKey('gate-loop-$round'),
+        theme: buildInkTheme(Brightness.dark),
+        home: LockGate(globalDb: db, onUnlocked: (d, s) {
+          entered = d;
+          enteredSpace = s;
+        }),
+      ));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        await tester.enterText(find.byType(TextField), 'secret-pass');
+        await waitUntil(tester, () => enteredSpace != null);
+      });
+      expect(enteredSpace, 'gate-space-loop',
+          reason: '第 ${round + 1} 次用空间密码解锁应成功');
+      expect(find.textContaining('错误次数过多'), findsNothing);
+      track(entered!);
+      await tester.runAsync(() async {
+        expect(await db.getSetting(AppDb.lockFailCountKey), '0');
+        expect(await db.getSetting(AppDb.lockCooldownUntilKey), isNull);
+      });
+    }
+  });
+
+  testWidgets('双锁全不匹配一次提交只计一次错误', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('daily-pass', 1000).encode());
+      final ref = PrivacySpaceRef(
+          id: 'gate-space-miss',
+          lock: PasswordLock.create('secret-pass', 2000),
+          createAt: 2000);
+      final engine = SyncEngine(db);
+      await engine.provisionPrivacySpace(ref);
+      engine.dispose();
+      await db.setSetting(AppDb.privacySpaceKey, ref.encode());
+    });
+    AppDb? entered;
+    String? enteredSpace;
+    await pumpGate(tester, db, (d, s) {
+      entered = d;
+      enteredSpace = s;
+    });
+    await tester.runAsync(() async {
+      await tester.enterText(find.byType(TextField), 'wrong-pass');
+      await tester.tap(find.text('解锁'));
+      await waitUntil(tester,
+          () => find.text('密码错误，请重试').evaluate().isNotEmpty);
+      expect(await db.getSetting(AppDb.lockFailCountKey), '1');
+    });
+    expect(enteredSpace, isNull);
+    expect(entered, isNull);
+    await tester.runAsync(() async {
+      await tester.enterText(find.byType(TextField), 'daily-pass');
+      await waitUntil(tester, () => entered != null);
+      expect(await db.getSetting(AppDb.lockFailCountKey), '0');
+    });
+    expect(entered, same(db));
+  });
+
   testWidgets('密码框自动聚焦不走系统密码框, 掩码显示可揭示', (WidgetTester tester) async {
     final db = track(AppDb(NativeDatabase.memory()));
     await tester.runAsync(() async {
