@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 
 import 'data/app_db.dart';
+import 'data/font_store.dart';
 import 'data/password_lock.dart';
 import 'lock/background_lock.dart';
 import 'state/app_state.dart';
@@ -166,12 +167,27 @@ class _OneNoteAppState extends State<OneNoteApp> {
     _relock();
   }
 
+  String _sansFor(AppState s) {
+    if (s.uiFont == AppState.uiFontInter) {
+      return interFamily;
+    }
+    if (s.uiFont == AppState.uiFontCascadia) {
+      return cascadiaFamily;
+    }
+    if (s.uiFont.startsWith(AppState.localFontPrefix)) {
+      final id = s.uiFont.substring(AppState.localFontPrefix.length);
+      if (s.fonts?.has(id) == true) {
+        return LocalFontStore.familyOf(id);
+      }
+      return miSansFamily;
+    }
+    return miSansFamily;
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = state;
-    final sans = s == null
-        ? miSansFamily
-        : (s.uiFont == AppState.uiFontInter ? interFamily : miSansFamily);
+    final sans = s == null ? miSansFamily : _sansFor(s);
     final fontScale = s?.fontScale ?? AppState.fontScaleDefault;
     final noteFontSize = s?.noteFontSize ?? AppState.noteFontSizeDefault;
     return MaterialApp(

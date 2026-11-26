@@ -10,6 +10,8 @@ import 'package:uuid/uuid.dart';
 import '../clip/clip_server.dart';
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
+import '../data/font_catalog.dart';
+import '../data/font_store.dart';
 import '../data/password_lock.dart';
 import '../sync/diff3.dart';
 import '../sync/remote_store.dart';
@@ -33,7 +35,11 @@ class NoteScope {
 }
 
 class AppState extends ChangeNotifier {
-  AppState(this.db, {RemoteStore? syncStoreOverride, this.spaceId, AppDb? globalDb})
+  AppState(this.db,
+      {RemoteStore? syncStoreOverride,
+      this.fontStoreOverride,
+      this.spaceId,
+      AppDb? globalDb})
       : globalDb = globalDb ?? db {
     sync = SyncEngine(db,
         attachments: () => attachments, storeOverride: syncStoreOverride);
@@ -50,6 +56,8 @@ class AppState extends ChangeNotifier {
   static const contentMinWidth = 360.0;
   static const uiFontInter = 'inter';
   static const uiFontMiSans = 'misans';
+  static const uiFontCascadia = 'cascadia';
+  static const localFontPrefix = 'local:';
   static const fontScaleMin = 0.85;
   static const fontScaleMax = 1.4;
   static const fontScaleDefault = 1.0;
@@ -74,6 +82,8 @@ class AppState extends ChangeNotifier {
   late final SyncEngine sync;
 
   AttachmentStore? attachments;
+  LocalFontStore? fonts;
+  final LocalFontStore? fontStoreOverride;
 
   List<Notebook> notebooks = [];
   NoteScope scope = const NoteScope.all();
@@ -141,7 +151,15 @@ class AppState extends ChangeNotifier {
     listWidth = _loadedDouble(await db.getSetting(AppDb.paneWidthListKey),
         listDefaultWidth, listMinWidth, listMaxWidth);
     final savedFont = await db.getSetting(AppDb.uiFontKey);
-    if (savedFont == uiFontInter || savedFont == uiFontMiSans) {
+    if (!kIsWeb) {
+      fonts = fontStoreOverride ?? await LocalFontStore.open();
+      await fonts!.loadRegistry(db);
+      await fonts!.registerAll();
+    }
+    if (savedFont == uiFontInter ||
+        savedFont == uiFontMiSans ||
+        savedFont == uiFontCascadia ||
+        _isRegisteredLocalFont(savedFont)) {
       uiFont = savedFont!;
     } else if (savedFont != null) {
       developer.log('skip, 字体设置非法回退默认, raw: $savedFont, fallback: $uiFont');
@@ -1074,8 +1092,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isRegisteredLocalFont(String? font) =>
+      font != null &&
+      font.startsWith(localFontPrefix) &&
+      fonts?.has(font.substring(localFontPrefix.length)) == true;
+
   Future<void> setUiFont(String font) async {
-    if (font != uiFontInter && font != uiFontMiSans) {
+    if (font != uiFontInter &&
+        font != uiFontMiSans &&
+        font != uiFontCascadia &&
+        !_isRegisteredLocalFont(font)) {
       developer.log('skip, 未知字体标识不写入, font: $font');
       return;
     }
@@ -1085,6 +1111,43 @@ class AppState extends ChangeNotifier {
     uiFont = font;
     await db.setSetting(AppDb.uiFontKey, font);
     developer.log('done, 界面字体已切换, uiFont: $font');
+    notifyListeners();
+  }
+
+  Future<List<LocalFont>> importLocalFonts(List<String> paths) async {
+    final store = fonts;
+    if (store == null) {
+      developer.log('skip, web 端无本地字体存储, count: ${paths.length}');
+      return [];
+    }
+    final imported = await store.importFiles(paths);
+    developer.log(
+        'done, 本地字体导入完成, count: ${imported.length}, names: ${imported.map((f) => f.name).join(',')}');
+    notifyListeners();
+    return imported;
+  }
+
+  Future<LocalFont?> downloadCatalogFont(FontCatalogEntry catalog,
+      {void Function(int received, int total)? onProgress}) async {
+    final store = fonts;
+    if (store == null) {
+      developer.log('skip, web 端无本地字体存储, catalog: ${catalog.id}');
+      return null;
+    }
+    final entry = await store.download(catalog, onProgress: onProgress);
+    notifyListeners();
+    return entry;
+  }
+
+  Future<void> deleteLocalFont(String id) async {
+    final store = fonts;
+    if (store == null) {
+      return;
+    }
+    if (uiFont == '$localFontPrefix$id') {
+      await setUiFont(uiFontMiSans);
+    }
+    await store.delete(id);
     notifyListeners();
   }
 

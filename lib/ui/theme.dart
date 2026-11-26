@@ -186,6 +186,7 @@ Color readableOn(Color color, Color background, {double ratio = 4.5}) {
 
 const interFamily = 'Inter';
 const miSansFamily = 'MiSans';
+const cascadiaFamily = 'CascadiaCodePL';
 const monoFamily = 'JetBrainsMono';
 const serifFamily = 'Georgia';
 

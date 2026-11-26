@@ -1,14 +1,18 @@
 import 'dart:developer' as developer;
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_version.dart';
 import '../data/app_db.dart';
+import '../data/font_store.dart';
 import '../lock/biometrics.dart';
 import '../state/app_state.dart';
 import '../window_setup.dart' show isDesktopWindow;
 import 'dialogs.dart';
+import 'font_catalog_dialog.dart';
 import 'password_prompts.dart';
 import 'sync_settings_page.dart';
 import 'theme.dart';
@@ -247,36 +251,180 @@ class _SettingsPageState extends State<SettingsPage> {
           for (final option in const [
             (AppState.uiFontMiSans, 'MiSans', '小米开源字体，中文原生支持'),
             (AppState.uiFontInter, 'Inter', '拉丁字体，中文走系统字体'),
+            (AppState.uiFontCascadia, 'Cascadia Code PL', '微软开源等宽，中文走系统字体'),
           ])
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, option.$1),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(option.$2,
-                            style: Theme.of(context).textTheme.bodyMedium),
-                        Text(option.$3,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: inkOf(context).inkMuted)),
-                      ],
-                    ),
-                  ),
-                  if (state.uiFont == option.$1)
-                    Icon(Icons.check, size: 18, color: inkOf(context).accentText),
-                ],
+            _fontOption(context, option.$1, option.$2, option.$3),
+          if (state.fonts != null)
+            for (final font in state.fonts!.fonts)
+              _fontOption(
+                  context,
+                  '${AppState.localFontPrefix}${font.id}',
+                  font.name,
+                  font.kind == LocalFontStore.downloadKind ? '在线下载' : '本地导入',
+                  deleteSentinel: '__delete__${font.id}'),
+          const Divider(height: 1),
+          SimpleDialogOption(
+            onPressed:
+                kIsWeb ? null : () => Navigator.pop(context, '__import__'),
+            child: _fontActionRow(context, Icons.upload_file_outlined, '导入本地字体…',
+                kIsWeb ? 'web 端暂不支持' : '选择 ttf / otf 文件，同名自动合并字重'),
+          ),
+          SimpleDialogOption(
+            onPressed:
+                kIsWeb ? null : () => Navigator.pop(context, '__catalog__'),
+            child: _fontActionRow(context, Icons.cloud_download_outlined, '在线获取字体…',
+                kIsWeb ? 'web 端暂不支持' : '开源字体按需下载，不进安装包'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || picked == null) {
+      return;
+    }
+    if (picked == '__import__') {
+      await _importLocalFonts();
+      return;
+    }
+    if (picked == '__catalog__') {
+      await showDialog<void>(
+          context: context, builder: (_) => FontCatalogDialog(state: state));
+      return;
+    }
+    if (picked.startsWith('__delete__')) {
+      await _deleteLocalFont(picked.substring('__delete__'.length));
+      return;
+    }
+    await state.setUiFont(picked);
+  }
+
+  Widget _fontOption(BuildContext context, String value, String name, String desc,
+      {String? deleteSentinel}) {
+    return SimpleDialogOption(
+      onPressed: () => Navigator.pop(context, value),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: Theme.of(context).textTheme.bodyMedium),
+                Text(desc,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: inkOf(context).inkMuted)),
+              ],
+            ),
+          ),
+          if (state.uiFont == value)
+            Icon(Icons.check, size: 18, color: inkOf(context).accentText),
+          if (deleteSentinel != null)
+            Semantics(
+              button: true,
+              label: '删除字体',
+              child: IconButton(
+                icon: Icon(Icons.delete_outline,
+                    size: 18, color: inkOf(context).inkMuted),
+                style: const ButtonStyle(
+                    mouseCursor:
+                        WidgetStatePropertyAll(SystemMouseCursors.click)),
+                onPressed: () => Navigator.pop(context, deleteSentinel),
               ),
             ),
         ],
       ),
     );
-    if (picked != null) {
-      await state.setUiFont(picked);
+  }
+
+  Widget _fontActionRow(
+      BuildContext context, IconData icon, String title, String desc) {
+    final t = inkOf(context);
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: t.accentText),
+        const SizedBox(width: spaceSm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.bodyMedium),
+              Text(desc,
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.inkMuted)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _importLocalFonts() async {
+    final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['ttf', 'otf'],
+        allowMultiple: true);
+    final paths = result?.files
+            .map((f) => f.path)
+            .whereType<String>()
+            .toList() ??
+        [];
+    if (paths.isEmpty) {
+      return;
     }
+    try {
+      final imported = await state.importLocalFonts(paths);
+      if (!mounted || imported.isEmpty) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '已导入 ${imported.map((f) => f.name).join('、')}，可在界面字体中选择')));
+    } catch (err) {
+      developer.log('fail, 导入本地字体失败, count: ${paths.length}, err: $err');
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('导入失败：$err')));
+    }
+  }
+
+  Future<void> _deleteLocalFont(String id) async {
+    final font = state.fonts?.byId(id);
+    if (font == null) {
+      return;
+    }
+    final ok = await confirm(context,
+        title: '删除字体',
+        message: '删除「${font.name}」的本地文件？正在使用时会回退 MiSans。',
+        confirmLabel: '删除',
+        danger: true);
+    if (!ok || !mounted) {
+      return;
+    }
+    await state.deleteLocalFont(id);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('已删除 ${font.name}')));
+  }
+
+  String _fontLabel() {
+    if (state.uiFont == AppState.uiFontInter) {
+      return 'Inter';
+    }
+    if (state.uiFont == AppState.uiFontCascadia) {
+      return 'Cascadia Code PL';
+    }
+    if (state.uiFont.startsWith(AppState.localFontPrefix)) {
+      final font = state.fonts
+          ?.byId(state.uiFont.substring(AppState.localFontPrefix.length));
+      return font?.name ?? 'MiSans';
+    }
+    return 'MiSans';
   }
 
   Future<void> _pickNarrowStartup() async {
@@ -492,10 +640,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _SettingRow(
               icon: Icons.font_download_outlined,
               title: '界面字体',
-              subtitle: '本应用包含小米 MiSans 字体，依其许可免费商用',
-              action: state.uiFont == AppState.uiFontInter
-                  ? 'Inter'
-                  : 'MiSans',
+              subtitle: '本应用包含小米 MiSans 字体，依其许可免费商用；Inter/Cascadia 依 OFL',
+              action: _fontLabel(),
               onTap: _pickFont,
             ),
             Divider(height: 1, color: t.hairline),
