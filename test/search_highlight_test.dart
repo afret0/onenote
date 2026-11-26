@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -6,11 +8,31 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onenote/data/app_db.dart';
+import 'package:onenote/data/attachment_store.dart';
 import 'package:onenote/state/app_state.dart';
 import 'package:onenote/ui/home_page.dart';
 import 'package:onenote/ui/markdown_view.dart';
 import 'package:onenote/ui/theme.dart';
 import 'package:onenote/ui/widgets.dart';
+
+class _GatedStore extends AttachmentStore {
+  _GatedStore(super.root) : super.forTest();
+
+  final gate = Completer<Uint8List?>();
+
+  @override
+  Future<Uint8List?> read(String id) => gate.future;
+}
+
+Future<Uint8List> _tallPng() async {
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  canvas.drawRect(const Rect.fromLTWH(0, 0, 200, 600),
+      ui.Paint()..color = const ui.Color(0xFF7719AA));
+  final image = await recorder.endRecording().toImage(200, 600);
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  return data!.buffer.asUint8List();
+}
 
 MarkdownLinkSpan? _findLinkSpan(InlineSpan span) {
   if (span is MarkdownLinkSpan) {
@@ -382,6 +404,129 @@ void main() {
     final restored = tester.getRect(nav);
     expect(restored.left, closeTo(after.left, 1));
     expect(restored.top, closeTo(after.top, 1));
+  });
+
+  testWidgets('opening a hit jumps to the only match far down the note',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_match_far');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    late String noteId;
+    await tester.runAsync(() async {
+      final nb = await db.createNotebook('甲');
+      now += 1000;
+      final note = await db.createNote(nb.id,
+          title: 't',
+          content:
+              '${List.filled(60, 'filler line').join('\n\n')}\n\n## buffer tail');
+      noteId = note.id;
+      now += 1000;
+      await state.init();
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'buffer');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(NoteCard).first);
+    await tester.pumpAndSettle();
+
+    final scroll = tester.widget<SingleChildScrollView>(
+        find.byKey(PageStorageKey<String>('noteScroll:$noteId')));
+    expect(scroll.controller!.position.pixels, greaterThan(0));
+  });
+
+  testWidgets('search jump stays anchored when an image above loads late',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('onenote_match_anchor');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => dir.path,
+    );
+    var now = 1700000000000;
+    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+    const imageId =
+        'abababababababababababababababababababababababababababababababab';
+    late String noteId;
+    late _GatedStore gated;
+    await tester.runAsync(() async {
+      final nb = await db.createNotebook('甲');
+      now += 1000;
+      final note = await db.createNote(nb.id,
+          title: 't',
+          content: '${List.filled(30, 'filler line').join('\n\n')}\n\n'
+              '![pic](onenote-asset://$imageId)\n\n'
+              '${List.filled(10, 'more filler').join('\n\n')}\n\n'
+              '## buffer tail\n\n'
+              '${List.filled(20, 'tail filler').join('\n\n')}');
+      noteId = note.id;
+      now += 1000;
+      await db.createNote(nb.id, title: 'plain', content: 'nothing here');
+      now += 1000;
+      await state.init();
+      gated = _GatedStore(dir);
+      state.attachments = gated;
+    });
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: HomePage(state: state),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'buffer');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(NoteCard).first);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+
+    final scroll = tester.widget<SingleChildScrollView>(
+        find.byKey(PageStorageKey<String>('noteScroll:$noteId')));
+    final before = scroll.controller!.position.pixels;
+    final maxBefore = scroll.controller!.position.maxScrollExtent;
+    expect(before, greaterThan(0));
+
+    final bytes = await tester.runAsync(_tallPng);
+    gated.gate.complete(bytes);
+    await tester.runAsync(() async {
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await tester.pump();
+    });
+    await tester.pumpAndSettle();
+
+    final growth = scroll.controller!.position.maxScrollExtent - maxBefore;
+    expect(growth, greaterThan(100));
+    expect(scroll.controller!.position.pixels, closeTo(before + growth, 2));
   });
 
   testWidgets('jumping between matches reuses paragraph elements',

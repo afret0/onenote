@@ -219,7 +219,7 @@ void main() {
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
   });
 
-  testWidgets('cmd+f on narrow flushes pending edits then closes note',
+  testWidgets('cmd+f while editing on narrow opens in-note find instead of global search',
       (tester) async {
     narrow(tester);
     final (state, db, note) = await seed(tester);
@@ -234,11 +234,53 @@ void main() {
 
     await press(tester, LogicalKeyboardKey.keyF, meta: true);
 
+    expect(state.openNoteId, note.id);
+    expect(replacePanel(), findsOneWidget);
+    expect(find.text('替换为'), findsNothing);
+    expect(tester.widget<TextField>(hintField('查找（区分大小写）')).focusNode!.hasFocus, isTrue);
+
+    await press(tester, LogicalKeyboardKey.escape);
+    expect(replacePanel(), findsNothing);
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.check));
+    await tester.pumpAndSettle();
+
+    await press(tester, LogicalKeyboardKey.keyF, meta: true);
+
     expect(state.openNoteId, isNull);
     expect(find.byType(NoteView), findsNothing);
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
     final fresh = await db.findNote(note.id);
     expect(fresh!.content, 'pending edit');
+  });
+
+  testWidgets('cmd+f in edit opens find-only panel and cmd+r adds replace row',
+      (tester) async {
+    wide(tester);
+    final (state, _, _) = await seed(tester, content: 'Foo foo\nfoo bar');
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    await press(tester, LogicalKeyboardKey.keyF, meta: true);
+    expect(replacePanel(), findsOneWidget);
+    expect(find.text('替换为'), findsNothing);
+    expect(tester.widget<TextField>(hintField('查找（区分大小写）')).focusNode!.hasFocus, isTrue);
+
+    await tester.enterText(hintField('查找（区分大小写）'), 'foo');
+    await tester.pumpAndSettle();
+    expect(find.text('1/2'), findsOneWidget);
+    expect(contentController(tester).selection,
+        const TextSelection(baseOffset: 4, extentOffset: 7));
+
+    await press(tester, LogicalKeyboardKey.keyR, meta: true);
+    expect(replacePanel(), findsOneWidget);
+    expect(find.text('替换为'), findsOneWidget);
+
+    await press(tester, LogicalKeyboardKey.escape);
+    expect(replacePanel(), findsNothing);
+    expect(tester.widget<TextField>(contentField()).focusNode!.hasFocus, isTrue);
   });
 
   testWidgets('system back on narrow closes drawer, then note, then exits',

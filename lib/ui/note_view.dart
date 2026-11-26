@@ -84,7 +84,9 @@ class NoteViewState extends State<NoteView> {
   Offset? _navPos;
   int _matchIndex = 0;
   int _matchCount = 0;
+  int? _anchorMatch;
   bool _replaceOpen = false;
+  bool _findOnly = false;
   final TextEditingController _findController = TextEditingController();
   final TextEditingController _replaceController = TextEditingController();
   final FocusNode _findFocus = FocusNode();
@@ -174,6 +176,9 @@ class NoteViewState extends State<NoteView> {
         return;
       }
       final count = _highlight.matches.length;
+      if (count == 0) {
+        _anchorMatch = null;
+      }
       if (_pendingFirstMatch && count > 0 && !_editing) {
         _pendingFirstMatch = false;
         setState(() {
@@ -215,6 +220,7 @@ class NoteViewState extends State<NoteView> {
     if (oldWidget.noteId != widget.noteId ||
         oldWidget.highlightQuery != widget.highlightQuery) {
       _matchIndex = 0;
+      _anchorMatch = null;
       _scheduleFirstMatch();
     }
   }
@@ -222,6 +228,7 @@ class NoteViewState extends State<NoteView> {
   void _scheduleFirstMatch() {
     if ((widget.highlightQuery ?? '').isEmpty) {
       _pendingFirstMatch = false;
+      _anchorMatch = null;
       return;
     }
     _pendingFirstMatch = true;
@@ -240,6 +247,7 @@ class NoteViewState extends State<NoteView> {
       return;
     }
     final i = index.clamp(0, count - 1);
+    _anchorMatch = i;
     setState(() => _matchIndex = i);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_renderScroll.hasClients) {
@@ -258,6 +266,42 @@ class NoteViewState extends State<NoteView> {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic);
     });
+  }
+
+  bool _onRenderScrollNotification(ScrollNotification notification) {
+    if (notification is UserScrollNotification) {
+      _anchorMatch = null;
+    }
+    return false;
+  }
+
+  bool _onRenderMetrics(ScrollMetricsNotification notification) {
+    if (_anchorMatch == null || _editing) {
+      return false;
+    }
+    final index = _anchorMatch!;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _editing ||
+          _anchorMatch != index ||
+          index >= _highlight.matches.length ||
+          !_renderScroll.hasClients) {
+        return;
+      }
+      final viewport = _renderViewportKey.currentContext?.findRenderObject()
+          as RenderBox?;
+      final global = _highlight.globalOffset(index);
+      if (viewport == null || global == null) {
+        return;
+      }
+      final top = viewport.localToGlobal(Offset.zero).dy;
+      final target = (_renderScroll.position.pixels + global.dy - top - 96)
+          .clamp(0.0, _renderScroll.position.maxScrollExtent);
+      if ((target - _renderScroll.position.pixels).abs() > 1) {
+        _renderScroll.jumpTo(target);
+      }
+    });
+    return false;
   }
 
   @override
@@ -327,6 +371,7 @@ class NoteViewState extends State<NoteView> {
     if (!mounted) {
       return;
     }
+    _anchorMatch = null;
     final fraction = _renderScroll.hasClients &&
             _renderScroll.position.maxScrollExtent > 0
         ? (_renderScroll.position.pixels /
@@ -334,8 +379,11 @@ class NoteViewState extends State<NoteView> {
             .clamp(0.0, 1.0)
         : 0.0;
     final text = _contentController.text;
+    final anchor = _captureEditAnchor(text, fraction);
     _contentController.selection = TextSelection.collapsed(
-        offset: (fraction * text.length).round().clamp(0, text.length));
+        offset: anchor != null
+            ? anchor.offset
+            : (fraction * text.length).round().clamp(0, text.length));
     setState(() {
       _editing = true;
       _dirty = false;
@@ -349,8 +397,84 @@ class NoteViewState extends State<NoteView> {
       if (!_editScroll.hasClients) {
         return;
       }
-      _editScroll.jumpTo(fraction * _editScroll.position.maxScrollExtent);
+      if (anchor == null) {
+        _editScroll.jumpTo(fraction * _editScroll.position.maxScrollExtent);
+        return;
+      }
+      _editScroll.jumpTo(_editOffsetForAnchor(anchor));
     });
+  }
+
+  ({int offset, double dy})? _captureEditAnchor(String text, double fraction) {
+    final viewport =
+        _renderViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewport == null || !viewport.hasSize || text.isEmpty) {
+      return null;
+    }
+    final top = viewport.localToGlobal(Offset.zero).dy;
+    final bottom = top + viewport.size.height;
+    final estimate = fraction * text.length;
+    final blocks = <(double, String)>[];
+    void visit(RenderObject node) {
+      if (node is RenderParagraph || node is RenderEditable) {
+        final box = node as RenderBox;
+        if (box.hasSize) {
+          final globalTop = box.localToGlobal(Offset.zero).dy;
+          if (globalTop + box.size.height > top + 1 &&
+              globalTop < bottom - 1) {
+            final plain = node is RenderParagraph
+                ? node.text.toPlainText()
+                : (node as RenderEditable).text?.toPlainText() ?? '';
+            blocks.add((globalTop - top, plain));
+          }
+        }
+        return;
+      }
+      node.visitChildren(visit);
+    }
+
+    visit(viewport);
+    for (final (dy, plain) in blocks) {
+      final line = plain.split('\n').first.trim();
+      if (line.isEmpty) {
+        continue;
+      }
+      for (final width in const [60, 24]) {
+        final snippet = line.length > width ? line.substring(0, width) : line;
+        var start = text.indexOf(snippet);
+        if (start < 0) {
+          continue;
+        }
+        var best = start;
+        while (start >= 0) {
+          if ((start - estimate).abs() < (best - estimate).abs()) {
+            best = start;
+          }
+          start = text.indexOf(snippet, start + snippet.length);
+        }
+        return (offset: best, dy: dy);
+      }
+    }
+    return null;
+  }
+
+  double _editOffsetForAnchor(({int offset, double dy}) anchor) {
+    final box =
+        _editorFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) {
+      return 0;
+    }
+    final painter = TextPainter(
+      text: TextSpan(
+        text: _contentController.text.substring(0, anchor.offset),
+        style: _editorTextStyle(inkOf(context)),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: math.max(1.0, box.size.width - spaceMd * 2));
+    final y = painter.height;
+    painter.dispose();
+    return (y - anchor.dy).clamp(0.0, _editScroll.position.maxScrollExtent);
   }
 
   void _onRenderScroll() {
@@ -415,6 +539,7 @@ class NoteViewState extends State<NoteView> {
   }
 
   void _jumpToTocEntry(MarkdownTocEntry entry) {
+    _anchorMatch = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_renderScroll.hasClients) {
         return;
@@ -451,6 +576,7 @@ class NoteViewState extends State<NoteView> {
   }
 
   void _scrollToTop() {
+    _anchorMatch = null;
     if (!_renderScroll.hasClients) {
       return;
     }
@@ -530,6 +656,23 @@ class NoteViewState extends State<NoteView> {
     });
   }
 
+  void _openFind() {
+    if (!_editing) {
+      developer.log('skip, 非编辑态忽略笔记内查找快捷键, noteId: ${widget.noteId}');
+      return;
+    }
+    setState(() {
+      _replaceOpen = true;
+      _findOnly = true;
+      _refreshFindMatches(null);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _replaceOpen) {
+        _findFocus.requestFocus();
+      }
+    });
+  }
+
   void _openReplace() {
     if (!_editing) {
       developer.log('skip, 非编辑态忽略替换快捷键, noteId: ${widget.noteId}');
@@ -537,6 +680,7 @@ class NoteViewState extends State<NoteView> {
     }
     setState(() {
       _replaceOpen = true;
+      _findOnly = false;
       _refreshFindMatches(null);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -547,7 +691,10 @@ class NoteViewState extends State<NoteView> {
   }
 
   void _closeReplace() {
-    setState(() => _replaceOpen = false);
+    setState(() {
+      _replaceOpen = false;
+      _findOnly = false;
+    });
     _contentFocus.requestFocus();
   }
 
@@ -719,32 +866,34 @@ class NoteViewState extends State<NoteView> {
               ),
             ],
           ),
-          const SizedBox(height: spaceSm),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _replaceController,
-                  decoration: InputDecoration(
-                    hintText: '替换为',
-                    isDense: true,
-                    focusedBorder: focusedBorder,
+          if (!_findOnly) ...[
+            const SizedBox(height: spaceSm),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _replaceController,
+                    decoration: InputDecoration(
+                      hintText: '替换为',
+                      isDense: true,
+                      focusedBorder: focusedBorder,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: spaceSm),
-              TextButton(
-                onPressed: count == 0 ? null : _replaceCurrent,
-                style: linkStyle,
-                child: const Text('替换'),
-              ),
-              TextButton(
-                onPressed: count == 0 ? null : _replaceAll,
-                style: linkStyle,
-                child: const Text('全部替换'),
-              ),
-            ],
-          ),
+                const SizedBox(width: spaceSm),
+                TextButton(
+                  onPressed: count == 0 ? null : _replaceCurrent,
+                  style: linkStyle,
+                  child: const Text('替换'),
+                ),
+                TextButton(
+                  onPressed: count == 0 ? null : _replaceAll,
+                  style: linkStyle,
+                  child: const Text('全部替换'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1397,7 +1546,12 @@ class NoteViewState extends State<NoteView> {
                         constraints.maxWidth >= _tocColumnMinWidth;
                     final showTocButton =
                         !showTocColumn && _tocVisible && tocEntries.isNotEmpty;
-                    final renderArea = Stack(
+                    final renderArea =
+                        NotificationListener<ScrollMetricsNotification>(
+                      onNotification: _onRenderMetrics,
+                      child: NotificationListener<ScrollNotification>(
+                      onNotification: _onRenderScrollNotification,
+                      child: Stack(
                       key: _renderViewportKey,
                       fit: StackFit.expand,
                       children: [
@@ -1479,6 +1633,8 @@ class NoteViewState extends State<NoteView> {
                             ),
                           ),
                       ],
+                    ),
+                    ),
                     );
                     final Widget body = showTocColumn
                         ? Row(
@@ -1560,6 +1716,10 @@ class NoteViewState extends State<NoteView> {
     return CallbackShortcuts(
       bindings: {
         if (_editing) ...{
+          const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+              _openFind,
+          const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+              _openFind,
           const SingleActivator(LogicalKeyboardKey.keyR, meta: true):
               _openReplace,
           const SingleActivator(LogicalKeyboardKey.keyR, control: true):

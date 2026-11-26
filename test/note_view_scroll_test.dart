@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onenote/data/app_db.dart';
 import 'package:onenote/state/app_state.dart';
+import 'package:onenote/ui/markdown_view.dart';
 import 'package:onenote/ui/note_view.dart';
 import 'package:onenote/ui/theme.dart';
 
@@ -64,7 +65,7 @@ void main() {
       tester.widget<SingleChildScrollView>(
           find.byType(SingleChildScrollView).first);
 
-  testWidgets('entering edit keeps render scroll fraction instead of jumping to end',
+  testWidgets('entering edit near the top keeps caret at the first visible line',
       (tester) async {
     final content = List.generate(150, (i) => 'line $i').join('\n\n');
     final (state, note) = await seed(tester, content);
@@ -76,7 +77,6 @@ void main() {
     expect(maxExtent, greaterThan(0));
     scroll.controller!.jumpTo(24);
     await tester.pumpAndSettle();
-    final fraction = scroll.controller!.position.pixels / maxExtent;
 
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
@@ -87,8 +87,7 @@ void main() {
         .controller!
         .selection
         .baseOffset;
-    expect(caret, (fraction * content.length).round());
-    expect(caret, lessThan(content.length));
+    expect(caret, content.indexOf('line 0'));
 
     final editPosition = tester
         .widgetList<EditableText>(find.byType(EditableText))
@@ -97,6 +96,47 @@ void main() {
         .position;
     expect(editPosition.pixels, lessThan(editPosition.maxScrollExtent * 0.5));
     expect(editPosition.pixels, lessThan(editPosition.maxScrollExtent * 0.95));
+  });
+
+  testWidgets('entering edit anchors caret to the visible heading, not a fraction',
+      (tester) async {
+    final content = '${List.generate(30, (i) => '# head $i').join('\n\n')}\n\n'
+        '${List.generate(10, (i) => 'line $i').join('\n\n')}\n\n'
+        '## buffer tail\n\n'
+        '${List.generate(10, (i) => 'tail $i').join('\n\n')}';
+    final (state, note) = await seed(tester, content);
+    await tester.pumpWidget(app(state, note));
+    await tester.pumpAndSettle();
+
+    final scroll = renderScroll(tester);
+    final heading = find.descendant(
+        of: find.byType(MarkdownView), matching: find.text('buffer tail'));
+    expect(heading, findsOneWidget);
+    final viewportTop =
+        tester.getTopLeft(find.byType(SingleChildScrollView).first).dy;
+    final headingTop = tester.getTopLeft(heading).dy;
+    scroll.controller!.jumpTo(
+        scroll.controller!.position.pixels + headingTop - viewportTop);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    final caret = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .firstWhere((f) => f.expands)
+        .controller!
+        .selection
+        .baseOffset;
+    expect(caret, content.indexOf('buffer tail'));
+
+    final editPosition = tester
+        .widgetList<EditableText>(find.byType(EditableText))
+        .firstWhere((e) => e.maxLines == null)
+        .scrollController!
+        .position;
+    expect(editPosition.pixels, greaterThan(0));
+    expect(editPosition.pixels, lessThan(editPosition.maxScrollExtent));
   });
 
   testWidgets('scroll-top button appears after scrolling and animates back to top',
