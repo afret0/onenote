@@ -164,6 +164,8 @@ flutter build web --release                                # web 产物在 build
 - **PDF 内联（2026-11-26 用户拍板）**：`PdfInline` 全页平铺随笔记滚动（pdfx `openData→getPage→render` png，宽度变化重渲），文件名 caption 保留为可选中/可高亮的文本 span；渲染失败回退 `SizedBox.shrink`。pdfx 文档生命周期是 `close()` 不是 dispose()。附件 ordinal 计数含**所有**资源 a 链接（不再只 pdf），与 builder `linkRefOrdinal`/refCounter 顺序一致。
 - **搜索首命中跳转确定性（2026-11-26）**：`_pendingFirstMatch` 标志在 highlight notify 回调里消费；旧实现单次 postFrame 时 matches 尚空就放弃，导致切换笔记忽而首行忽而命中（真实教训）。
 
+- **附件 GC 宽限期（2026-11-26 真实教训）**：同步每轮开头（含写前拉取）跑 `purgeUnreferenced`；桥接/编辑器上传都是「附件先落盘、笔记引用后写」，无宽限时新附件被当孤儿即删（整页/截图剪藏打开报「附件不存在」）。`AttachmentStore.gcGraceMs`=10 分钟：未引用但 mtime 在宽限内的文件跳过、超龄才删；测试 `test/attachment_gc_grace_test.dart`。
+
 ## 未实现（下一阶段，动工前先与用户确认边界值）
 
 加密正文（内容级 AES-GCM，门禁哈希已落地）、Web 端附件（web 上 attachment store 为 null）。

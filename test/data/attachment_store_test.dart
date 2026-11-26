@@ -51,6 +51,9 @@ text https://example.com/x.png
     final kept = await saveBytes([1], 'keep.png');
     final orphan = await saveBytes([2], 'orphan.png');
     expect(File('${root.path}/$orphan.name').existsSync(), isTrue);
+    final stale = DateTime.now().subtract(const Duration(minutes: 11));
+    store.fileOf(orphan).setLastModifiedSync(stale);
+    File('${root.path}/$orphan.name').setLastModifiedSync(stale);
     final removed = await store.purgeUnreferenced({kept});
     expect(removed, 1);
     expect(await store.listIds(), [kept]);

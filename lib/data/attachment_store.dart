@@ -24,6 +24,7 @@ class AttachmentStore {
   static final RegExp _idFileName = RegExp(r'^[0-9a-f]{64}$');
 
   static const maxAttachmentBytes = 20 * 1024 * 1024;
+  static const gcGraceMs = 10 * 60 * 1000;
   static const scheme = 'onenote-asset';
 
   static final RegExp refPattern =
@@ -112,12 +113,19 @@ class AttachmentStore {
 
   Future<int> purgeUnreferenced(Set<String> referenced) async {
     var removed = 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
     for (final id in await listIds()) {
-      if (!referenced.contains(id)) {
-        await delete(id);
-        removed++;
-        developer.log('done, 孤儿附件已清理, id: $id');
+      if (referenced.contains(id)) {
+        continue;
       }
+      final age = now - (await fileOf(id).lastModified()).millisecondsSinceEpoch;
+      if (age < gcGraceMs) {
+        developer.log('skip, 孤儿附件在宽限期内不清理, id: $id, ageMs: $age, graceMs: $gcGraceMs');
+        continue;
+      }
+      await delete(id);
+      removed++;
+      developer.log('done, 孤儿附件已清理, id: $id, ageMs: $age');
     }
     developer.log('done, 附件清理完成, removed: $removed, referencedCount: ${referenced.length}');
     return removed;
