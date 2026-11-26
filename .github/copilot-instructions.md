@@ -14,8 +14,8 @@
 ## 交付构建与运行（项目级常设规矩，2026-11-25 用户明确）
 
 - **版本号自动递增（2026-11-25 用户拍板）**：每次交付构建前把 `pubspec.yaml` 的 `version: X.Y.Z+N` **patch（Z）+1**（1.0.0 → 1.0.1 → 1.0.2 这种），`+N` build 号保持不变。macOS 的 `CFBundleShortVersionString`/`CFBundleVersion` 经 `FLUTTER_BUILD_NAME`/`FLUTTER_BUILD_NUMBER` 自动取自 pubspec，改 pubspec 即生效。版本号改动随当轮提交入库。
-- **产物命名带版本号（2026-11-25 用户拍板）**：`flutter build macos --release` 后把 `build/macos/Build/Products/Release/onenote.app` **整包拷成 `~/Downloads/onenote_<X.Y.Z>.app`**（`<X.Y.Z>` 取本轮递增后的 patch 版本，不含 `+N`）。**删旧只留最新**：拷前 `rm -rf ~/Downloads/onenote*.app` 清掉所有旧拷贝（含历史无版本号的 `onenote.app`）再 `cp -R`，避免新旧混杂。`.app` 是目录可直接改名，bundle 可执行名仍是 `onenote`，`pgrep -x onenote` 不受影响。
-- **直接 kill 旧运行实例并把新包运行起来，不必询问**：`pgrep -x onenote` 拿 PID 逐个 `kill <PID>`（禁 pkill/killall），`open ~/Downloads/onenote_<X.Y.Z>.app`，再 pgrep 确认新进程在跑。
+- **app 直接装进「应用程序」（2026-11-26 用户拍板，取代 .app 拷 Downloads 的旧规矩）**：`flutter build macos --release` 后把 `build/macos/Build/Products/Release/onenote.app` **整包覆盖成 `/Applications/onenote.app`**（固定名不带版本号——这是用户已安装的入口，Dock/Spotlight 保持稳定；版本看 Info.plist）。**删旧只留最新**：拷前 `rm -rf /Applications/onenote*.app` 再 `cp -R`；**Downloads 不再放 .app**（历史遗留 `~/Downloads/onenote*.app` 顺手清掉）。bundle 可执行名仍是 `onenote`，`pgrep -x onenote` 不受影响。dmg/apk 仍带版本号放 Downloads。
+- **直接 kill 旧运行实例并把新包运行起来，不必询问**：`pgrep -x onenote` 拿 PID 逐个 `kill <PID>`（禁 pkill/killall），`open /Applications/onenote.app`，再 pgrep 确认新进程在跑。
 - 构建失败不递增版本号、不拷不跑，先报告失败原因。
 
 ## 已确认的设计决策（用户拍板，不得擅改）
