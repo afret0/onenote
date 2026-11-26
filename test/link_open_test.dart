@@ -1,11 +1,18 @@
 import 'dart:io';
 
+// ignore: implementation_imports
+import 'package:desktop_drop/src/native_transport.dart';
+import 'package:drift/native.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onenote/data/app_db.dart';
 import 'package:onenote/data/attachment_store.dart';
+import 'package:onenote/state/app_state.dart';
 import 'package:onenote/ui/markdown_view.dart';
+import 'package:onenote/ui/note_view.dart';
 import 'package:onenote/ui/theme.dart';
 
 void main() {
@@ -96,5 +103,114 @@ void main() {
     expect(attached, [id]);
     expect(opened, isEmpty);
     expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('holding the modifier turns link hover into a hand cursor',
+      (tester) async {
+    await pumpLink(tester);
+    final rect = tester.getRect(find.text('v2ray 搭建记录'));
+    final onLink = rect.topLeft + const Offset(4, 10);
+    final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse, pointer: 1);
+    await gesture.addPointer(location: onLink);
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+    MouseCursor? cursor() =>
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1);
+    expect(cursor(), isNot(SystemMouseCursors.click));
+
+    await tester.sendKeyDownEvent(openKey);
+    await tester.pump();
+    expect(cursor(), SystemMouseCursors.click);
+
+    await gesture.moveTo(rect.bottomLeft + const Offset(4, 60));
+    await tester.pump();
+    expect(cursor(), isNot(SystemMouseCursors.click));
+
+    await gesture.moveTo(onLink);
+    await tester.pump();
+    expect(cursor(), SystemMouseCursors.click);
+
+    await tester.sendKeyUpEvent(openKey);
+    await tester.pump();
+    expect(cursor(), isNot(SystemMouseCursors.click));
+  });
+
+  testWidgets('editor link hover shows a hand cursor under the modifier',
+      (tester) async {
+    final binding = TestWidgetsFlutterBinding.ensureInitialized();
+    NativeTransport.debugOverride = NativeTransport.testing()
+      ..invokeHandler = (call) async {
+        if (call.method == 'initialize') {
+          return {'view': (call.arguments as Map)['view']};
+        }
+        return null;
+      };
+    addTearDown(() => NativeTransport.debugOverride = null);
+    final supportDir =
+        Directory.systemTemp.createTempSync('onenote_link_cursor');
+    addTearDown(() => supportDir.deleteSync(recursive: true));
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => supportDir.path,
+    );
+    final db = AppDb(NativeDatabase.memory());
+    final state = AppState(db);
+    addTearDown(() async {
+      state.dispose();
+      await db.close();
+    });
+
+    late Note note;
+    await tester.runAsync(() async {
+      final notebook = await db.createNotebook('work');
+      note = await db.createNote(notebook.id,
+          title: 't', content: '[v2ray 搭建记录]($href)\nplain');
+      await state.init();
+    });
+
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: Scaffold(
+        body: NoteView(
+          state: state,
+          noteId: note.id,
+          showBack: false,
+          onBack: () {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    final field =
+        find.byWidgetPredicate((w) => w is TextField && w.expands);
+    MouseCursor? fieldCursor() => tester.widget<TextField>(field).mouseCursor;
+    final rect = tester.getRect(field);
+    final onLink = rect.topLeft + const Offset(20, 24);
+    final gesture = await tester.createGesture(
+        kind: PointerDeviceKind.mouse, pointer: 1);
+    await gesture.addPointer(location: onLink);
+    addTearDown(gesture.removePointer);
+    await gesture.moveTo(onLink);
+    await tester.pump();
+    expect(fieldCursor(), isNull);
+
+    await tester.sendKeyDownEvent(openKey);
+    await tester.pump();
+    expect(fieldCursor(), SystemMouseCursors.click);
+
+    await gesture.moveTo(rect.topLeft + const Offset(20, 96));
+    await tester.pump();
+    expect(fieldCursor(), isNull);
+
+    await gesture.moveTo(onLink);
+    await tester.pump();
+    expect(fieldCursor(), SystemMouseCursors.click);
+
+    await tester.sendKeyUpEvent(openKey);
+    await tester.pump();
+    expect(fieldCursor(), isNull);
   });
 }

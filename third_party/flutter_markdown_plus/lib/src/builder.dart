@@ -210,6 +210,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     this.highlightController,
     this.tocController,
     this.linkRefOrdinal,
+    this.linkMouseCursor,
   });
 
   /// A delegate that controls how link and `pre` elements behave.
@@ -217,6 +218,9 @@ class MarkdownBuilder implements md.NodeVisitor {
 
   /// Assigns an attachment occurrence ordinal to a link href, or -1.
   final int Function(String href, String text)? linkRefOrdinal;
+
+  /// Cursor applied to link spans; null keeps the plain selectable-text cursor.
+  final MouseCursor? linkMouseCursor;
 
   final String? highlightQuery;
 
@@ -498,6 +502,7 @@ class MarkdownBuilder implements md.NodeVisitor {
                 href: _linkHrefs.last,
                 refOrdinal: _linkOrdinals.last,
                 style: _inlines.last.style,
+                mouseCursor: linkMouseCursor,
                 text: trimText(text.text),
               )
             : TextSpan(

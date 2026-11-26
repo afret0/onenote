@@ -234,6 +234,7 @@ abstract class MarkdownWidget extends StatefulWidget {
     this.highlightController,
     this.tocController,
     this.linkRefOrdinal,
+    this.linkMouseCursor,
   });
 
   /// The Markdown to display.
@@ -366,6 +367,9 @@ abstract class MarkdownWidget extends StatefulWidget {
   /// Assigns an attachment occurrence ordinal to a link href, or -1.
   final int Function(String href, String text)? linkRefOrdinal;
 
+  /// Cursor applied to link spans; null keeps the plain selectable-text cursor.
+  final MouseCursor? linkMouseCursor;
+
   /// Subclasses should override this function to display the given children,
   /// which are the parsed representation of [data].
   @protected
@@ -415,7 +419,8 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
         widget.highlightActiveColor != oldWidget.highlightActiveColor ||
         widget.highlightActiveInk != oldWidget.highlightActiveInk ||
         widget.highlightController != oldWidget.highlightController ||
-        widget.tocController != oldWidget.tocController) {
+        widget.tocController != oldWidget.tocController ||
+        widget.linkMouseCursor != oldWidget.linkMouseCursor) {
       _parseMarkdown();
     }
   }
@@ -481,6 +486,7 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
       highlightController: widget.highlightController,
       tocController: widget.tocController,
       linkRefOrdinal: widget.linkRefOrdinal,
+      linkMouseCursor: widget.linkMouseCursor,
     );
 
     _children = builder.build(astNodes);
@@ -565,6 +571,7 @@ class MarkdownBody extends MarkdownWidget {
     super.highlightController,
     super.tocController,
     super.linkRefOrdinal,
+    super.linkMouseCursor,
   });
 
   /// If [shrinkWrap] is `true`, [MarkdownBody] will take the minimum height

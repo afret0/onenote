@@ -71,6 +71,9 @@ class NoteViewState extends State<NoteView> {
   final MarkdownHighlightController _highlight = MarkdownHighlightController();
   bool _pendingFirstMatch = false;
   int _editorButtons = 0;
+  bool _editorOpenModifier = false;
+  bool _editorLinkHover = false;
+  Offset? _editorHoverPos;
   final MarkdownTocController _toc = MarkdownTocController();
   bool _tocVisible = true;
   int _tocActive = -1;
@@ -109,6 +112,7 @@ class NoteViewState extends State<NoteView> {
     _highlight.addListener(_onHighlightChanged);
     _toc.addListener(_onTocChanged);
     state.addListener(_reloadIfIdle);
+    HardwareKeyboard.instance.addHandler(_syncEditorOpenModifier);
     _load();
     _loadNavPos();
     _loadTocVisible();
@@ -260,6 +264,7 @@ class NoteViewState extends State<NoteView> {
   void dispose() {
     _autosave?.cancel();
     state.removeListener(_reloadIfIdle);
+    HardwareKeyboard.instance.removeHandler(_syncEditorOpenModifier);
     _titleController.dispose();
     _contentController.dispose();
     _findController.dispose();
@@ -863,7 +868,53 @@ class NoteViewState extends State<NoteView> {
     if (!pressed) {
       return;
     }
+    final href = _editorHrefAt(e.position);
+    if (href == null) {
+      return;
+    }
+    final match = AttachmentStore.refPattern.firstMatch(href);
+    if (match != null) {
+      _openAttachment(match.group(1)!);
+      return;
+    }
+    _launchHref(href);
+  }
+
+  bool _syncEditorOpenModifier(KeyEvent event) {
+    final mac = kIsWeb
+        ? defaultTargetPlatform == TargetPlatform.macOS
+        : Platform.isMacOS;
+    final pressed = mac
+        ? HardwareKeyboard.instance.isMetaPressed
+        : HardwareKeyboard.instance.isControlPressed;
+    if (pressed != _editorOpenModifier) {
+      _editorOpenModifier = pressed;
+      _updateEditorLinkHover();
+    }
+    return false;
+  }
+
+  void _onEditorHover(PointerHoverEvent e) {
+    _editorHoverPos = e.position;
+    _updateEditorLinkHover();
+  }
+
+  void _updateEditorLinkHover() {
+    final pos = _editorHoverPos;
+    final hover = _editing &&
+        _editorOpenModifier &&
+        pos != null &&
+        _editorHrefAt(pos) != null;
+    if (hover != _editorLinkHover) {
+      setState(() => _editorLinkHover = hover);
+    }
+  }
+
+  String? _editorHrefAt(Offset global) {
     final root = _editorFieldKey.currentContext?.findRenderObject();
+    if (root == null) {
+      return null;
+    }
     RenderEditable? editable;
     void visit(RenderObject node) {
       if (editable != null) {
@@ -876,24 +927,13 @@ class NoteViewState extends State<NoteView> {
       node.visitChildren(visit);
     }
 
-    if (root != null) {
-      visit(root);
-    }
+    visit(root);
     final ed = editable;
     if (ed == null) {
-      return;
+      return null;
     }
-    final offset = ed.getPositionForPoint(e.position).offset;
-    final href = _hrefAtOffset(_contentController.text, offset);
-    if (href == null) {
-      return;
-    }
-    final match = AttachmentStore.refPattern.firstMatch(href);
-    if (match != null) {
-      _openAttachment(match.group(1)!);
-      return;
-    }
-    _launchHref(href);
+    return _hrefAtOffset(
+        _contentController.text, ed.getPositionForPoint(global).offset);
   }
 
   String? _hrefAtOffset(String text, int offset) {
@@ -1091,11 +1131,20 @@ class NoteViewState extends State<NoteView> {
     final editor = Container(
       color: t.paper,
       padding: const EdgeInsets.symmetric(horizontal: spaceSm),
-      child: Listener(
+      child: MouseRegion(
+        onExit: (_) {
+          _editorHoverPos = null;
+          if (_editorLinkHover) {
+            setState(() => _editorLinkHover = false);
+          }
+        },
+        child: Listener(
         onPointerDown: (e) => _editorButtons = e.buttons,
         onPointerUp: _onEditorPointerUp,
+        onPointerHover: _onEditorHover,
         child: TextField(
         key: _editorFieldKey,
+        mouseCursor: _editorLinkHover ? SystemMouseCursors.click : null,
         controller: _contentController,
         focusNode: _contentFocus,
         scrollController: _editScroll,
@@ -1114,6 +1163,7 @@ class NoteViewState extends State<NoteView> {
           focusedBorder: InputBorder.none,
           contentPadding: EdgeInsets.all(spaceMd),
         ),
+      ),
       ),
       ),
     );

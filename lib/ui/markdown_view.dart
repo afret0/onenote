@@ -66,6 +66,32 @@ class _MarkdownViewState extends State<MarkdownView> {
   final GlobalKey _bodyKey = GlobalKey();
   int _pointerButtons = 0;
   bool _suppressContextMenu = false;
+  bool _openModifier = false;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_syncOpenModifier);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_syncOpenModifier);
+    super.dispose();
+  }
+
+  bool _syncOpenModifier(KeyEvent event) {
+    final mac = kIsWeb
+        ? defaultTargetPlatform == TargetPlatform.macOS
+        : Platform.isMacOS;
+    final pressed = mac
+        ? HardwareKeyboard.instance.isMetaPressed
+        : HardwareKeyboard.instance.isControlPressed;
+    if (pressed != _openModifier) {
+      setState(() => _openModifier = pressed);
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +188,8 @@ class _MarkdownViewState extends State<MarkdownView> {
       _taskContent = content;
     }
     final store = widget.attachments;
+    final MouseCursor? linkCursor =
+        _openModifier ? SystemMouseCursors.click : null;
     int Function(String href, String text)? linkOrdinal;
     Map<String, MarkdownElementBuilder>? attachmentBuilders;
     if (store != null) {
@@ -187,7 +215,8 @@ class _MarkdownViewState extends State<MarkdownView> {
             refCounter: counter, onTap: imageTap, onContext: onContext),
         'a': _ChainLinkBuilder([
           if (onContext != null && pdfTap != null)
-            AttachmentLinkBuilder(store: store, refCounter: counter),
+            AttachmentLinkBuilder(
+                store: store, refCounter: counter, mouseCursor: linkCursor),
           ClipPageLinkBuilder(store, onOpenExternal: widget.onAttachmentLink),
         ]),
       };
@@ -206,6 +235,7 @@ class _MarkdownViewState extends State<MarkdownView> {
       selectable: true,
       fitContent: false,
       linkRefOrdinal: linkOrdinal,
+      linkMouseCursor: linkCursor,
       contextMenuBuilder: _contextMenu,
       highlightQuery: widget.highlightQuery,
       highlightColor: widget.highlightQuery == null ? null : t.searchMark,

@@ -10,10 +10,12 @@ class AttachmentLinkBuilder extends MarkdownElementBuilder {
   AttachmentLinkBuilder({
     required this.store,
     this.refCounter,
+    this.mouseCursor,
   });
 
   final AttachmentStore store;
   final AttachmentRefCounter? refCounter;
+  final MouseCursor? mouseCursor;
 
   @override
   Widget? visitElementAfterWithContext(
@@ -38,6 +40,7 @@ class AttachmentLinkBuilder extends MarkdownElementBuilder {
       MarkdownLinkSpan(
         href: href,
         refOrdinal: ordinal,
+        mouseCursor: mouseCursor,
         children: [
           TextSpan(text: text, style: style),
           WidgetSpan(
