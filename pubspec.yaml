@@ -56,6 +56,8 @@ dependencies:
   local_auth: ^3.0.2
   web: ^1.1.2
   pdfx: ^2.11.0
+  appflowy_editor: ^6.2.0
+  provider: ^6.1.1
 
 dev_dependencies:
   flutter_test:
@@ -77,6 +79,8 @@ dependency_overrides:
     path: third_party/flutter_markdown_plus
   file_picker:
     path: third_party/file_picker
+  appflowy_editor:
+    path: third_party/appflowy_editor
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

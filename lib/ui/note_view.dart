@@ -25,6 +25,7 @@ import 'dialogs.dart';
 import 'markdown_view.dart';
 import 'note_toc.dart';
 import 'password_prompts.dart';
+import 'richtext_note_view.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -82,12 +83,18 @@ class NoteViewState extends State<NoteView> {
   final FocusNode _findFocus = FocusNode();
   final FocusNode _contentFocus = FocusNode();
   final GlobalKey _editorFieldKey = GlobalKey();
+  final GlobalKey<RichTextNoteViewState> _richtextKey = GlobalKey();
   List<int> _findMatches = [];
   int _findIndex = 0;
 
   AppState get state => widget.state;
 
-  Future<void> flushEdits() => _save(silent: true);
+  Future<void> flushEdits() {
+    if (_note?.format == AppDb.noteFormatRichtext) {
+      return _richtextKey.currentState?.flushEdits() ?? Future.value();
+    }
+    return _save(silent: true);
+  }
 
   @override
   void initState() {
@@ -1145,6 +1152,20 @@ class NoteViewState extends State<NoteView> {
     final note = _note;
     if (note == null) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (note.format == AppDb.noteFormatRichtext) {
+      return RichTextNoteView(
+        key: _richtextKey,
+        state: state,
+        noteId: note.id,
+        showBack: widget.showBack,
+        onBack: widget.onBack,
+        highlightQuery: widget.highlightQuery,
+        onShowHistory: () => showNoteHistory(context,
+            state: state, noteId: note.id, onRestored: () async {
+          await _richtextKey.currentState?.reloadAfterRestore();
+        }),
+      );
     }
     final isWideWindow = MediaQuery.sizeOf(context).width >= 900;
     final tocTint = Color(state.notebookColor(note.notebookId));

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/app_db.dart';
+import '../richtext/markdown_codec.dart';
 import '../state/app_state.dart';
 import '../sync/sync_engine.dart';
 import '../window_setup.dart';
@@ -252,6 +253,12 @@ class _HomePageState extends State<HomePage> {
             enabled: !locked,
             child: const Text('版本历史')),
         PopupMenuItem(
+            value: 'format',
+            enabled: !locked,
+            child: Text(note.format == AppDb.noteFormatRichtext
+                ? '转为 Markdown'
+                : '转为富文本')),
+        PopupMenuItem(
             value: 'password',
             child: Text(hasPassword ? '修改密码' : '设置密码')),
         if (hasPassword)
@@ -273,6 +280,8 @@ class _HomePageState extends State<HomePage> {
       await state.moveNote(note.id, 1);
     } else if (value == 'history') {
       await showNoteHistory(context, state: state, noteId: note.id);
+    } else if (value == 'format') {
+      await _switchNoteFormat(note);
     } else if (value == 'password') {
       await setNotePasswordFlow(context, state, note.id);
     } else if (value == 'removePassword') {
@@ -280,6 +289,37 @@ class _HomePageState extends State<HomePage> {
     } else if (value == 'trash') {
       await _trashFromList(note);
     }
+  }
+
+  Future<void> _switchNoteFormat(Note note) async {
+    final toRichtext = note.format != AppDb.noteFormatRichtext;
+    final target =
+        toRichtext ? AppDb.noteFormatRichtext : AppDb.noteFormatMarkdown;
+    if (state.openNoteId == note.id) {
+      await _noteViewKey.currentState?.flushEdits();
+      if (!mounted) {
+        return;
+      }
+    }
+    if (toRichtext) {
+      final fresh = await state.db.getNote(note.id);
+      final lossy = richtextLossyParts(fresh.content);
+      if (lossy.isNotEmpty) {
+        if (!mounted) {
+          return;
+        }
+        final ok = await confirm(context,
+            title: '转为富文本',
+            message: '以下内容无法在富文本中完整保留，转换后可能丢失：\n'
+                '${lossy.join('、')}\n仍要转换吗？',
+            confirmLabel: '仍要转换',
+            danger: true);
+        if (!ok || !mounted) {
+          return;
+        }
+      }
+    }
+    await state.setNoteFormat(note.id, target);
   }
 
   Future<void> _trashFromList(Note note) async {

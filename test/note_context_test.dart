@@ -141,4 +141,22 @@ void main() {
       expect((await db.listTrash()).length, 1);
     });
   });
+
+  testWidgets('format menu switches a markdown note to richtext',
+      (WidgetTester tester) async {
+    final (db, state, _) = await seed(tester);
+    final buffer = state.notes.firstWhere((n) => n.title == 'buffer');
+    expect(buffer.format, AppDb.noteFormatMarkdown);
+
+    await tester.tap(find.widgetWithText(NoteCard, 'buffer'),
+        buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('转为富文本'), findsOneWidget);
+    await tester.tap(find.text('转为富文本'));
+    await tester.pumpAndSettle();
+
+    await tester.runAsync(() async {
+      expect((await db.getNote(buffer.id)).format, AppDb.noteFormatRichtext);
+    });
+  });
 }

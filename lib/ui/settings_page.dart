@@ -468,6 +468,47 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _pickDefaultNoteFormat() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('新建笔记格式'),
+        children: [
+          for (final option in const [
+            (AppDb.noteFormatMarkdown, 'Markdown', '源码编辑，渲染态预览，适合纯文本'),
+            (AppDb.noteFormatRichtext, '富文本', '所见即所得编辑，支持表格与工具栏'),
+          ])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, option.$1),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(option.$2,
+                            style: Theme.of(context).textTheme.bodyMedium),
+                        Text(option.$3,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: inkOf(context).inkMuted)),
+                      ],
+                    ),
+                  ),
+                  if (state.defaultNoteFormat == option.$1)
+                    Icon(Icons.check, size: 18, color: inkOf(context).accentText),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      await state.setDefaultNoteFormat(picked);
+    }
+  }
+
   Future<void> _editClipPort() async {
     final input = await promptText(context,
         title: '桥接端口',
@@ -683,6 +724,20 @@ class _SettingsPageState extends State<SettingsPage> {
                   ? '笔记列表'
                   : '上次笔记',
               onTap: _pickNarrowStartup,
+            ),
+          ]),
+        ]),
+        _group([
+          _SectionTitle('笔记'),
+          _SettingCard(children: [
+            _SettingRow(
+              icon: Icons.edit_note_outlined,
+              title: '新建笔记格式',
+              subtitle: '仅影响新建笔记，已有笔记可在列表右键单独转换',
+              action: state.defaultNoteFormat == AppDb.noteFormatRichtext
+                  ? '富文本'
+                  : 'Markdown',
+              onTap: _pickDefaultNoteFormat,
             ),
           ]),
         ]),

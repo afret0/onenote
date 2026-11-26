@@ -63,6 +63,7 @@ class RemoteNote {
     required this.title,
     this.sortKey,
     this.lock,
+    this.format = 'markdown',
     required this.createAt,
     required this.updateAt,
     this.deletedAt,
@@ -77,6 +78,7 @@ class RemoteNote {
         title: json['title'] as String? ?? '',
         sortKey: json['sortKey'] == null ? null : _asInt(json['sortKey']),
         lock: json['lock'] as String?,
+        format: json['format'] as String? ?? 'markdown',
         createAt: _asInt(json['createAt'] ?? 0),
         updateAt: _asInt(json['updateAt'] ?? 0),
         deletedAt:
@@ -93,6 +95,7 @@ class RemoteNote {
   final String title;
   final int? sortKey;
   final String? lock;
+  final String format;
   final int createAt;
   final int updateAt;
   final int? deletedAt;
@@ -106,6 +109,7 @@ class RemoteNote {
         'title': title,
         if (sortKey != null) 'sortKey': sortKey,
         if (lock != null) 'lock': lock,
+        if (format != 'markdown') 'format': format,
         'createAt': createAt,
         'updateAt': updateAt,
         if (deletedAt != null) 'deletedAt': deletedAt,

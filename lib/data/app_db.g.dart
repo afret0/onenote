@@ -500,6 +500,16 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, Note> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _formatMeta = const VerificationMeta('format');
+  @override
+  late final GeneratedColumn<String> format = GeneratedColumn<String>(
+    'format',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('markdown'),
+  );
   static const VerificationMeta _sortKeyMeta = const VerificationMeta(
     'sortKey',
   );
@@ -559,6 +569,7 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, Note> {
     notebookId,
     title,
     content,
+    format,
     sortKey,
     lock,
     createAt,
@@ -605,6 +616,12 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, Note> {
       );
     } else if (isInserting) {
       context.missing(_contentMeta);
+    }
+    if (data.containsKey('format')) {
+      context.handle(
+        _formatMeta,
+        format.isAcceptableOrUnknown(data['format']!, _formatMeta),
+      );
     }
     if (data.containsKey('sort_key')) {
       context.handle(
@@ -665,6 +682,10 @@ class $NotesTable extends Notes with TableInfo<$NotesTable, Note> {
         DriftSqlType.string,
         data['${effectivePrefix}content'],
       )!,
+      format: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}format'],
+      )!,
       sortKey: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}sort_key'],
@@ -699,6 +720,7 @@ class Note extends DataClass implements Insertable<Note> {
   final String notebookId;
   final String title;
   final String content;
+  final String format;
   final int? sortKey;
   final String? lock;
   final int createAt;
@@ -709,6 +731,7 @@ class Note extends DataClass implements Insertable<Note> {
     required this.notebookId,
     required this.title,
     required this.content,
+    required this.format,
     this.sortKey,
     this.lock,
     required this.createAt,
@@ -722,6 +745,7 @@ class Note extends DataClass implements Insertable<Note> {
     map['notebook_id'] = Variable<String>(notebookId);
     map['title'] = Variable<String>(title);
     map['content'] = Variable<String>(content);
+    map['format'] = Variable<String>(format);
     if (!nullToAbsent || sortKey != null) {
       map['sort_key'] = Variable<int>(sortKey);
     }
@@ -742,6 +766,7 @@ class Note extends DataClass implements Insertable<Note> {
       notebookId: Value(notebookId),
       title: Value(title),
       content: Value(content),
+      format: Value(format),
       sortKey: sortKey == null && nullToAbsent
           ? const Value.absent()
           : Value(sortKey),
@@ -764,6 +789,7 @@ class Note extends DataClass implements Insertable<Note> {
       notebookId: serializer.fromJson<String>(json['notebookId']),
       title: serializer.fromJson<String>(json['title']),
       content: serializer.fromJson<String>(json['content']),
+      format: serializer.fromJson<String>(json['format']),
       sortKey: serializer.fromJson<int?>(json['sortKey']),
       lock: serializer.fromJson<String?>(json['lock']),
       createAt: serializer.fromJson<int>(json['createAt']),
@@ -779,6 +805,7 @@ class Note extends DataClass implements Insertable<Note> {
       'notebookId': serializer.toJson<String>(notebookId),
       'title': serializer.toJson<String>(title),
       'content': serializer.toJson<String>(content),
+      'format': serializer.toJson<String>(format),
       'sortKey': serializer.toJson<int?>(sortKey),
       'lock': serializer.toJson<String?>(lock),
       'createAt': serializer.toJson<int>(createAt),
@@ -792,6 +819,7 @@ class Note extends DataClass implements Insertable<Note> {
     String? notebookId,
     String? title,
     String? content,
+    String? format,
     Value<int?> sortKey = const Value.absent(),
     Value<String?> lock = const Value.absent(),
     int? createAt,
@@ -802,6 +830,7 @@ class Note extends DataClass implements Insertable<Note> {
     notebookId: notebookId ?? this.notebookId,
     title: title ?? this.title,
     content: content ?? this.content,
+    format: format ?? this.format,
     sortKey: sortKey.present ? sortKey.value : this.sortKey,
     lock: lock.present ? lock.value : this.lock,
     createAt: createAt ?? this.createAt,
@@ -816,6 +845,7 @@ class Note extends DataClass implements Insertable<Note> {
           : this.notebookId,
       title: data.title.present ? data.title.value : this.title,
       content: data.content.present ? data.content.value : this.content,
+      format: data.format.present ? data.format.value : this.format,
       sortKey: data.sortKey.present ? data.sortKey.value : this.sortKey,
       lock: data.lock.present ? data.lock.value : this.lock,
       createAt: data.createAt.present ? data.createAt.value : this.createAt,
@@ -831,6 +861,7 @@ class Note extends DataClass implements Insertable<Note> {
           ..write('notebookId: $notebookId, ')
           ..write('title: $title, ')
           ..write('content: $content, ')
+          ..write('format: $format, ')
           ..write('sortKey: $sortKey, ')
           ..write('lock: $lock, ')
           ..write('createAt: $createAt, ')
@@ -846,6 +877,7 @@ class Note extends DataClass implements Insertable<Note> {
     notebookId,
     title,
     content,
+    format,
     sortKey,
     lock,
     createAt,
@@ -860,6 +892,7 @@ class Note extends DataClass implements Insertable<Note> {
           other.notebookId == this.notebookId &&
           other.title == this.title &&
           other.content == this.content &&
+          other.format == this.format &&
           other.sortKey == this.sortKey &&
           other.lock == this.lock &&
           other.createAt == this.createAt &&
@@ -872,6 +905,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
   final Value<String> notebookId;
   final Value<String> title;
   final Value<String> content;
+  final Value<String> format;
   final Value<int?> sortKey;
   final Value<String?> lock;
   final Value<int> createAt;
@@ -883,6 +917,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
     this.notebookId = const Value.absent(),
     this.title = const Value.absent(),
     this.content = const Value.absent(),
+    this.format = const Value.absent(),
     this.sortKey = const Value.absent(),
     this.lock = const Value.absent(),
     this.createAt = const Value.absent(),
@@ -895,6 +930,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
     required String notebookId,
     required String title,
     required String content,
+    this.format = const Value.absent(),
     this.sortKey = const Value.absent(),
     this.lock = const Value.absent(),
     required int createAt,
@@ -912,6 +948,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
     Expression<String>? notebookId,
     Expression<String>? title,
     Expression<String>? content,
+    Expression<String>? format,
     Expression<int>? sortKey,
     Expression<String>? lock,
     Expression<int>? createAt,
@@ -924,6 +961,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
       if (notebookId != null) 'notebook_id': notebookId,
       if (title != null) 'title': title,
       if (content != null) 'content': content,
+      if (format != null) 'format': format,
       if (sortKey != null) 'sort_key': sortKey,
       if (lock != null) 'lock': lock,
       if (createAt != null) 'create_at': createAt,
@@ -938,6 +976,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
     Value<String>? notebookId,
     Value<String>? title,
     Value<String>? content,
+    Value<String>? format,
     Value<int?>? sortKey,
     Value<String?>? lock,
     Value<int>? createAt,
@@ -950,6 +989,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
       notebookId: notebookId ?? this.notebookId,
       title: title ?? this.title,
       content: content ?? this.content,
+      format: format ?? this.format,
       sortKey: sortKey ?? this.sortKey,
       lock: lock ?? this.lock,
       createAt: createAt ?? this.createAt,
@@ -973,6 +1013,9 @@ class NotesCompanion extends UpdateCompanion<Note> {
     }
     if (content.present) {
       map['content'] = Variable<String>(content.value);
+    }
+    if (format.present) {
+      map['format'] = Variable<String>(format.value);
     }
     if (sortKey.present) {
       map['sort_key'] = Variable<int>(sortKey.value);
@@ -1002,6 +1045,7 @@ class NotesCompanion extends UpdateCompanion<Note> {
           ..write('notebookId: $notebookId, ')
           ..write('title: $title, ')
           ..write('content: $content, ')
+          ..write('format: $format, ')
           ..write('sortKey: $sortKey, ')
           ..write('lock: $lock, ')
           ..write('createAt: $createAt, ')
@@ -2766,6 +2810,7 @@ typedef $$NotesTableCreateCompanionBuilder = NotesCompanion Function({
   required String notebookId,
   required String title,
   required String content,
+  Value<String> format,
   Value<int?> sortKey,
   Value<String?> lock,
   required int createAt,
@@ -2778,6 +2823,7 @@ typedef $$NotesTableUpdateCompanionBuilder = NotesCompanion Function({
   Value<String> notebookId,
   Value<String> title,
   Value<String> content,
+  Value<String> format,
   Value<int?> sortKey,
   Value<String?> lock,
   Value<int> createAt,
@@ -2846,6 +2892,11 @@ class $$NotesTableFilterComposer extends Composer<_$AppDb, $NotesTable> {
 
   ColumnFilters<String> get content => $composableBuilder(
     column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get format => $composableBuilder(
+    column: $table.format,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2946,6 +2997,11 @@ class $$NotesTableOrderingComposer extends Composer<_$AppDb, $NotesTable> {
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get format => $composableBuilder(
+    column: $table.format,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get sortKey => $composableBuilder(
     column: $table.sortKey,
     builder: (column) => ColumnOrderings(column),
@@ -3011,6 +3067,9 @@ class $$NotesTableAnnotationComposer extends Composer<_$AppDb, $NotesTable> {
 
   GeneratedColumn<String> get content =>
       $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumn<String> get format =>
+      $composableBuilder(column: $table.format, builder: (column) => column);
 
   GeneratedColumn<int> get sortKey =>
       $composableBuilder(column: $table.sortKey, builder: (column) => column);
@@ -3108,6 +3167,7 @@ class $$NotesTableTableManager
                 Value<String> notebookId = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> content = const Value.absent(),
+                Value<String> format = const Value.absent(),
                 Value<int?> sortKey = const Value.absent(),
                 Value<String?> lock = const Value.absent(),
                 Value<int> createAt = const Value.absent(),
@@ -3119,6 +3179,7 @@ class $$NotesTableTableManager
                 notebookId: notebookId,
                 title: title,
                 content: content,
+                format: format,
                 sortKey: sortKey,
                 lock: lock,
                 createAt: createAt,
@@ -3132,6 +3193,7 @@ class $$NotesTableTableManager
                 required String notebookId,
                 required String title,
                 required String content,
+                Value<String> format = const Value.absent(),
                 Value<int?> sortKey = const Value.absent(),
                 Value<String?> lock = const Value.absent(),
                 required int createAt,
@@ -3143,6 +3205,7 @@ class $$NotesTableTableManager
                 notebookId: notebookId,
                 title: title,
                 content: content,
+                format: format,
                 sortKey: sortKey,
                 lock: lock,
                 createAt: createAt,

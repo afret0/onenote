@@ -38,6 +38,7 @@ class Notes extends Table {
   TextColumn get notebookId => text().references(Notebooks, #id)();
   TextColumn get title => text()();
   TextColumn get content => text()();
+  TextColumn get format => text().withDefault(const Constant('markdown'))();
   IntColumn get sortKey => integer().nullable()();
   TextColumn get lock => text().nullable()();
   IntColumn get createAt => integer()();
@@ -151,6 +152,9 @@ class AppDb extends _$AppDb {
   static const lastViewScopeKey = 'lastViewScope';
   static const lastViewNoteKey = 'lastViewNote';
   static const narrowStartupKey = 'narrowStartup';
+  static const defaultNoteFormatKey = 'defaultNoteFormat';
+  static const noteFormatMarkdown = 'markdown';
+  static const noteFormatRichtext = 'richtext';
   static const clipEnabledKey = 'clipEnabled';
   static const clipPortKey = 'clipPort';
   static const clipTokenKey = 'clipToken';
@@ -205,7 +209,7 @@ class AppDb extends _$AppDb {
   static String spaceDbName(String spaceId) => 'onenote_space_$spaceId';
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -251,6 +255,9 @@ class AppDb extends _$AppDb {
           if (from < 6) {
             await _addColumnIfAbsent(m, notebooks, notebooks.lock);
             await _addColumnIfAbsent(m, notes, notes.lock);
+          }
+          if (from < 7) {
+            await _addColumnIfAbsent(m, notes, notes.format);
           }
         },
       );
@@ -385,7 +392,9 @@ class AppDb extends _$AppDb {
   }
 
   Future<Note> createNote(String notebookId,
-      {String title = '', String content = ''}) async {
+      {String title = '',
+      String content = '',
+      String format = noteFormatMarkdown}) async {
     final now = clock();
     final id = _uuid.v4();
     final siblings = await (select(notes)
@@ -404,13 +413,26 @@ class AppDb extends _$AppDb {
         notebookId: notebookId,
         title: title,
         content: content,
+        format: Value(format),
         sortKey: Value(sortKey),
         createAt: now,
         updateAt: now));
     await _insertVersion(id, title, content, now);
     developer.log(
-        'done, 笔记已创建, noteId: $id, notebookId: $notebookId, sortKey: $sortKey');
+        'done, 笔记已创建, noteId: $id, notebookId: $notebookId, sortKey: $sortKey, format: $format');
     return getNote(id);
+  }
+
+  Future<void> setNoteFormat(String id, String format) async {
+    final note = await getNote(id);
+    if (note.format == format) {
+      developer.log('skip, 笔记格式未变化, noteId: $id, format: $format');
+      return;
+    }
+    await (update(notes)..where((t) => t.id.equals(id))).write(NotesCompanion(
+        format: Value(format), updateAt: Value(clock())));
+    developer.log(
+        'done, 笔记格式已切换, noteId: $id, ${note.format} -> $format');
   }
 
   Future<Note> getNote(String id) =>
@@ -576,13 +598,15 @@ class AppDb extends _$AppDb {
       int createAt,
       int updateAt,
       int? deletedAt,
-      {String? lock}) async {
+      {String? lock,
+      String format = noteFormatMarkdown}) async {
     await transaction(() async {
       await into(notes).insertOnConflictUpdate(NotesCompanion.insert(
           id: id,
           notebookId: notebookId,
           title: title,
           content: content,
+          format: Value(format),
           sortKey: Value(sortKey),
           lock: Value(lock),
           createAt: createAt,

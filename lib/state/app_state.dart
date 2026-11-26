@@ -13,6 +13,7 @@ import '../data/attachment_store.dart';
 import '../data/font_catalog.dart';
 import '../data/font_store.dart';
 import '../data/password_lock.dart';
+import '../richtext/markdown_codec.dart';
 import '../sync/diff3.dart';
 import '../sync/remote_store.dart';
 import '../sync/sync_engine.dart';
@@ -92,6 +93,7 @@ class AppState extends ChangeNotifier {
   Set<String> searchScope = {};
   Map<String, String> lastOpenNote = {};
   String narrowStartup = narrowStartupNote;
+  String defaultNoteFormat = AppDb.noteFormatMarkdown;
   bool _startupRestorePending = true;
   double sidebarWidth = sidebarDefaultWidth;
   double listWidth = listDefaultWidth;
@@ -163,6 +165,14 @@ class AppState extends ChangeNotifier {
       uiFont = savedFont!;
     } else if (savedFont != null) {
       developer.log('skip, 字体设置非法回退默认, raw: $savedFont, fallback: $uiFont');
+    }
+    final savedFormat = await db.getSetting(AppDb.defaultNoteFormatKey);
+    if (savedFormat == AppDb.noteFormatMarkdown ||
+        savedFormat == AppDb.noteFormatRichtext) {
+      defaultNoteFormat = savedFormat!;
+    } else if (savedFormat != null) {
+      developer.log(
+          'skip, 默认笔记格式非法回退默认, raw: $savedFormat, fallback: $defaultNoteFormat');
     }
     fontScale = _loadedDouble(await db.getSetting(AppDb.uiFontScaleKey),
         fontScaleDefault, fontScaleMin, fontScaleMax);
@@ -765,7 +775,7 @@ class AppState extends ChangeNotifier {
       return null;
     }
     await _pullBeforeWrite('createNote');
-    final note = await db.createNote(target);
+    final note = await db.createNote(target, format: defaultNoteFormat);
     await refresh();
     await openNote(note.id);
     _pushAfterWrite('createNote');
@@ -808,7 +818,8 @@ class AppState extends ChangeNotifier {
     if (current == null) {
       developer.log('hit, 保存时远端已删除该笔记按本地改动优先复活, noteId: $id');
       await db.applyRemoteNote(id, before.notebookId, title, content,
-          before.sortKey, before.createAt, db.clock(), before.deletedAt);
+          before.sortKey, before.createAt, db.clock(), before.deletedAt,
+          format: before.format);
       await db.removeTombstone(id);
       await refresh();
       _pushAfterWrite('saveNote');
@@ -1005,6 +1016,51 @@ class AppState extends ChangeNotifier {
     await db.setSetting(AppDb.narrowStartupKey, value);
     developer.log('done, 窄屏启动页面已切换, narrowStartup: $value');
     notifyListeners();
+  }
+
+  Future<void> setDefaultNoteFormat(String format) async {
+    if (format != AppDb.noteFormatMarkdown &&
+        format != AppDb.noteFormatRichtext) {
+      developer.log('skip, 默认笔记格式非法不写入, raw: $format');
+      return;
+    }
+    if (format == defaultNoteFormat) {
+      return;
+    }
+    defaultNoteFormat = format;
+    await db.setSetting(AppDb.defaultNoteFormatKey, format);
+    developer.log('done, 默认笔记格式已切换, defaultNoteFormat: $format');
+    notifyListeners();
+  }
+
+  Future<void> setNoteFormat(String id, String format) async {
+    if (format != AppDb.noteFormatMarkdown &&
+        format != AppDb.noteFormatRichtext) {
+      developer.log('skip, 笔记格式非法不写入, noteId: $id, raw: $format');
+      return;
+    }
+    if (isNoteLocked(id)) {
+      developer.log('skip, 笔记已上锁拦截格式切换, noteId: $id');
+      return;
+    }
+    final note = await db.getNote(id);
+    if (note.format == format) {
+      developer.log('skip, 笔记格式未变化, noteId: $id, format: $format');
+      return;
+    }
+    if (format == AppDb.noteFormatRichtext) {
+      final normalized = richtextNormalize(note.content);
+      if (normalized != note.content) {
+        developer.log(
+            'hit, 转富文本先规范化内容并记版本, noteId: $id, oldLength: ${note.content.length}, newLength: ${normalized.length}');
+        await saveNote(id, note.title, normalized, coalesce: false);
+      }
+    }
+    await _pullBeforeWrite('setNoteFormat');
+    await db.setNoteFormat(id, format);
+    await refresh();
+    _pushAfterWrite('setNoteFormat');
+    developer.log('done, 笔记格式已切换, noteId: $id, format: $format');
   }
 
   Future<void> setClipEnabled(bool enabled) async {

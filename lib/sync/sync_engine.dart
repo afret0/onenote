@@ -533,6 +533,7 @@ class SyncEngine extends ChangeNotifier {
         'title': note.title,
         if (note.sortKey != null) 'sortKey': note.sortKey,
         if (note.lock != null) 'lock': note.lock,
+        if (note.format != 'markdown') 'format': note.format,
         'createAt': note.createAt,
         'updateAt': note.updateAt,
         if (note.deletedAt != null) 'deletedAt': note.deletedAt,
@@ -695,7 +696,7 @@ class SyncEngine extends ChangeNotifier {
         await db.applyRemoteNote(entry.id, entry.notebookId, entry.title,
             content, entry.sortKey, entry.createAt, entry.updateAt,
             entry.deletedAt,
-            lock: entry.lock);
+            lock: entry.lock, format: entry.format);
         await db.setSyncState(
             entry.id, AppDb.syncKindNote, {...remoteMeta, 'content': content});
         if (localTomb != null) {
@@ -732,7 +733,7 @@ class SyncEngine extends ChangeNotifier {
         await db.applyRemoteNote(entry.id, entry.notebookId, entry.title,
             remoteContent, entry.sortKey, entry.createAt, entry.updateAt,
             entry.deletedAt,
-            lock: entry.lock);
+            lock: entry.lock, format: entry.format);
         await db.setSyncState(entry.id, AppDb.syncKindNote, fullRemote);
         _stats.changedLocal = true;
         _stats.downloadedNotes++;
@@ -756,7 +757,8 @@ class SyncEngine extends ChangeNotifier {
             local.createAt,
             mergedUpdateAt,
             resolvedMeta['deletedAt'] as int?,
-            lock: resolvedMeta['lock'] as String?);
+            lock: resolvedMeta['lock'] as String?,
+            format: resolvedMeta['format'] as String? ?? 'markdown');
         await db.setSyncState(entry.id, AppDb.syncKindNote, {
           ...resolvedMeta,
           'updateAt': mergedUpdateAt,
@@ -1085,7 +1087,7 @@ class SyncEngine extends ChangeNotifier {
         await db.applyRemoteNote(entry.id, entry.notebookId, entry.title,
             content, entry.sortKey, entry.createAt, entry.updateAt,
             entry.deletedAt,
-            lock: entry.lock);
+            lock: entry.lock, format: entry.format);
         await db.setSyncState(entry.id, AppDb.syncKindNote,
             {...entry.toJson(), 'content': content});
       }
