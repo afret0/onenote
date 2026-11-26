@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../data/attachment_store.dart';
@@ -13,6 +17,7 @@ class MarkdownView extends StatefulWidget {
     this.attachments,
     this.onAttachmentLink,
     this.onToggleTask,
+    this.browserLauncherOverride,
     this.highlightQuery,
     this.highlightActiveIndex = -1,
     this.highlightController,
@@ -24,6 +29,7 @@ class MarkdownView extends StatefulWidget {
   final AttachmentStore? attachments;
   final void Function(String id)? onAttachmentLink;
   final void Function(int ordinal)? onToggleTask;
+  final Future<void> Function(String url)? browserLauncherOverride;
   final String? highlightQuery;
   final int highlightActiveIndex;
   final MarkdownHighlightController? highlightController;
@@ -180,9 +186,41 @@ class _MarkdownViewState extends State<MarkdownView> {
           widget.onAttachmentLink?.call(match.group(1)!);
           return;
         }
+        if (_openInBrowser(href)) {
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));
       },
     );
+  }
+
+  bool _openInBrowser(String href) {
+    if (kIsWeb) {
+      return false;
+    }
+    final pressed = Platform.isMacOS
+        ? HardwareKeyboard.instance.isMetaPressed
+        : HardwareKeyboard.instance.isControlPressed;
+    if (!pressed) {
+      return false;
+    }
+    final uri = Uri.tryParse(href);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return false;
+    }
+    final override = widget.browserLauncherOverride;
+    if (override != null) {
+      override(href);
+    } else if (Platform.isMacOS) {
+      Process.run('open', [href]);
+    } else if (Platform.isLinux) {
+      Process.run('xdg-open', [href]);
+    } else if (Platform.isWindows) {
+      Process.run('cmd', ['/c', 'start', '', href]);
+    } else {
+      return false;
+    }
+    return true;
   }
 }
 
