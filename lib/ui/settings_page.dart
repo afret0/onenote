@@ -716,8 +716,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 icon: Icons.key_outlined,
                 title: '配对令牌',
                 subtitle: '点击复制，粘贴到插件设置完成配对',
-                action: state.clipToken.isEmpty ? '生成中…' : '',
-                detail: state.clipToken,
+                action: state.clipToken.isEmpty
+                    ? '生成中…'
+                    : '${state.clipToken.substring(0, 6)}…',
                 onTap: _copyClipToken,
               ),
               Divider(height: 1, color: t.hairline),
@@ -850,14 +851,12 @@ class _SettingRow extends StatelessWidget {
     required this.subtitle,
     required this.action,
     required this.onTap,
-    this.detail = '',
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final String action;
-  final String detail;
   final VoidCallback onTap;
 
   @override
@@ -883,14 +882,6 @@ class _SettingRow extends StatelessWidget {
                           .textTheme
                           .bodySmall
                           ?.copyWith(color: t.inkMuted)),
-                  if (detail.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(detail,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: t.accentText,
-                            fontFamily: monoFamily,
-                            fontWeight: FontWeight.w600)),
-                  ],
                 ],
               ),
             ),
