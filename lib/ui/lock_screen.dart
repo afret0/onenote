@@ -10,6 +10,31 @@ import '../state/lock_attempts.dart';
 import '../sync/sync_engine.dart';
 import 'theme.dart';
 
+class _MaskedPasswordController extends TextEditingController {
+  bool _masked = true;
+
+  set masked(bool value) {
+    if (_masked == value) {
+      return;
+    }
+    _masked = value;
+    notifyListeners();
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    if (!_masked) {
+      return super.buildTextSpan(
+          context: context, style: style, withComposing: withComposing);
+    }
+    return TextSpan(text: '•' * text.length, style: style);
+  }
+}
+
 class LockGate extends StatefulWidget {
   const LockGate({super.key, required this.globalDb, required this.onUnlocked});
 
@@ -21,7 +46,7 @@ class LockGate extends StatefulWidget {
 }
 
 class _LockGateState extends State<LockGate> {
-  final _controller = TextEditingController();
+  final _controller = _MaskedPasswordController();
   final _focus = FocusNode();
   bool _preparing = true;
   bool _obscure = true;
@@ -324,18 +349,21 @@ class _LockGateState extends State<LockGate> {
                 TextField(
                   controller: _controller,
                   focusNode: _focus,
-                  autofocus: false,
-                  obscureText: _obscure,
+                  autofocus: true,
+                  obscureText: false,
                   enableSuggestions: false,
                   autocorrect: false,
+                  enableInteractiveSelection: !_obscure,
                   decoration: InputDecoration(
                     labelText: '密码',
                     suffixIcon: Semantics(
                       button: true,
                       label: _obscure ? '显示密码' : '隐藏密码',
                       child: IconButton(
-                        onPressed: () =>
-                            setState(() => _obscure = !_obscure),
+                        onPressed: () => setState(() {
+                          _obscure = !_obscure;
+                          _controller.masked = _obscure;
+                        }),
                         style: const ButtonStyle(
                           mouseCursor: WidgetStatePropertyAll(
                               SystemMouseCursors.click),

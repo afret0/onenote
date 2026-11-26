@@ -344,4 +344,36 @@ void main() {
     expect(entered, isNot(same(db)));
     track(entered!);
   });
+
+  testWidgets('密码框自动聚焦不走系统密码框, 掩码显示可揭示', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+    });
+    await pumpGate(tester, db, (d, s) {});
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.autofocus, isTrue);
+    expect(field.obscureText, isFalse);
+    final editable = tester.widget<EditableText>(find.byType(EditableText));
+    expect(editable.focusNode.hasFocus, isTrue);
+
+    await tester.enterText(find.byType(TextField), 'abc123');
+    await tester.pump();
+    final spanContext = tester.element(find.byType(EditableText));
+    expect(
+        editable.controller
+            .buildTextSpan(context: spanContext, withComposing: false)
+            .text,
+        '••••••');
+    expect(editable.controller.text, 'abc123');
+
+    await tester.tap(find.byIcon(Icons.visibility_outlined));
+    await tester.pump();
+    expect(
+        editable.controller
+            .buildTextSpan(context: spanContext, withComposing: false)
+            .text,
+        'abc123');
+  });
 }
