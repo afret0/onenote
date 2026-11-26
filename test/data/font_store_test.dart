@@ -125,4 +125,55 @@ void main() {
     }
     expect(await db.getSetting(AppDb.localFontsKey), '[]');
   });
+
+  test('在线目录条目元数据完整', () {
+    final ids = <String>{};
+    for (final entry in fontCatalog) {
+      expect(ids.add(entry.id), isTrue, reason: entry.id);
+      expect(entry.name, isNotEmpty);
+      expect(entry.files, isNotEmpty);
+      expect(entry.downloadBytes, greaterThan(0));
+      expect(
+          entry.licenseUrl.isNotEmpty || entry.licenseZipMember.isNotEmpty,
+          isTrue,
+          reason: entry.id);
+      final weights = <int>{};
+      for (final file in entry.files) {
+        expect(weights.add(file.weight), isTrue, reason: entry.id);
+        expect(file.weight, anyOf(400, 500, 600, 700));
+        expect(file.fileName, isNotEmpty);
+        expect(file.bytes, greaterThan(0), reason: file.fileName);
+        if (entry.isZip) {
+          expect(file.zipMember, isNotEmpty, reason: file.fileName);
+        } else {
+          expect(file.url, startsWith('https://'), reason: file.fileName);
+        }
+      }
+      if (entry.isZip) {
+        expect(entry.zipUrl, startsWith('https://'));
+        expect(entry.zipBytes, greaterThan(0));
+      }
+    }
+  });
+
+  test('zip 包配 licenseUrl 时许可单独下载', () async {
+    final catalog = fontCatalogById('zhuque-fangsong')!;
+    final archive = Archive();
+    for (final file in catalog.files) {
+      final bytes = utf8.encode('ttf:${file.zipMember}');
+      archive.addFile(ArchiveFile(file.zipMember, bytes.length, bytes));
+    }
+    final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive));
+    final fake = LocalFontStore.forTest(root,
+        fetcher: (url, {onProgress}) async =>
+            url == catalog.licenseUrl ? utf8.encode('OFL text') : zipBytes,
+        registrar: (family, weights) async => registered.add(family));
+    await fake.loadRegistry(db);
+    final entry = await fake.download(catalog);
+    expect(entry.weights.keys.toSet(), {400});
+    expect(File('${root.path}/${entry.id}-400.ttf').readAsBytesSync(),
+        utf8.encode('ttf:${catalog.files[0].zipMember}'));
+    expect(File('${root.path}/${entry.id}-LICENSE.txt').readAsStringSync(),
+        'OFL text');
+  });
 }

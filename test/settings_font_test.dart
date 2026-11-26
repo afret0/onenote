@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onenote/data/app_db.dart';
+import 'package:onenote/data/font_catalog.dart';
 import 'package:onenote/state/app_state.dart';
 import 'package:onenote/ui/settings_page.dart';
 import 'package:onenote/ui/theme.dart';
@@ -63,7 +64,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('霞鹜文楷'), findsOneWidget);
     expect(find.text('思源黑体'), findsOneWidget);
-    expect(find.text('下载'), findsNWidgets(2));
+    expect(find.text('思源宋体'), findsOneWidget);
+    expect(find.text('朱雀仿宋'), findsOneWidget);
+    expect(find.text('霞鹜文楷屏幕版'), findsOneWidget);
+    expect(find.text('Maple Mono 中文'), findsOneWidget);
+    expect(find.text('下载'), findsNWidgets(fontCatalog.length));
   });
 
   testWidgets('imported local font can be selected and deleted',

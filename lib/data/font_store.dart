@@ -213,10 +213,10 @@ class LocalFontStore {
         entry.weights[file.weight] = dest;
         receivedBase += bytes.length;
       }
-      if (catalog.licenseUrl.isNotEmpty) {
-        final license = await fetcher(catalog.licenseUrl);
-        await File('${root.path}/${entry.id}-LICENSE.txt').writeAsBytes(license);
-      }
+    }
+    if (catalog.licenseZipMember.isEmpty && catalog.licenseUrl.isNotEmpty) {
+      final license = await fetcher(catalog.licenseUrl);
+      await File('${root.path}/${entry.id}-LICENSE.txt').writeAsBytes(license);
     }
     fonts.add(entry);
     await _persist();
