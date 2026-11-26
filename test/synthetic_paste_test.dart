@@ -23,6 +23,15 @@ void main() {
     );
   }
 
+  Future<void> deliverSyntheticSelectAll() async {
+    await binding.defaultBinaryMessenger.handlePlatformMessage(
+      'onenote/synthetic_paste',
+      const StandardMethodCodec()
+          .encodeMethodCall(const MethodCall('selectAll')),
+      (_) {},
+    );
+  }
+
   void mockClipboard(String text) {
     binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -54,6 +63,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.text, 'from raycast');
+  });
+
+  testWidgets('synthetic select all selects focused field text',
+      (tester) async {
+    SyntheticPaste.install();
+    final controller = TextEditingController(text: 'secret');
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TextField(controller: controller, autofocus: true),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await deliverSyntheticSelectAll();
+    await tester.pumpAndSettle();
+
+    expect(controller.selection.baseOffset, 0);
+    expect(controller.selection.extentOffset, 'secret'.length);
   });
 
   testWidgets('ancestor PasteTextIntent override wins over standard paste',

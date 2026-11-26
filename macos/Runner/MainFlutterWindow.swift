@@ -32,12 +32,14 @@ class MainFlutterWindow: NSWindow {
       }
       let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
       guard flags.contains(.command),
-        event.charactersIgnoringModifiers?.lowercased() == "v",
+        let key = event.charactersIgnoringModifiers?.lowercased(),
+        key == "v" || key == "a",
         !self.commandSeenInEventStream
       else { return event }
       if event.type == .keyDown {
-        NSLog("onenote: synthetic Cmd+V intercepted, dispatching paste")
-        self.pasteChannel?.invokeMethod("paste", arguments: nil)
+        let method = key == "v" ? "paste" : "selectAll"
+        NSLog("onenote: synthetic Cmd+\(key.uppercased()) intercepted, dispatching \(method)")
+        self.pasteChannel?.invokeMethod(method, arguments: nil)
       }
       return nil
     }
