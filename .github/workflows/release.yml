@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [pubspec.yaml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: 3.47.9
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      exists: ${{ steps.ver.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(sed -n 's/^version: \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)+.*/\1/p' pubspec.yaml)
+          if [ -z "$version" ]; then
+            echo "pubspec version not found" >&2
+            exit 1
+          fi
+          if gh release view "v$version" >/dev/null 2>&1; then
+            exists=true
+          else
+            exists=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+          echo "version=$version exists=$exists"
+
+  macos:
+    needs: detect
+    if: needs.detect.outputs.exists == 'false'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      VER: ${{ needs.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Package dmg
+        run: |
+          mkdir dmg-staging
+          cp -R build/macos/Build/Products/Release/onenote.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "onenote $VER" -srcfolder dmg-staging -ov -format UDZO "onenote_$VER.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: onenote_${{ env.VER }}.dmg
+          retention-days: 1
+          if-no-files-found: error
+
+  android:
+    needs: detect
+    if: needs.detect.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VER: ${{ needs.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release --target-platform android-arm64
+      - run: mv build/app/outputs/flutter-apk/app-release.apk "onenote_$VER.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: onenote_${{ env.VER }}.apk
+          retention-days: 1
+          if-no-files-found: error
+
+  web:
+    needs: detect
+    if: needs.detect.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VER: ${{ needs.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build web --release
+      - run: cd build/web && zip -qr "$GITHUB_WORKSPACE/onenote_${VER}_web.zip" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: onenote_${{ env.VER }}_web.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  windows:
+    needs: detect
+    if: needs.detect.outputs.exists == 'false'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      VER: ${{ needs.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Package zip
+        shell: pwsh
+        run: |
+          $out = Get-ChildItem -Path build/windows -Recurse -Directory -Filter Release |
+            Where-Object { Test-Path (Join-Path $_.FullName 'onenote.exe') } |
+            Select-Object -First 1
+          if (-not $out) { throw 'windows release output not found' }
+          Compress-Archive -Path (Join-Path $out.FullName '*') -DestinationPath "onenote_${env:VER}_windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: onenote_${{ env.VER }}_windows.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  release:
+    needs: [detect, macos, android, web, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VER: ${{ needs.detect.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        run: gh release create "v$VER" dist/* --target "$GITHUB_SHA" --title "onenote v$VER" --generate-notes
+      - name: Prune old releases
+        run: |
+          gh release list --limit 200 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[5:] | .[].tagName' |
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            gh release delete "$tag" --yes --cleanup-tag
+          done
