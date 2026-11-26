@@ -131,6 +131,7 @@ jobs:
     timeout-minutes: 45
     env:
       VER: ${{ needs.detect.outputs.version }}
+      CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
