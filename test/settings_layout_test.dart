@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onenote/app_version.dart';
 import 'package:onenote/data/app_db.dart';
 import 'package:onenote/state/app_state.dart';
 import 'package:onenote/ui/settings_page.dart';
@@ -46,13 +47,13 @@ void main() {
 
   testWidgets('narrow settings stays single column with search scope last',
       (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(800, 2600);
+    tester.view.physicalSize = const Size(800, 2800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final state = await seed(tester);
     await pumpSettings(tester, state);
 
-    const titles = ['字体', '启动', '数据保留', '同步', '密码与隐私', '剪藏', '即将上线', '搜索范围'];
+    const titles = ['字体', '启动', '笔记', '数据保留', '同步', '密码与隐私', '剪藏', '即将上线', '搜索范围', '关于'];
     for (final title in titles) {
       expect(dx(tester, title), dx(tester, '字体'));
     }
@@ -70,14 +71,17 @@ void main() {
     await pumpSettings(tester, state);
 
     expect(dx(tester, '启动'), dx(tester, '字体'));
+    expect(dx(tester, '笔记'), dx(tester, '字体'));
     expect(dx(tester, '数据保留'), dx(tester, '字体'));
     expect(dx(tester, '同步'), dx(tester, '字体'));
     expect(dx(tester, '密码与隐私'), greaterThan(dx(tester, '字体')));
     expect(dx(tester, '剪藏'), dx(tester, '密码与隐私'));
     expect(dx(tester, '即将上线'), dx(tester, '剪藏'));
     expect(dx(tester, '搜索范围'), dx(tester, '剪藏'));
+    expect(dx(tester, '关于'), dx(tester, '剪藏'));
     expect(dy(tester, '即将上线'), greaterThan(dy(tester, '剪藏')));
     expect(dy(tester, '搜索范围'), greaterThan(dy(tester, '即将上线')));
+    expect(dy(tester, '关于'), greaterThan(dy(tester, '搜索范围')));
   });
 
   testWidgets('settings back button uses click cursor without tooltip',
@@ -106,12 +110,34 @@ void main() {
     await pumpSettings(tester, state);
 
     expect(dx(tester, '启动'), dx(tester, '字体'));
+    expect(dx(tester, '笔记'), dx(tester, '字体'));
     expect(dx(tester, '数据保留'), dx(tester, '字体'));
     expect(dx(tester, '同步'), greaterThan(dx(tester, '字体')));
     expect(dx(tester, '密码与隐私'), dx(tester, '同步'));
     expect(dx(tester, '剪藏'), dx(tester, '同步'));
     expect(dx(tester, '即将上线'), greaterThan(dx(tester, '剪藏')));
     expect(dx(tester, '搜索范围'), dx(tester, '即将上线'));
+    expect(dx(tester, '关于'), dx(tester, '即将上线'));
+    expect(dy(tester, '关于'), greaterThan(dy(tester, '搜索范围')));
+  });
+
+  testWidgets('about section shows app version from bundled pubspec',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 2800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final state = await seed(tester);
+    rootBundle.evict(appVersionAssetKey);
+    var version = '';
+    await tester.runAsync(() async {
+      version = await loadAppVersion();
+    });
+    await pumpSettings(tester, state);
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(version, matches(RegExp(r'^v\d+\.\d+\.\d+$')));
+    expect(find.text('关于'), findsOneWidget);
+    expect(find.text(version), findsOneWidget);
   });
 
   testWidgets('background and blur lock toggles are independent switches',

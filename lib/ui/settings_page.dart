@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_version.dart';
 import '../data/app_db.dart';
 import '../lock/biometrics.dart';
 import '../state/app_state.dart';
@@ -26,6 +27,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _versionDays = AppDb.defaultRetentionDays;
   String _syncProtocol = AppDb.syncProtocolOff;
   bool _bioAvailable = false;
+  String _appVersion = '';
 
   AppState get state => widget.state;
 
@@ -34,6 +36,14 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _loadRetention();
     _loadBio();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await loadAppVersion();
+    if (mounted && version.isNotEmpty) {
+      setState(() => _appVersion = version);
+    }
   }
 
   Future<void> _loadBio() async {
@@ -804,6 +814,33 @@ class _SettingsPageState extends State<SettingsPage> {
                         .bodySmall
                         ?.copyWith(color: t.inkFaint)),
               ),
+          ]),
+        ]),
+        _group([
+          _SectionTitle('关于'),
+          _SettingCard(children: [
+            Padding(
+              padding: const EdgeInsets.all(spaceMd),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 20, color: t.inkMuted),
+                  const SizedBox(width: spaceMd),
+                  Expanded(
+                    child: Text('版本',
+                        style: Theme.of(context).textTheme.bodyMedium),
+                  ),
+                  const SizedBox(width: spaceSm),
+                  Text(_appVersion,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodyMedium
+                          ?.copyWith(
+                              color: t.accentText,
+                              fontFamily: monoFamily,
+                              fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
           ]),
         ]),
       ];
