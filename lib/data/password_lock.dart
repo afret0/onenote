@@ -9,6 +9,7 @@ class PasswordLock {
     required this.salt,
     required this.hash,
     required this.updateAt,
+    this.len = 0,
     this.cleared = false,
   });
 
@@ -21,6 +22,7 @@ class PasswordLock {
   final String salt;
   final String hash;
   final int updateAt;
+  final int len;
   final bool cleared;
 
   bool get active => !cleared && salt.isNotEmpty && hash.isNotEmpty;
@@ -40,6 +42,7 @@ class PasswordLock {
         salt: json['salt'] as String? ?? '',
         hash: json['hash'] as String? ?? '',
         updateAt: (json['updateAt'] as num?)?.toInt() ?? 0,
+        len: (json['len'] as num?)?.toInt() ?? 0,
         cleared: json['cleared'] == true,
       );
 
@@ -47,6 +50,7 @@ class PasswordLock {
         if (salt.isNotEmpty) 'salt': salt,
         if (hash.isNotEmpty) 'hash': hash,
         'updateAt': updateAt,
+        if (len > 0) 'len': len,
         if (cleared) 'cleared': true,
       };
 
@@ -63,6 +67,7 @@ class PasswordLock {
       salt: base64Encode(salt),
       hash: base64Encode(derive(password, salt)),
       updateAt: updateAt,
+      len: password.length,
     );
   }
 

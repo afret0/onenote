@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -227,5 +228,120 @@ void main() {
     await pumpUntil(tester, () => entered != null);
     expect(entered, same(db));
     expect(fake.authCalls, 1);
+  });
+
+  Future<void> waitUntil(WidgetTester tester, bool Function() done) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (!done() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await tester.pump();
+    }
+  }
+
+  testWidgets('输对密码自动解锁无需回车', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+    });
+    AppDb? entered;
+    await pumpGate(tester, db, (d, s) => entered = d);
+    await tester.runAsync(() async {
+      await tester.enterText(find.byType(TextField), 'right-pass');
+      await waitUntil(tester, () => entered != null);
+    });
+    expect(entered, same(db));
+    await tester.runAsync(() async {
+      expect(await db.getSetting(AppDb.lockFailCountKey), '0');
+    });
+  });
+
+  testWidgets('输错同长密码不提示不计次, 回车才计次', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('right-pass', 1000).encode());
+    });
+    AppDb? entered;
+    await pumpGate(tester, db, (d, s) => entered = d);
+    await tester.runAsync(() async {
+      await tester.enterText(find.byType(TextField), 'wrong-pass');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await tester.pump();
+    });
+    expect(find.text('密码错误，请重试'), findsNothing);
+    expect(entered, isNull);
+    await tester.runAsync(() async {
+      expect(await db.getSetting(AppDb.lockFailCountKey), isNull);
+      await tester.tap(find.text('解锁'));
+      await waitUntil(tester,
+          () => find.text('密码错误，请重试').evaluate().isNotEmpty);
+      expect(await db.getSetting(AppDb.lockFailCountKey), '1');
+    });
+    expect(entered, isNull);
+  });
+
+  testWidgets('旧锁无长度不自动提交仍走回车', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      final lock = PasswordLock.create('right-pass', 1000);
+      await db.setSetting(
+          AppDb.appLockKey,
+          jsonEncode({
+            'salt': lock.salt,
+            'hash': lock.hash,
+            'updateAt': lock.updateAt
+          }));
+    });
+    AppDb? entered;
+    await pumpGate(tester, db, (d, s) => entered = d);
+    await tester.runAsync(() async {
+      await tester.enterText(find.byType(TextField), 'right-pass');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await tester.pump();
+    });
+    expect(entered, isNull);
+    await tester.tap(find.text('解锁'));
+    await tester.pump();
+    await tester.pump();
+    expect(entered, same(db));
+  });
+
+  testWidgets('隐私空间长密码输到根密码长度不打断', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('wxyz', 1000).encode());
+      final ref = PrivacySpaceRef(
+          id: 'gate-space-auto',
+          lock: PasswordLock.create('secret-pass', 2000),
+          createAt: 2000);
+      final engine = SyncEngine(db);
+      await engine.provisionPrivacySpace(ref);
+      engine.dispose();
+      await db.setSetting(AppDb.privacySpaceKey, ref.encode());
+    });
+    AppDb? entered;
+    String? enteredSpace;
+    await pumpGate(tester, db, (d, s) {
+      entered = d;
+      enteredSpace = s;
+    });
+    await tester.runAsync(() async {
+      await tester.enterText(find.byType(TextField), 'abcd');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(enteredSpace, isNull);
+      expect(find.text('密码错误，请重试'), findsNothing);
+      expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          'abcd');
+      await tester.enterText(find.byType(TextField), 'secret-pass');
+      await waitUntil(tester, () => enteredSpace != null);
+    });
+    expect(enteredSpace, 'gate-space-auto');
+    expect(entered, isNotNull);
+    expect(entered, isNot(same(db)));
+    track(entered!);
   });
 }

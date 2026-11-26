@@ -29,6 +29,7 @@ class _LockGateState extends State<LockGate> {
   bool _bioAvailable = false;
   String? _error;
   int _cooldownMs = 0;
+  List<PasswordLock> _autoLocks = [];
   Timer? _cooldownTimer;
   late final LockAttempts _rootAttempts;
 
@@ -66,11 +67,13 @@ class _LockGateState extends State<LockGate> {
     final bio = bioEnabled && await Biometrics.available();
     final autoBio = bio && await Biometrics.hasEnrolledBiometrics();
     final cooling = await _rootAttempts.cooldownRemainingMs();
+    final autoLocks = await _collectAutoLocks();
     if (!mounted) {
       return;
     }
     setState(() {
       _preparing = false;
+      _autoLocks = autoLocks;
       _bioAvailable = bio;
       if (cooling > 0) {
         _startCooldown(cooling);
@@ -86,6 +89,41 @@ class _LockGateState extends State<LockGate> {
         }
       });
     }
+  }
+
+  Future<List<PasswordLock>> _collectAutoLocks() async {
+    final locks = <PasswordLock>[];
+    final root =
+        PasswordLock.parse(await widget.globalDb.getSetting(AppDb.appLockKey));
+    if (root != null && root.active && root.len > 0) {
+      locks.add(root);
+    }
+    final ref = PrivacySpaceRef.parse(
+        await widget.globalDb.getSetting(AppDb.privacySpaceKey));
+    if (ref != null && ref.active && ref.lock.len > 0) {
+      locks.add(ref.lock);
+    }
+    developer.log('done, 自动解锁候选锁数: ${locks.length}');
+    return locks;
+  }
+
+  void _autoSubmit(String value) {
+    if (_busy || _preparing || _cooldownMs > 0 || value.isEmpty) {
+      return;
+    }
+    final candidates =
+        _autoLocks.where((lock) => lock.len == value.length);
+    if (candidates.isEmpty) {
+      return;
+    }
+    for (final lock in candidates) {
+      if (lock.verify(value)) {
+        developer.log('hit, 静默校验通过自动提交, len: ${value.length}');
+        _submit();
+        return;
+      }
+    }
+    developer.log('skip, 长度达标静默校验未通过, len: ${value.length}');
   }
 
   void _startCooldown(int ms) {
@@ -312,6 +350,7 @@ class _LockGateState extends State<LockGate> {
                       ),
                     ),
                   ),
+                  onChanged: _autoSubmit,
                   onSubmitted: (_) => _submit(),
                 ),
                 if (cooling) ...[
