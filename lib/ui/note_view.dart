@@ -14,10 +14,12 @@ import 'package:mime/mime.dart';
 import 'package:pasteboard/pasteboard.dart';
 
 import '../data/app_db.dart';
+import '../data/attachment_refs.dart';
 import '../data/attachment_store.dart';
 import '../data/markdown_tasks.dart';
 import '../state/app_state.dart';
 import '../window_setup.dart';
+import 'attachment_viewer.dart';
 import 'conflict_panel.dart';
 import 'dialogs.dart';
 import 'markdown_view.dart';
@@ -836,9 +838,40 @@ class NoteViewState extends State<NoteView> {
       _snack('附件文件不存在');
       return;
     }
-    final name = (await store.nameOf(id) ?? id).replaceAll(RegExp(r'[/\\]'), '_');
+    final name = await store.nameOf(id) ?? id;
+    if (!mounted) {
+      return;
+    }
+    await _openExternally(bytes, name);
+  }
+
+  Future<void> _openPdfViewer(String id, int ordinal) async {
+    final store = state.attachments;
+    if (store == null) {
+      return;
+    }
+    final bytes = await store.read(id);
+    if (bytes == null) {
+      _snack('附件文件不存在');
+      return;
+    }
+    final name = await store.nameOf(id) ?? id;
+    if (!mounted) {
+      return;
+    }
+    await showPdfViewer(
+      context,
+      bytes: bytes,
+      name: name,
+      onAction: (action) => _attachmentAction(action, id, ordinal),
+      onOpenExternal: () => _openExternally(bytes, name),
+    );
+  }
+
+  Future<void> _openExternally(Uint8List bytes, String name) async {
+    final safeName = name.replaceAll(RegExp(r'[/\\]'), '_');
     final dir = await Directory.systemTemp.createTemp('onenote_open');
-    final file = File('${dir.path}/$name');
+    final file = File('${dir.path}/$safeName');
     await file.writeAsBytes(bytes);
     if (Platform.isMacOS) {
       await Process.run('open', [file.path]);
@@ -847,6 +880,107 @@ class NoteViewState extends State<NoteView> {
     } else if (Platform.isWindows) {
       await Process.run('cmd', ['/c', 'start', '', file.path]);
     }
+  }
+
+  Future<void> _openImageViewer(String id, int ordinal, Uint8List bytes) async {
+    final store = state.attachments;
+    if (store == null) {
+      return;
+    }
+    final name = await store.nameOf(id) ?? id;
+    if (!mounted) {
+      return;
+    }
+    await showImageViewer(
+      context,
+      bytes: bytes,
+      name: name,
+      onAction: (action) => _attachmentAction(action, id, ordinal),
+    );
+  }
+
+  Future<void> _attachmentContext(String id, int ordinal, Offset pos) async {
+    final value = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx, pos.dy),
+      items: [
+        const PopupMenuItem(value: 'save', child: Text('另存为')),
+        const PopupMenuItem(value: 'copy', child: Text('复制')),
+        PopupMenuItem(
+            value: 'delete',
+            child: Text('删除',
+                style: TextStyle(color: inkOf(context).danger))),
+      ],
+    );
+    if (value == null || !mounted) {
+      return;
+    }
+    final message = await _attachmentAction(value, id, ordinal);
+    if (message != null && mounted) {
+      _snack(message);
+    }
+  }
+
+  Future<String?> _attachmentAction(String action, String id, int ordinal) async {
+    final store = state.attachments;
+    if (store == null) {
+      return null;
+    }
+    if (action == 'delete') {
+      final ok = await confirm(
+        context,
+        title: '删除附件',
+        message: '将从正文移除这一处引用，可在版本历史中恢复。',
+        confirmLabel: '删除',
+        danger: true,
+      );
+      if (!ok || !mounted) {
+        return null;
+      }
+      final content = _contentController.text;
+      final updated = removeAttachmentRefAt(content, id, ordinal);
+      if (updated == null) {
+        return '未找到对应引用';
+      }
+      setState(() {
+        _note = _note?.copyWith(content: updated);
+        _contentController.text = updated;
+      });
+      _changed();
+      return '已删除';
+    }
+    final bytes = await store.read(id);
+    if (bytes == null) {
+      return '附件文件不存在';
+    }
+    final name = await store.nameOf(id) ?? id;
+    if (!mounted) {
+      return null;
+    }
+    if (action == 'save') {
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: '另存为',
+        fileName: name.replaceAll(RegExp(r'[/\\]'), '_'),
+      );
+      if (path == null) {
+        return null;
+      }
+      await File(path).writeAsBytes(bytes, flush: true);
+      return '已另存为 $path';
+    }
+    if (action == 'copy') {
+      if (!isPdfLinkText(name)) {
+        await Pasteboard.writeImage(bytes);
+        return '图片已复制';
+      }
+      final safeName = name.replaceAll(RegExp(r'[/\\]'), '_');
+      final dir = await Directory.systemTemp.createTemp('onenote_copy');
+      final file = File('${dir.path}/$safeName');
+      await file.writeAsBytes(bytes);
+      await Pasteboard.writeFiles([file.path]);
+      return '文件已复制';
+    }
+    return null;
   }
 
   Widget _editorArea() {
@@ -1122,6 +1256,9 @@ class NoteViewState extends State<NoteView> {
                                     content: note.content,
                                     attachments: state.attachments,
                                     onAttachmentLink: _openAttachment,
+                                    onAttachmentPdfTap: _openPdfViewer,
+                                    onAttachmentImageTap: _openImageViewer,
+                                    onAttachmentContext: _attachmentContext,
                                     onToggleTask: _toggleTask,
                                     highlightQuery: widget.highlightQuery,
                                     highlightActiveIndex: _matchIndex,

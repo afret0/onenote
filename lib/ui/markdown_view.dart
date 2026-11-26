@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../data/attachment_refs.dart';
 import '../data/attachment_store.dart';
 import '../data/markdown_tasks.dart';
 import 'attachment_image.dart';
+import 'attachment_link.dart';
 import 'theme.dart';
 
 class MarkdownView extends StatefulWidget {
@@ -16,6 +18,9 @@ class MarkdownView extends StatefulWidget {
     required this.content,
     this.attachments,
     this.onAttachmentLink,
+    this.onAttachmentPdfTap,
+    this.onAttachmentImageTap,
+    this.onAttachmentContext,
     this.onToggleTask,
     this.browserLauncherOverride,
     this.highlightQuery,
@@ -28,6 +33,11 @@ class MarkdownView extends StatefulWidget {
   final String content;
   final AttachmentStore? attachments;
   final void Function(String id)? onAttachmentLink;
+  final void Function(String id, int ordinal)? onAttachmentPdfTap;
+  final void Function(String id, int ordinal, Uint8List bytes)?
+      onAttachmentImageTap;
+  final void Function(String id, int ordinal, Offset position)?
+      onAttachmentContext;
   final void Function(int ordinal)? onToggleTask;
   final Future<void> Function(String url)? browserLauncherOverride;
   final String? highlightQuery;
@@ -47,6 +57,8 @@ class _MarkdownViewState extends State<MarkdownView> {
   Color? _sheetTint;
   String? _taskContent;
   List<bool> _taskStates = const [];
+  String? _refContent;
+  Map<String, int> _refTotals = const {};
 
   @override
   Widget build(BuildContext context) {
@@ -142,6 +154,26 @@ class _MarkdownViewState extends State<MarkdownView> {
       _taskContent = content;
     }
     final store = widget.attachments;
+    Map<String, MarkdownElementBuilder>? attachmentBuilders;
+    if (store != null) {
+      if (!identical(_refContent, content)) {
+        _refTotals = content.contains('${AttachmentStore.scheme}://')
+            ? renderedAttachmentRefTotals(content)
+            : const {};
+        _refContent = content;
+      }
+      final counter = AttachmentRefCounter(_refTotals);
+      final imageTap = widget.onAttachmentImageTap;
+      final onContext = widget.onAttachmentContext;
+      final pdfTap = widget.onAttachmentPdfTap;
+      attachmentBuilders = {
+        'img': AttachmentImageBuilder(store,
+            refCounter: counter, onTap: imageTap, onContext: onContext),
+        if (onContext != null && pdfTap != null)
+          'a': AttachmentLinkBuilder(
+              onTap: pdfTap, onContext: onContext, refCounter: counter),
+      };
+    }
     final toggle = widget.onToggleTask;
     final taskCount = toggle == null ? 0 : _taskStates.length;
     final lineHeight = sheet.p!.fontSize! * sheet.p!.height!;
@@ -173,9 +205,7 @@ class _MarkdownViewState extends State<MarkdownView> {
           tint: widget.tint,
         );
       },
-      builders: store == null
-          ? const {}
-          : {'img': AttachmentImageBuilder(store)},
+      builders: attachmentBuilders ?? const {},
       styleSheet: sheet,
       onTapLink: (text, href, title) {
         if (href == null) {

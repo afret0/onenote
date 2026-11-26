@@ -312,7 +312,7 @@ class MarkdownBuilder implements md.NodeVisitor {
       }
       _blocks.add(bElement);
     } else {
-      if (tag == 'a' && !builders.containsKey('a')) {
+      if (tag == 'a') {
         final String? text = extractTextFromElement(element);
         // Don't add empty links
         if (text == null) {
@@ -567,6 +567,12 @@ class MarkdownBuilder implements md.NodeVisitor {
           styleSheet.styles[tag],
           parent.style,
         );
+        // The link handler is always pushed in visitElementBefore; pop it here
+        // whether the custom builder replaced the link or fell back to the
+        // default link spans (child == null).
+        if (tag == 'a') {
+          _linkHandlers.removeLast();
+        }
         if (child != null) {
           // The returned widget represents the entire element, so discard all
           // existing inline children — replacing only children[0] leaves any
