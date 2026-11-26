@@ -113,4 +113,33 @@ void main() {
     expect(dx(tester, '即将上线'), greaterThan(dx(tester, '剪藏')));
     expect(dx(tester, '搜索范围'), dx(tester, '即将上线'));
   });
+
+  testWidgets('background and blur lock toggles are independent switches',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final state = await seed(tester);
+    await tester.runAsync(() => state.setAppPassword('p'));
+    await pumpSettings(tester, state);
+
+    final bgTile = find.ancestor(
+        of: find.text('切后台即锁'), matching: find.byType(InkWell));
+    final blurTile = find.ancestor(
+        of: find.text('失焦即锁'), matching: find.byType(InkWell));
+    expect(bgTile, findsOneWidget);
+    expect(blurTile, findsOneWidget);
+
+    await tester.tap(find.descendant(
+        of: blurTile, matching: find.byType(Switch)));
+    await tester.pumpAndSettle();
+    expect(state.appBlurLock, isFalse);
+    expect(state.appBackgroundLock, isTrue);
+
+    await tester.tap(find.descendant(
+        of: bgTile, matching: find.byType(Switch)));
+    await tester.pumpAndSettle();
+    expect(state.appBackgroundLock, isFalse);
+    expect(state.appBlurLock, isFalse);
+  });
 }

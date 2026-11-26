@@ -611,10 +611,20 @@ class _SettingsPageState extends State<SettingsPage> {
               _SwitchRow(
                 icon: Icons.visibility_off_outlined,
                 title: '切后台即锁',
-                subtitle: '窗口失焦或应用退到后台时立即锁定',
+                subtitle: '应用退到后台时立即锁定',
                 value: state.appBackgroundLock,
                 onChanged: state.setAppBackgroundLock,
               ),
+              if (isDesktopWindow) ...[
+                Divider(height: 1, color: t.hairline),
+                _SwitchRow(
+                  icon: Icons.center_focus_weak_outlined,
+                  title: '失焦即锁',
+                  subtitle: '窗口失去焦点时立即锁定',
+                  value: state.appBlurLock,
+                  onChanged: state.setAppBlurLock,
+                ),
+              ],
               if (_bioAvailable) ...[
                 Divider(height: 1, color: t.hairline),
                 _SwitchRow(

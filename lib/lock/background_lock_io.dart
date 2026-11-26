@@ -5,14 +5,16 @@ import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
 class BackgroundLock with WidgetsBindingObserver {
-  BackgroundLock._(this._onBackground);
+  BackgroundLock._(this._onBackground, this._onBlur);
 
   final void Function() _onBackground;
+  final void Function() _onBlur;
   Window? _window;
   ListenerId? _listenerId;
 
-  static BackgroundLock install(void Function() onBackground) {
-    final lock = BackgroundLock._(onBackground);
+  static BackgroundLock install(
+      void Function() onBackground, void Function() onBlur) {
+    final lock = BackgroundLock._(onBackground, onBlur);
     WidgetsBinding.instance.addObserver(lock);
     if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       final window = WindowManager.instance.getCurrent();
@@ -29,8 +31,8 @@ class BackgroundLock with WidgetsBindingObserver {
 
   void _onWindowEvent(WindowEvent event) {
     if (event is WindowBlurredEvent) {
-      developer.log('hit, 窗口失焦触发后台锁定');
-      _onBackground();
+      developer.log('hit, 窗口失焦触发失焦锁定');
+      _onBlur();
     }
   }
 

@@ -9,7 +9,8 @@ class BackgroundLock {
   final void Function() _onBackground;
   JSFunction? _listener;
 
-  static BackgroundLock install(void Function() onBackground) {
+  static BackgroundLock install(
+      void Function() onBackground, void Function() onBlur) {
     final lock = BackgroundLock._(onBackground);
     lock._listener = ((web.Event event) {
       if (web.document.visibilityState == 'hidden') {

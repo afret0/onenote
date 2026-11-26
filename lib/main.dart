@@ -64,7 +64,7 @@ class _OneNoteAppState extends State<OneNoteApp> {
     });
     s.init();
     _backgroundLock?.dispose();
-    _backgroundLock = BackgroundLock.install(_onBackground);
+    _backgroundLock = BackgroundLock.install(_onBackground, _onBlur);
     developer.log('done, 已进入空间, spaceId: ${spaceId ?? ''}');
   }
 
@@ -76,6 +76,19 @@ class _OneNoteAppState extends State<OneNoteApp> {
     if (!s.appBackgroundLock || s.appLock?.active != true) {
       developer.log(
           'skip, 后台锁定未启用或未设密码, enabled: ${s.appBackgroundLock}, hasLock: ${s.appLock?.active == true}');
+      return;
+    }
+    s.lockApp();
+  }
+
+  void _onBlur() {
+    final s = state;
+    if (s == null || _relocking) {
+      return;
+    }
+    if (!s.appBlurLock || s.appLock?.active != true) {
+      developer.log(
+          'skip, 失焦锁定未启用或未设密码, enabled: ${s.appBlurLock}, hasLock: ${s.appLock?.active == true}');
       return;
     }
     s.lockApp();

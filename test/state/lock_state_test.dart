@@ -301,4 +301,35 @@ void main() {
       expect(state.isNotebookLocked(work.id), isTrue);
     });
   });
+
+  group('后台与失焦锁定开关', () {
+    test('缺省两个开关都开', () async {
+      await state.init();
+      expect(state.appBackgroundLock, isTrue);
+      expect(state.appBlurLock, isTrue);
+    });
+
+    test('老库只有关闭的后台开关时失焦开关继承其值', () async {
+      await db.setSetting(AppDb.appBackgroundLockKey, '0');
+      await state.init();
+      expect(state.appBackgroundLock, isFalse);
+      expect(state.appBlurLock, isFalse);
+    });
+
+    test('两个开关独立存取, 失焦开关落库后不再跟随后台开关', () async {
+      await db.setSetting(AppDb.appBackgroundLockKey, '0');
+      await state.init();
+      await state.setAppBlurLock(true);
+      await state.setAppBackgroundLock(true);
+      await state.setAppBlurLock(false);
+      expect(await db.getSetting(AppDb.appBlurLockKey), '0');
+      expect(await db.getSetting(AppDb.appBackgroundLockKey), '1');
+
+      final restarted = AppState(db);
+      addTearDown(restarted.dispose);
+      await restarted.init();
+      expect(restarted.appBackgroundLock, isTrue);
+      expect(restarted.appBlurLock, isFalse);
+    });
+  });
 }

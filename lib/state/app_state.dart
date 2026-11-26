@@ -95,6 +95,7 @@ class AppState extends ChangeNotifier {
   ClipServer? _clipServer;
   int lockLeaseMinutes = lockLeaseDefaultMinutes;
   bool appBackgroundLock = true;
+  bool appBlurLock = true;
   bool lockBio = true;
   PasswordLock? appLock;
   PrivacySpaceRef? privacyRef;
@@ -125,6 +126,13 @@ class AppState extends ChangeNotifier {
     }
     appBackgroundLock =
         await db.getSetting(AppDb.appBackgroundLockKey) != '0';
+    final savedBlur = await db.getSetting(AppDb.appBlurLockKey);
+    if (savedBlur != null) {
+      appBlurLock = savedBlur != '0';
+    } else {
+      appBlurLock = appBackgroundLock;
+      developer.log('done, 失焦即锁继承后台开关值, enabled: $appBlurLock');
+    }
     lockBio = await globalDb.getSetting(AppDb.lockBioKey) != '0';
     await reloadLockMarkers();
     notebooks = await db.listNotebooks();
@@ -438,6 +446,16 @@ class AppState extends ChangeNotifier {
     appBackgroundLock = enabled;
     await db.setSetting(AppDb.appBackgroundLockKey, enabled ? '1' : '0');
     developer.log('done, 切后台即锁已更新, enabled: $enabled');
+    notifyListeners();
+  }
+
+  Future<void> setAppBlurLock(bool enabled) async {
+    if (enabled == appBlurLock) {
+      return;
+    }
+    appBlurLock = enabled;
+    await db.setSetting(AppDb.appBlurLockKey, enabled ? '1' : '0');
+    developer.log('done, 失焦即锁已更新, enabled: $enabled');
     notifyListeners();
   }
 
