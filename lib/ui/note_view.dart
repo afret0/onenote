@@ -458,23 +458,35 @@ class NoteViewState extends State<NoteView> {
     return null;
   }
 
+  RenderEditable? _editRender() {
+    final root = _editorFieldKey.currentContext?.findRenderObject();
+    if (root == null) {
+      return null;
+    }
+    RenderEditable? editable;
+    void visit(RenderObject node) {
+      if (editable != null) {
+        return;
+      }
+      if (node is RenderEditable) {
+        editable = node;
+        return;
+      }
+      node.visitChildren(visit);
+    }
+
+    visit(root);
+    return editable;
+  }
+
   double _editOffsetForAnchor(({int offset, double dy}) anchor) {
-    final box =
-        _editorFieldKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) {
+    final ed = _editRender();
+    if (ed == null || !ed.hasSize || !_editScroll.hasClients) {
       return 0;
     }
-    final painter = TextPainter(
-      text: TextSpan(
-        text: _contentController.text.substring(0, anchor.offset),
-        style: _editorTextStyle(inkOf(context)),
-      ),
-      textDirection: TextDirection.ltr,
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout(maxWidth: math.max(1.0, box.size.width - spaceMd * 2));
-    final y = painter.height;
-    painter.dispose();
-    return (y - anchor.dy).clamp(0.0, _editScroll.position.maxScrollExtent);
+    final rect = ed.getLocalRectForCaret(TextPosition(offset: anchor.offset));
+    return (_editScroll.position.pixels + rect.top - anchor.dy)
+        .clamp(0.0, _editScroll.position.maxScrollExtent);
   }
 
   void _onRenderScroll() {
@@ -1060,24 +1072,7 @@ class NoteViewState extends State<NoteView> {
   }
 
   String? _editorHrefAt(Offset global) {
-    final root = _editorFieldKey.currentContext?.findRenderObject();
-    if (root == null) {
-      return null;
-    }
-    RenderEditable? editable;
-    void visit(RenderObject node) {
-      if (editable != null) {
-        return;
-      }
-      if (node is RenderEditable) {
-        editable = node;
-        return;
-      }
-      node.visitChildren(visit);
-    }
-
-    visit(root);
-    final ed = editable;
+    final ed = _editRender();
     if (ed == null) {
       return null;
     }

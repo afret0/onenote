@@ -139,6 +139,61 @@ void main() {
     expect(editPosition.pixels, lessThan(editPosition.maxScrollExtent));
   });
 
+  testWidgets('entering edit on a narrow pane keeps the visible line at the same height',
+      (tester) async {
+    final buf = StringBuffer();
+    for (var i = 0; i < 18; i++) {
+      buf.writeln('# head $i');
+      buf.writeln();
+      buf.writeln('```shell');
+      buf.writeln(
+          'docker run -d --restart=always --privileged --network=host --name v2raya -e V2RAYA_V2RAY_BIN=/usr/local/bin/xray -v /lib/modules:/lib/modules:ro crpi-xtji99kuw7fdubxj.cn-hangzhou.personal.cr.aliyuncs.com/afret0/v2raya');
+      buf.writeln('```');
+      buf.writeln();
+    }
+    buf.writeln('anchor 中文可见行');
+    buf.writeln();
+    buf.writeln(List.generate(10, (i) => 'tail $i').join('\n\n'));
+    final content = buf.toString();
+    final (state, note) = await seed(tester, content);
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 560,
+            child: NoteView(
+                state: state, noteId: note.id, showBack: false, onBack: () {}),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final scroll = renderScroll(tester).controller!;
+    final viewportTop =
+        tester.getTopLeft(find.byType(SingleChildScrollView).first).dy;
+    final target = find.text('anchor 中文可见行');
+    scroll.jumpTo(
+        scroll.position.pixels + tester.getTopLeft(target).dy - viewportTop - 4);
+    await tester.pumpAndSettle();
+    final renderDy = tester.getTopLeft(target).dy - viewportTop;
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    final editable = tester
+        .stateList<EditableTextState>(find.byType(EditableText))
+        .firstWhere((s) => s.widget.maxLines == null);
+    expect(editable.widget.controller.selection.baseOffset,
+        content.indexOf('anchor 中文可见行'));
+    final caret = editable.renderEditable
+        .getLocalRectForCaret(TextPosition(offset: content.indexOf('anchor 中文可见行')));
+    final caretGlobal = editable.renderEditable.localToGlobal(caret.topLeft);
+    final editTop = tester.getTopLeft(find.byType(TextField).last).dy;
+    expect(caretGlobal.dy - editTop, moreOrLessEquals(renderDy + spaceMd, epsilon: 6));
+  });
+
   testWidgets('scroll-top button appears after scrolling and animates back to top',
       (tester) async {
     final content = List.generate(150, (i) => 'line $i').join('\n\n');
