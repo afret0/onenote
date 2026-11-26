@@ -6,6 +6,9 @@ import 'package:local_auth/local_auth.dart';
 
 class Biometrics {
   static final LocalAuthentication _auth = LocalAuthentication();
+  static int _promptDepth = 0;
+
+  static bool get promptActive => _promptDepth > 0;
 
   static bool get supported =>
       !kIsWeb &&
@@ -55,6 +58,7 @@ class Biometrics {
       developer.log('skip, 当前平台无生物识别实现');
       return false;
     }
+    _promptDepth++;
     try {
       final ok = await _auth.authenticate(
         localizedReason: reason,
@@ -66,6 +70,8 @@ class Biometrics {
     } catch (err) {
       developer.log('skip, 生物识别调用失败回退密码, err: $err');
       return false;
+    } finally {
+      _promptDepth--;
     }
   }
 }

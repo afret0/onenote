@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:local_auth_platform_interface/local_auth_platform_interface.dart';
 
 class FakeLocalAuth extends LocalAuthPlatform {
@@ -6,12 +8,14 @@ class FakeLocalAuth extends LocalAuthPlatform {
     this.deviceSupported = true,
     this.enrolled = const [BiometricType.fingerprint],
     this.authResult = true,
+    this.authGate,
   });
 
   bool canCheck;
   bool deviceSupported;
   List<BiometricType> enrolled;
   bool authResult;
+  Completer<bool>? authGate;
   int authCalls = 0;
   String? lastReason;
   AuthenticationOptions? lastOptions;
@@ -25,6 +29,10 @@ class FakeLocalAuth extends LocalAuthPlatform {
     authCalls++;
     lastReason = localizedReason;
     lastOptions = options;
+    final gate = authGate;
+    if (gate != null) {
+      return gate.future;
+    }
     return authResult;
   }
 

@@ -7,6 +7,7 @@ import 'data/container_migration.dart';
 import 'data/font_store.dart';
 import 'data/password_lock.dart';
 import 'lock/background_lock.dart';
+import 'lock/biometrics.dart';
 import 'state/app_state.dart';
 import 'sync/sync_engine.dart';
 import 'synthetic_paste.dart';
@@ -86,6 +87,10 @@ class _OneNoteAppState extends State<OneNoteApp> {
     if (s == null || _relocking) {
       return;
     }
+    if (Biometrics.promptActive) {
+      developer.log('skip, 自家生物识别认证在途, 退后台不自锁');
+      return;
+    }
     if (s.systemLockTrusted) {
       developer.log('skip, 信任系统应用锁退后台不自锁, 门禁全托管系统锁');
       return;
@@ -101,6 +106,10 @@ class _OneNoteAppState extends State<OneNoteApp> {
   void _onBlur() {
     final s = state;
     if (s == null || _relocking) {
+      return;
+    }
+    if (Biometrics.promptActive) {
+      developer.log('skip, 自家生物识别认证在途, 失焦不自锁');
       return;
     }
     if (s.systemLockTrusted) {
