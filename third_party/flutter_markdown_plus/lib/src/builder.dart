@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -211,6 +214,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     this.tocController,
     this.linkRefOrdinal,
     this.linkMouseCursor,
+    this.gutter = 0,
   });
 
   /// A delegate that controls how link and `pre` elements behave.
@@ -221,6 +225,10 @@ class MarkdownBuilder implements md.NodeVisitor {
 
   /// Cursor applied to link spans; null keeps the plain selectable-text cursor.
   final MouseCursor? linkMouseCursor;
+
+  /// Horizontal inset moved from an ancestor padding into each root block so
+  /// clicks in the margin still start text selection.
+  final double gutter;
 
   final String? highlightQuery;
 
@@ -641,6 +649,14 @@ class MarkdownBuilder implements md.NodeVisitor {
         );
       }
 
+      if (gutter > 0 && _blocks.length == 1) {
+        child = _GutterBox(
+          inset: gutter,
+          clampHits: !_isListTag(tag) && tag != 'pre' && tag != 'table',
+          child: child,
+        );
+      }
+
       _addBlockChild(child);
     } else {
       final _InlineElement current = _inlines.removeLast();
@@ -930,6 +946,17 @@ class MarkdownBuilder implements md.NodeVisitor {
     parent.nextListIndex += 1;
   }
 
+  Alignment _blockHitAlignment(WrapAlignment alignment) {
+    switch (alignment) {
+      case WrapAlignment.center:
+        return Alignment.center;
+      case WrapAlignment.end:
+        return Alignment.centerRight;
+      default:
+        return Alignment.centerLeft;
+    }
+  }
+
   void _addAnonymousBlockIfNeeded() {
     if (_inlines.isEmpty) {
       return;
@@ -954,10 +981,19 @@ class MarkdownBuilder implements md.NodeVisitor {
         inline.children,
         textAlign,
       );
+      final List<Widget> wrapChildren =
+          mergedInlines.length == 1 && mergedInlines.single is SelectableText
+              ? <Widget>[
+                  _TextHitSlack(
+                    alignment: _blockHitAlignment(blockAlignment),
+                    child: mergedInlines.single,
+                  )
+                ]
+              : mergedInlines;
       final Wrap wrap = Wrap(
         crossAxisAlignment: WrapCrossAlignment.center,
         alignment: blockAlignment,
-        children: mergedInlines,
+        children: wrapChildren,
       );
 
       if (textPadding == EdgeInsets.zero) {
@@ -1424,5 +1460,156 @@ class _ScrollControllerBuilderState extends State<_ScrollControllerBuilder> {
   @override
   Widget build(BuildContext context) {
     return widget.builder(context, _controller, widget.child);
+  }
+}
+
+class _TextHitSlack extends SingleChildRenderObjectWidget {
+  const _TextHitSlack({required this.alignment, required super.child});
+
+  final Alignment alignment;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderTextHitSlack(alignment);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderTextHitSlack renderObject) {
+    renderObject.alignment = alignment;
+  }
+}
+
+class _RenderTextHitSlack extends RenderShiftedBox {
+  _RenderTextHitSlack(this._alignment) : super(null);
+
+  Alignment _alignment;
+  Alignment get alignment => _alignment;
+  set alignment(Alignment value) {
+    if (_alignment == value) {
+      return;
+    }
+    _alignment = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    final RenderBox? child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    child.layout(constraints.loosen(), parentUsesSize: true);
+    final double width =
+        constraints.hasBoundedWidth ? constraints.maxWidth : child.size.width;
+    size = constraints.constrain(Size(width, child.size.height));
+    final BoxParentData childParentData = child.parentData! as BoxParentData;
+    childParentData.offset = alignment
+        .inscribe(child.size, Offset.zero & size)
+        .topLeft;
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final RenderBox? child = this.child;
+    if (child == null) {
+      return false;
+    }
+    final BoxParentData childParentData = child.parentData! as BoxParentData;
+    final Offset local = position - childParentData.offset;
+    final Offset clamped = Offset(
+      local.dx.clamp(0.0, math.max(0.0, child.size.width - precisionErrorTolerance)),
+      local.dy.clamp(0.0, math.max(0.0, child.size.height - precisionErrorTolerance)),
+    );
+    return result.addWithPaintOffset(
+      offset: childParentData.offset,
+      position: clamped,
+      hitTest: (BoxHitTestResult result, Offset transformed) =>
+          child.hitTest(result, position: clamped),
+    );
+  }
+}
+
+class _GutterBox extends SingleChildRenderObjectWidget {
+  const _GutterBox({
+    required this.inset,
+    required this.clampHits,
+    required super.child,
+  });
+
+  final double inset;
+  final bool clampHits;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderGutterBox(inset, clampHits);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderGutterBox renderObject) {
+    renderObject
+      ..inset = inset
+      ..clampHits = clampHits;
+  }
+}
+
+class _RenderGutterBox extends RenderShiftedBox {
+  _RenderGutterBox(this._inset, this.clampHits) : super(null);
+
+  double _inset;
+  double get inset => _inset;
+  set inset(double value) {
+    if (_inset == value) {
+      return;
+    }
+    _inset = value;
+    markNeedsLayout();
+  }
+
+  bool clampHits;
+
+  @override
+  void performLayout() {
+    final RenderBox? child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    if (!constraints.hasBoundedWidth) {
+      child.layout(constraints, parentUsesSize: true);
+      size = constraints.constrain(child.size);
+      (child.parentData! as BoxParentData).offset = Offset.zero;
+      return;
+    }
+    final double width = math.max(0.0, constraints.maxWidth - inset * 2);
+    child.layout(
+      constraints.copyWith(minWidth: width, maxWidth: width),
+      parentUsesSize: true,
+    );
+    size = constraints.constrain(Size(width + inset * 2, child.size.height));
+    final BoxParentData childParentData = child.parentData! as BoxParentData;
+    childParentData.offset = Offset(inset, 0);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final RenderBox? child = this.child;
+    if (child == null) {
+      return false;
+    }
+    final BoxParentData childParentData = child.parentData! as BoxParentData;
+    if (!clampHits) {
+      return super.hitTestChildren(result, position: position);
+    }
+    final Offset local = Offset(
+      (position.dx - childParentData.offset.dx)
+          .clamp(0.0, math.max(0.0, child.size.width - precisionErrorTolerance)),
+      (position.dy - childParentData.offset.dy)
+          .clamp(0.0, math.max(0.0, child.size.height - precisionErrorTolerance)),
+    );
+    return result.addWithPaintOffset(
+      offset: childParentData.offset,
+      position: local,
+      hitTest: (BoxHitTestResult result, Offset transformed) =>
+          child.hitTest(result, position: local),
+    );
   }
 }

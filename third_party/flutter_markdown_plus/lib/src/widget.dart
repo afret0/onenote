@@ -235,6 +235,7 @@ abstract class MarkdownWidget extends StatefulWidget {
     this.tocController,
     this.linkRefOrdinal,
     this.linkMouseCursor,
+    this.gutter = 0,
   });
 
   /// The Markdown to display.
@@ -370,6 +371,10 @@ abstract class MarkdownWidget extends StatefulWidget {
   /// Cursor applied to link spans; null keeps the plain selectable-text cursor.
   final MouseCursor? linkMouseCursor;
 
+  /// Horizontal inset moved from an ancestor padding into each root block so
+  /// clicks in the margin still start text selection.
+  final double gutter;
+
   /// Subclasses should override this function to display the given children,
   /// which are the parsed representation of [data].
   @protected
@@ -420,7 +425,8 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
         widget.highlightActiveInk != oldWidget.highlightActiveInk ||
         widget.highlightController != oldWidget.highlightController ||
         widget.tocController != oldWidget.tocController ||
-        widget.linkMouseCursor != oldWidget.linkMouseCursor) {
+        widget.linkMouseCursor != oldWidget.linkMouseCursor ||
+        widget.gutter != oldWidget.gutter) {
       _parseMarkdown();
     }
   }
@@ -487,6 +493,7 @@ class _MarkdownWidgetState extends State<MarkdownWidget> implements MarkdownBuil
       tocController: widget.tocController,
       linkRefOrdinal: widget.linkRefOrdinal,
       linkMouseCursor: widget.linkMouseCursor,
+      gutter: widget.gutter,
     );
 
     _children = builder.build(astNodes);
@@ -572,6 +579,7 @@ class MarkdownBody extends MarkdownWidget {
     super.tocController,
     super.linkRefOrdinal,
     super.linkMouseCursor,
+    super.gutter,
   });
 
   /// If [shrinkWrap] is `true`, [MarkdownBody] will take the minimum height

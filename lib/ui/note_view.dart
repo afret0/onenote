@@ -1406,21 +1406,22 @@ class NoteViewState extends State<NoteView> {
                               'noteScroll:${widget.noteId}'),
                           controller: _renderScroll,
                           padding: const EdgeInsets.fromLTRB(
-                              spaceLg, spaceLg, spaceLg, spaceXxl),
+                              0, spaceLg, 0, spaceXxl),
                           child: Center(
                             child: ConstrainedBox(
                               constraints: const BoxConstraints(
-                                  maxWidth: _noteColumnWidth),
+                                  maxWidth: _noteColumnWidth + spaceLg * 2),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Padding(
-                                    padding:
-                                        const EdgeInsets.only(bottom: spaceLg),
+                                    padding: const EdgeInsets.fromLTRB(
+                                        spaceLg, 0, spaceLg, spaceLg),
                                     child: _metaRow(note),
                                   ),
                                   MarkdownView(
                                     content: note.content,
+                                    gutter: spaceLg.toDouble(),
                                     attachments: state.attachments,
                                     onAttachmentLink: _openAttachment,
                                     onAttachmentPdfTap: _openPdfViewer,

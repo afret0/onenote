@@ -32,6 +32,7 @@ class MarkdownView extends StatefulWidget {
     this.highlightController,
     this.tocController,
     this.tint,
+    this.gutter = 0,
   });
 
   final String content;
@@ -49,6 +50,7 @@ class MarkdownView extends StatefulWidget {
   final MarkdownHighlightController? highlightController;
   final MarkdownTocController? tocController;
   final Color? tint;
+  final double gutter;
 
   @override
   State<MarkdownView> createState() => _MarkdownViewState();
@@ -157,7 +159,8 @@ class _MarkdownViewState extends State<MarkdownView> {
         blockquotePadding:
             const EdgeInsets.symmetric(horizontal: spaceMd, vertical: spaceSm),
         code: mono.copyWith(
-            backgroundColor: t.surfaceAlt, fontSize: 13 * contentScale),
+            backgroundColor: t.surfaceAlt.withValues(alpha: 0.6),
+            fontSize: 13 * contentScale),
         codeblockDecoration: BoxDecoration(
           color: t.surfaceAlt,
           borderRadius: BorderRadius.circular(radiusMd),
@@ -224,8 +227,14 @@ class _MarkdownViewState extends State<MarkdownView> {
     final toggle = widget.onToggleTask;
     final taskCount = toggle == null ? 0 : _taskStates.length;
     final lineHeight = sheet.p!.fontSize! * sheet.p!.height!;
+    final selTint = widget.tint;
+    final selectionColor =
+        (selTint == null ? t.accent : readableOn(selTint, t.paper, ratio: 3))
+            .withValues(alpha: 0.4);
     var checkboxCalls = 0;
-    return Listener(
+    return TextSelectionTheme(
+      data: TextSelectionThemeData(selectionColor: selectionColor),
+      child: Listener(
       onPointerDown: (e) => _pointerButtons = e.buttons,
       onPointerUp: _onPointerUp,
       child: KeyedSubtree(
@@ -234,6 +243,7 @@ class _MarkdownViewState extends State<MarkdownView> {
       data: content,
       selectable: true,
       fitContent: false,
+      gutter: widget.gutter,
       linkRefOrdinal: linkOrdinal,
       linkMouseCursor: linkCursor,
       contextMenuBuilder: _contextMenu,
@@ -278,6 +288,7 @@ class _MarkdownViewState extends State<MarkdownView> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(href)));
       },
         ),
+      ),
       ),
     );
   }
