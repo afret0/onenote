@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 
 import '../data/password_lock.dart';
+import '../lock/biometrics.dart';
 import '../state/app_state.dart';
 import '../state/lock_attempts.dart';
 import 'dialogs.dart';
@@ -16,6 +18,7 @@ Future<String?> promptPassword(
   required LockAttempts attempts,
   required PasswordLock lock,
   String confirmLabel = '解锁',
+  Future<bool> Function()? onBiometric,
 }) {
   return showDialog<String>(
     context: context,
@@ -25,6 +28,7 @@ Future<String?> promptPassword(
       confirmLabel: confirmLabel,
       onSubmit: (password) => attempts.verify(lock, password),
       cooldownOf: attempts.cooldownRemainingMs,
+      onBiometric: onBiometric,
     ),
   );
 }
@@ -102,6 +106,7 @@ class _PasswordDialog extends StatefulWidget {
     required this.confirmLabel,
     required this.onSubmit,
     required this.cooldownOf,
+    this.onBiometric,
   });
 
   final String title;
@@ -109,6 +114,7 @@ class _PasswordDialog extends StatefulWidget {
   final String confirmLabel;
   final Future<LockVerifyResult> Function(String password) onSubmit;
   final Future<int> Function() cooldownOf;
+  final Future<bool> Function()? onBiometric;
 
   @override
   State<_PasswordDialog> createState() => _PasswordDialogState();
@@ -119,6 +125,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   final _focus = FocusNode();
   bool _obscure = true;
   bool _busy = false;
+  bool _bioAvailable = false;
   String? _error;
   int _cooldownMs = 0;
   Timer? _cooldownTimer;
@@ -127,6 +134,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   void initState() {
     super.initState();
     _refreshCooldown();
+    _probeBio();
   }
 
   @override
@@ -145,6 +153,51 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     if (remaining > 0) {
       _startCooldown(remaining);
     }
+  }
+
+  Future<void> _probeBio() async {
+    if (widget.onBiometric == null) {
+      return;
+    }
+    final available = await Biometrics.available();
+    final autoBio = available && await Biometrics.hasEnrolledBiometrics();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _bioAvailable = available);
+    developer.log(
+        'done, 解锁弹窗生物识别就绪, available: $available, autoBio: $autoBio');
+    if (autoBio) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          developer.log('hit, 已录入生物识别自动弹出认证');
+          _bioUnlock();
+        }
+      });
+    }
+  }
+
+  Future<void> _bioUnlock() async {
+    if (_busy || widget.onBiometric == null) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final ok = await widget.onBiometric!();
+    if (!mounted) {
+      return;
+    }
+    if (ok) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = '生物识别未通过，请输入密码';
+    });
+    _focus.requestFocus();
   }
 
   void _startCooldown(int ms) {
@@ -255,6 +308,19 @@ class _PasswordDialogState extends State<_PasswordDialog> {
         TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('取消')),
+        if (_bioAvailable)
+          TextButton.icon(
+            onPressed: _busy ? null : _bioUnlock,
+            style: TextButton.styleFrom(
+              foregroundColor: t.accentText,
+              minimumSize: const Size(0, 44),
+            ).copyWith(
+              mouseCursor:
+                  const WidgetStatePropertyAll(SystemMouseCursors.click),
+            ),
+            icon: const Icon(Icons.fingerprint, size: 20),
+            label: const Text('生物识别解锁'),
+          ),
         FilledButton(
           onPressed: _busy || cooling ? null : _submit,
           child: _busy
@@ -372,13 +438,28 @@ Future<bool> unlockNotebookDialog(
     return true;
   }
   final name = state.notebookName(notebookId);
+  var bioUnlocked = false;
   final password = await promptPassword(
     context,
     title: '解锁笔记本',
-    subtitle: '「$name」已上锁，输入密码后本次会话内免密',
+    subtitle: '「$name」已上锁，验证通过后本次会话内免密',
     attempts: state.attempts,
     lock: lock,
+    onBiometric: state.lockBio
+        ? () async {
+            final ok = await Biometrics.authenticate('解锁笔记本');
+            if (ok) {
+              await state.attempts.succeed();
+              bioUnlocked = true;
+            }
+            return ok;
+          }
+        : null,
   );
+  if (bioUnlocked) {
+    state.grantNotebookUnlock(notebookId);
+    return true;
+  }
   if (password == null) {
     return false;
   }
@@ -402,13 +483,28 @@ Future<bool> unlockNoteDialog(
   if (lock == null || !lock.active) {
     return true;
   }
+  var bioUnlocked = false;
   final password = await promptPassword(
     context,
     title: '解锁笔记',
-    subtitle: '「${noteDisplayTitle(note)}」已上锁，输入密码后本次会话内免密',
+    subtitle: '「${noteDisplayTitle(note)}」已上锁，验证通过后本次会话内免密',
     attempts: state.attempts,
     lock: lock,
+    onBiometric: state.lockBio
+        ? () async {
+            final ok = await Biometrics.authenticate('解锁笔记');
+            if (ok) {
+              await state.attempts.succeed();
+              bioUnlocked = true;
+            }
+            return ok;
+          }
+        : null,
   );
+  if (bioUnlocked) {
+    state.grantNoteUnlock(noteId);
+    return true;
+  }
   if (password == null) {
     return false;
   }

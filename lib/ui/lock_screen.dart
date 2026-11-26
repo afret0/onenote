@@ -64,6 +64,7 @@ class _LockGateState extends State<LockGate> {
     final bioEnabled =
         await widget.globalDb.getSetting(AppDb.lockBioKey) != '0';
     final bio = bioEnabled && await Biometrics.available();
+    final autoBio = bio && await Biometrics.hasEnrolledBiometrics();
     final cooling = await _rootAttempts.cooldownRemainingMs();
     if (!mounted) {
       return;
@@ -76,7 +77,15 @@ class _LockGateState extends State<LockGate> {
       }
     });
     developer.log(
-        'done, 锁屏就绪, bioAvailable: $bio, cooldownMs: $cooling');
+        'done, 锁屏就绪, bioAvailable: $bio, autoBio: $autoBio, cooldownMs: $cooling');
+    if (autoBio) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          developer.log('hit, 已录入生物识别自动弹出认证');
+          _bioUnlock();
+        }
+      });
+    }
   }
 
   void _startCooldown(int ms) {

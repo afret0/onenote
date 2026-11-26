@@ -620,7 +620,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SwitchRow(
                   icon: Icons.fingerprint,
                   title: '生物识别解锁',
-                  subtitle: '锁屏可用指纹 / 面容 / 系统密码快速解锁',
+                  subtitle: '锁屏与笔记本/笔记解锁可用指纹 / 面容 / 系统密码快速解锁',
                   value: state.lockBio,
                   onChanged: state.setLockBio,
                 ),

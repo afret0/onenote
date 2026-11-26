@@ -30,6 +30,23 @@ class Biometrics {
     }
   }
 
+  static Future<List<BiometricType>> enrolled() async {
+    if (!supported) {
+      return const [];
+    }
+    try {
+      final types = await _auth.getAvailableBiometrics();
+      developer.log('done, 已录入生物识别, types: $types');
+      return types;
+    } catch (err) {
+      developer.log('skip, 生物识别枚举失败视为未录入, err: $err');
+      return const [];
+    }
+  }
+
+  static Future<bool> hasEnrolledBiometrics() async =>
+      (await enrolled()).isNotEmpty;
+
   static Future<bool> authenticate(String reason) async {
     if (!supported) {
       developer.log('skip, 当前平台无生物识别实现');
