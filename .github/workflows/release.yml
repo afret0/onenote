@@ -79,6 +79,7 @@ jobs:
     timeout-minutes: 45
     env:
       VER: ${{ needs.detect.outputs.version }}
+      JAVA_TOOL_OPTIONS: -XX:-UsePerfData
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -91,7 +92,8 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release --target-platform android-arm64
+      - name: Build apk (one retry for flaky JdkImageTransform)
+        run: flutter build apk --release --target-platform android-arm64 || (sleep 10 && flutter build apk --release --target-platform android-arm64)
       - run: mv build/app/outputs/flutter-apk/app-release.apk "onenote_$VER.apk"
       - uses: actions/upload-artifact@v4
         with:
