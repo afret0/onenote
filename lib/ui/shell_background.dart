@@ -235,50 +235,63 @@ ShellBgScene shellBgScene(ShellBgTheme theme, {required bool dark}) {
 }
 
 class ShellBgPainter extends CustomPainter {
-  ShellBgPainter({required this.theme, required this.dark});
+  ShellBgPainter({required this.theme, required this.dark, this.enabled});
 
   final ShellBgTheme theme;
   final bool dark;
+  final Set<String>? enabled;
+
+  bool _on(String kind) => enabled == null || enabled!.contains(kind);
 
   @override
   void paint(Canvas canvas, Size size) {
     final scene = shellBgScene(theme, dark: dark);
     final w = size.width;
     final h = size.height;
-    for (final b in scene.blobs) {
-      canvas.drawCircle(
-          Offset(b.cx * w, b.cy * h), b.r * h, Paint()..color = b.color);
+    if (_on('blob')) {
+      for (final b in scene.blobs) {
+        canvas.drawCircle(
+            Offset(b.cx * w, b.cy * h), b.r * h, Paint()..color = b.color);
+      }
     }
-    for (final ring in scene.rings) {
-      canvas.drawCircle(
-        Offset(ring.cx * w, ring.cy * h),
-        ring.r * h,
-        Paint()
-          ..color = ring.color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = ring.stroke * h,
-      );
+    if (_on('ring')) {
+      for (final ring in scene.rings) {
+        canvas.drawCircle(
+          Offset(ring.cx * w, ring.cy * h),
+          ring.r * h,
+          Paint()
+            ..color = ring.color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = ring.stroke * h,
+        );
+      }
     }
-    for (final d in scene.dots) {
-      canvas.drawCircle(
-          Offset(d.cx * w, d.cy * h), d.r * h, Paint()..color = d.color);
+    if (_on('dot')) {
+      for (final d in scene.dots) {
+        canvas.drawCircle(
+            Offset(d.cx * w, d.cy * h), d.r * h, Paint()..color = d.color);
+      }
     }
-    for (final wave in scene.waves) {
-      final base = wave.base * h;
-      final amp = wave.amp * h;
-      double cy(int i) => base + (wave.ups[i] ? -amp : amp);
-      final path = Path()
-        ..moveTo(-0.05 * w, h + 4)
-        ..lineTo(-0.05 * w, base)
-        ..cubicTo(wave.xs[0] * w, cy(0), wave.xs[1] * w, cy(1),
-            wave.xs[2] * w, base)
-        ..cubicTo(wave.xs[3] * w, cy(2), wave.xs[4] * w, cy(3), 1.05 * w, base)
-        ..lineTo(1.05 * w, h + 4)
-        ..close();
-      canvas.drawPath(path, Paint()..color = wave.color);
+    if (_on('wave')) {
+      for (final wave in scene.waves) {
+        final base = wave.base * h;
+        final amp = wave.amp * h;
+        double cy(int i) => base + (wave.ups[i] ? -amp : amp);
+        final path = Path()
+          ..moveTo(-0.05 * w, h + 4)
+          ..lineTo(-0.05 * w, base)
+          ..cubicTo(wave.xs[0] * w, cy(0), wave.xs[1] * w, cy(1),
+              wave.xs[2] * w, base)
+          ..cubicTo(wave.xs[3] * w, cy(2), wave.xs[4] * w, cy(3), 1.05 * w, base)
+          ..lineTo(1.05 * w, h + 4)
+          ..close();
+        canvas.drawPath(path, Paint()..color = wave.color);
+      }
     }
     for (final s in scene.shapes) {
-      _paintShape(canvas, s, w, h);
+      if (_on(s.kind)) {
+        _paintShape(canvas, s, w, h);
+      }
     }
   }
 
@@ -399,13 +412,23 @@ class ShellBgPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ShellBgPainter oldDelegate) =>
-      oldDelegate.dark != dark || oldDelegate.theme.id != theme.id;
+      oldDelegate.dark != dark ||
+      oldDelegate.theme.id != theme.id ||
+      !_sameEnabled(oldDelegate.enabled);
+
+  bool _sameEnabled(Set<String>? other) {
+    if (enabled == null || other == null) {
+      return enabled == null && other == null;
+    }
+    return enabled!.length == other.length && enabled!.containsAll(other);
+  }
 }
 
 class ShellBackground extends StatelessWidget {
-  const ShellBackground({super.key, required this.themeId});
+  const ShellBackground({super.key, required this.themeId, this.enabled});
 
   final String themeId;
+  final Set<String>? enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +440,7 @@ class ShellBackground extends StatelessWidget {
     return IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
-          painter: ShellBgPainter(theme: theme, dark: dark),
+          painter: ShellBgPainter(theme: theme, dark: dark, enabled: enabled),
           isComplex: true,
         ),
       ),

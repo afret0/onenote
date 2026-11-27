@@ -636,7 +636,9 @@ class _HomePageState extends State<HomePage> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Positioned.fill(child: ShellBackground(themeId: state.bgTheme)),
+        Positioned.fill(
+            child: ShellBackground(
+                themeId: state.bgTheme, enabled: state.bgShapes)),
         child,
       ],
     );

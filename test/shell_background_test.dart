@@ -1,7 +1,24 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:onenote/data/bg_shape_kinds.dart';
 import 'package:onenote/data/bg_theme.dart';
 import 'package:onenote/ui/shell_background.dart';
 import 'package:onenote/ui/theme.dart';
+
+class _CountingCanvas implements Canvas {
+  var circles = 0;
+  var paths = 0;
+
+  @override
+  void drawCircle(Offset c, double radius, Paint paint) => circles++;
+
+  @override
+  void drawPath(Path path, Paint paint) => paths++;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
 
 void main() {
   test('主题目录收录六套且 id 唯一', () {
@@ -72,5 +89,76 @@ void main() {
             reason: '${theme.id} dark=$dark 与纸色几乎无差异');
       }
     }
+  });
+
+  test('形状目录十二种 id 唯一且清洗保持目录序', () {
+    expect(shellBgShapeKinds.length, 12);
+    expect(shellBgShapeKinds.map((k) => k.id).toSet(),
+        shellBgAllShapeIds.toSet());
+    expect(isKnownShellBgShape('blob'), isTrue);
+    expect(isKnownShellBgShape('bogus'), isFalse);
+    expect(sanitizeShellBgShapes(null), isNull);
+    expect(sanitizeShellBgShapes(''), '');
+    expect(sanitizeShellBgShapes('bogus,tri'), isNull);
+    expect(sanitizeShellBgShapes('tri,tri'), isNull);
+    expect(sanitizeShellBgShapes('tri,blob,tri'), isNull);
+    expect(sanitizeShellBgShapes('tri,blob'), 'blob,tri');
+    expect(sanitizeShellBgShapes(shellBgAllShapeIds.reversed.join(',')),
+        shellBgAllShapeIds.join(','));
+  });
+
+  test('未启用形状不绘制且启用项位置不变', () {
+    final theme = shellBgThemeOf(shellBgLavender)!;
+    final scene = shellBgScene(theme, dark: true);
+    const size = Size(1000, 800);
+
+    final all = _CountingCanvas();
+    ShellBgPainter(theme: theme, dark: true).paint(all, size);
+    expect(all.circles,
+        scene.blobs.length + scene.rings.length + scene.dots.length);
+    expect(all.paths, greaterThan(scene.waves.length));
+
+    final off = _CountingCanvas();
+    ShellBgPainter(theme: theme, dark: true, enabled: <String>{})
+        .paint(off, size);
+    expect(off.circles, 0);
+    expect(off.paths, 0);
+
+    final onlyRing = _CountingCanvas();
+    ShellBgPainter(theme: theme, dark: true, enabled: {'ring'})
+        .paint(onlyRing, size);
+    expect(onlyRing.circles, scene.rings.length);
+    expect(onlyRing.paths, 0);
+
+    final onlyTri = _CountingCanvas();
+    ShellBgPainter(theme: theme, dark: true, enabled: {'tri'})
+        .paint(onlyTri, size);
+    expect(onlyTri.circles, 0);
+    expect(onlyTri.paths,
+        scene.shapes.where((s) => s.kind == 'tri').length);
+  });
+
+  test('形状开关变化触发重绘而顺序无关', () {
+    final theme = shellBgThemeOf(shellBgLavender)!;
+    final base = ShellBgPainter(theme: theme, dark: true, enabled: {'tri'});
+    expect(
+        base.shouldRepaint(
+            ShellBgPainter(theme: theme, dark: true, enabled: {'tri'})),
+        isFalse);
+    expect(
+        base.shouldRepaint(
+            ShellBgPainter(theme: theme, dark: true, enabled: {'tri', 'hex'})),
+        isTrue);
+    expect(
+        base.shouldRepaint(ShellBgPainter(theme: theme, dark: true)),
+        isTrue);
+    final full = ShellBgPainter(
+        theme: theme, dark: true, enabled: shellBgAllShapeIds.toSet());
+    expect(
+        full.shouldRepaint(ShellBgPainter(
+            theme: theme,
+            dark: true,
+            enabled: shellBgAllShapeIds.reversed.toSet())),
+        isFalse);
   });
 }

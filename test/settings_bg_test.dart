@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onenote/data/app_db.dart';
+import 'package:onenote/data/bg_shape_kinds.dart';
 import 'package:onenote/data/bg_theme.dart';
 import 'package:onenote/state/app_state.dart';
 import 'package:onenote/ui/settings_page.dart';
@@ -101,5 +102,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.bgScope, AppState.bgScopePane);
     expect(find.text('侧栏与列表'), findsOneWidget);
+  });
+
+  testWidgets('图案形状对话框逐项勾选即时生效', (tester) async {
+    final state = await seed(tester);
+    await pumpSettings(tester, state);
+    expect(find.text('图案形状'), findsOneWidget);
+    expect(find.text('全部'), findsOneWidget);
+
+    await tester.tap(find.text('图案形状'));
+    await tester.pumpAndSettle();
+    for (final kind in shellBgShapeKinds) {
+      expect(dialogText(kind.name), findsOneWidget);
+    }
+    expect(
+        find.descendant(
+            of: find.byType(SimpleDialog), matching: find.byType(Checkbox)),
+        findsNWidgets(12));
+
+    await tester.tap(dialogText('圆角三角'));
+    await tester.pumpAndSettle();
+    expect(state.bgShapes.contains('tri'), isFalse);
+    expect(state.bgShapes.length, 11);
+    await tester.tap(dialogText('圆角三角'));
+    await tester.pumpAndSettle();
+    expect(state.bgShapes, shellBgAllShapeIds.toSet());
+  });
+
+  testWidgets('形状全不选显示不使用并可一键恢复', (tester) async {
+    final state = await seed(tester);
+    await tester.runAsync(() async {
+      await state.setBgShapes(<String>{});
+    });
+    await pumpSettings(tester, state);
+    expect(find.text('不使用'), findsOneWidget);
+
+    await tester.tap(find.text('图案形状'));
+    await tester.pumpAndSettle();
+    await tester.tap(dialogText('大圆'));
+    await tester.pumpAndSettle();
+    expect(state.bgShapes, {'blob'});
+    expect(find.text('1 种'), findsOneWidget);
   });
 }

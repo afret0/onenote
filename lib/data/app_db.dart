@@ -180,6 +180,7 @@ class AppDb extends _$AppDb {
   static const narrowStartupKey = 'narrowStartup';
   static const bgThemeKey = 'bgTheme';
   static const bgScopeKey = 'bgScope';
+  static const bgShapesKey = 'bgShapes';
   static const defaultNoteFormatKey = 'defaultNoteFormat';
   static const noteFormatMarkdown = 'markdown';
   static const noteFormatRichtext = 'richtext';

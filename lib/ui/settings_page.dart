@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../app_version.dart';
 import '../data/app_db.dart';
+import '../data/bg_shape_kinds.dart';
 import '../data/bg_theme.dart';
 import '../data/font_store.dart';
 import '../lock/biometrics.dart';
@@ -511,6 +512,66 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  String _bgShapesLabel() {
+    if (state.bgShapes.isEmpty) {
+      return '不使用';
+    }
+    if (state.bgShapes.length == shellBgShapeKinds.length) {
+      return '全部';
+    }
+    return '${state.bgShapes.length} 种';
+  }
+
+  Future<void> _pickBgShapes() async {
+    final initial = state.bgShapes.toSet();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final t = inkOf(dialogContext);
+        var selected = initial;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => SimpleDialog(
+            title: const Text('图案形状'),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(spaceLg, 0, spaceLg, spaceSm),
+                child: Text(
+                  '勾选背景里出现的形状；全不选为素纸底。',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.inkMuted),
+                ),
+              ),
+              for (final kind in shellBgShapeKinds)
+                CheckboxListTile(
+                  value: selected.contains(kind.id),
+                  title: Text(kind.name,
+                      style: Theme.of(context).textTheme.bodyMedium),
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  activeColor: t.accent,
+                  onChanged: (checked) async {
+                    final next = state.bgShapes.toSet();
+                    if (checked == true) {
+                      next.add(kind.id);
+                    } else {
+                      next.remove(kind.id);
+                    }
+                    await state.setBgShapes(next);
+                    if (context.mounted) {
+                      setDialogState(() => selected = state.bgShapes.toSet());
+                    }
+                  },
+                ),
+              const SizedBox(height: spaceSm),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _pickBgTheme() async {
     final picked = await showDialog<String>(
       context: context,
@@ -859,6 +920,14 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: '图案在哪些区域透出，正文实色最护眼',
               action: _bgScopeLabel(),
               onTap: _pickBgScope,
+            ),
+            Divider(height: 1, color: t.hairline),
+            _SettingRow(
+              icon: Icons.category_outlined,
+              title: '图案形状',
+              subtitle: '勾选背景里出现哪些形状，全不选为素纸底',
+              action: _bgShapesLabel(),
+              onTap: _pickBgShapes,
             ),
           ]),
         ]),

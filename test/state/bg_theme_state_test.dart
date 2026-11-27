@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:onenote/data/app_db.dart';
+import 'package:onenote/data/bg_shape_kinds.dart';
 import 'package:onenote/data/bg_theme.dart';
 import 'package:onenote/data/font_store.dart';
 import 'package:onenote/state/app_state.dart';
@@ -95,5 +96,53 @@ void main() {
     addTearDown(fresh.dispose);
     await fresh.init();
     expect(fresh.bgScope, AppState.bgScopeFull);
+  });
+
+  test('形状缺省全选且子集落库重启保留', () async {
+    await state.init();
+    expect(state.bgShapes, shellBgAllShapeIds.toSet());
+    var notified = 0;
+    state.addListener(() => notified++);
+    await state.setBgShapes({'tri', 'blob'});
+    expect(state.bgShapes, {'tri', 'blob'});
+    expect(notified, 1);
+    expect(await db.getSetting(AppDb.bgShapesKey), 'blob,tri');
+    final fresh = AppState(db, fontStoreOverride: store);
+    addTearDown(fresh.dispose);
+    await fresh.init();
+    expect(fresh.bgShapes, {'blob', 'tri'});
+  });
+
+  test('形状全不选是合法值且重启保留为素纸底', () async {
+    await state.init();
+    await state.setBgShapes(<String>{});
+    expect(state.bgShapes, isEmpty);
+    expect(await db.getSetting(AppDb.bgShapesKey), '');
+    final fresh = AppState(db, fontStoreOverride: store);
+    addTearDown(fresh.dispose);
+    await fresh.init();
+    expect(fresh.bgShapes, isEmpty);
+  });
+
+  test('未知形状标识被拒绝且同值不重复通知', () async {
+    await state.init();
+    await state.setBgShapes({'tri', 'bogus'});
+    expect(state.bgShapes, shellBgAllShapeIds.toSet());
+    expect(await db.getSetting(AppDb.bgShapesKey), isNull);
+    var notified = 0;
+    state.addListener(() => notified++);
+    await state.setBgShapes(shellBgAllShapeIds.toSet());
+    expect(notified, 0);
+  });
+
+  test('存量非法形状回退全选而空串保留全关', () async {
+    await db.setSetting(AppDb.bgShapesKey, 'tri,bogus');
+    await state.init();
+    expect(state.bgShapes, shellBgAllShapeIds.toSet());
+    await db.setSetting(AppDb.bgShapesKey, '');
+    final fresh = AppState(db, fontStoreOverride: store);
+    addTearDown(fresh.dispose);
+    await fresh.init();
+    expect(fresh.bgShapes, isEmpty);
   });
 }

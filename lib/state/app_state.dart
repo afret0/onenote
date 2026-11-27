@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../clip/clip_server.dart';
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
+import '../data/bg_shape_kinds.dart';
 import '../data/bg_theme.dart';
 import '../data/font_catalog.dart';
 import '../data/font_store.dart';
@@ -102,6 +103,7 @@ class AppState extends ChangeNotifier {
   String narrowStartup = narrowStartupNote;
   String bgTheme = bgThemeDefault;
   String bgScope = bgScopeDefault;
+  Set<String> bgShapes = shellBgAllShapeIds.toSet();
   String defaultNoteFormat = AppDb.noteFormatMarkdown;
   bool _startupRestorePending = true;
   double sidebarWidth = sidebarDefaultWidth;
@@ -224,6 +226,16 @@ class AppState extends ChangeNotifier {
     } else if (savedBgScope != null) {
       developer.log(
           'skip, 背景范围设置非法回退默认, raw: $savedBgScope, fallback: $bgScope');
+    }
+    final savedBgShapes = await db.getSetting(AppDb.bgShapesKey);
+    final sanitizedShapes = sanitizeShellBgShapes(savedBgShapes);
+    if (sanitizedShapes != null) {
+      bgShapes = sanitizedShapes.isEmpty
+          ? <String>{}
+          : sanitizedShapes.split(',').toSet();
+    } else if (savedBgShapes != null) {
+      developer.log(
+          'skip, 背景形状设置非法回退全选, raw: $savedBgShapes');
     }
     if (isDesktopWindow) {
       clipEnabled = await db.getSetting(AppDb.clipEnabledKey) == '1';
@@ -1093,6 +1105,29 @@ class AppState extends ChangeNotifier {
     developer.log('done, 背景范围已切换, $bgScope -> $value');
     bgScope = value;
     await db.setSetting(AppDb.bgScopeKey, value);
+    notifyListeners();
+  }
+
+  Future<void> setBgShapes(Set<String> ids) async {
+    for (final id in ids) {
+      if (!isKnownShellBgShape(id)) {
+        developer.log('skip, 未知背景形状标识不写入, bgShape: $id');
+        return;
+      }
+    }
+    final canonical =
+        shellBgShapeKinds.where((k) => ids.contains(k.id)).map((k) => k.id);
+    final value = canonical.join(',');
+    final current = shellBgShapeKinds
+        .where((k) => bgShapes.contains(k.id))
+        .map((k) => k.id)
+        .join(',');
+    if (value == current) {
+      return;
+    }
+    developer.log('done, 背景形状已切换, $current -> $value');
+    bgShapes = ids.toSet();
+    await db.setSetting(AppDb.bgShapesKey, value);
     notifyListeners();
   }
 
