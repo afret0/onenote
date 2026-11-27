@@ -152,4 +152,25 @@ void main() {
     expect(find.text('解锁笔记本'), findsOneWidget);
     expect(result, 'unset');
   });
+
+  testWidgets('旧锁无长度弹窗停笔兜底自动提交', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    final full = PasswordLock.create('pass', 1000);
+    final lock =
+        PasswordLock(salt: full.salt, hash: full.hash, updateAt: 1000);
+    String? result = 'unset';
+    await pumpHost(tester, db, lock, null, (r) => result = r);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'wrong');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(result, 'unset');
+    expect(find.text('密码错误，请重试'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'pass');
+    await tester.pump();
+    expect(result, 'unset');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(result, 'pass');
+  });
 }

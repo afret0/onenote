@@ -138,43 +138,6 @@ void main() {
     expect(find.byType(SettingsPage), findsNothing);
   });
 
-  testWidgets('旧锁无长度不自动提交仍走按钮', (tester) async {
-    final state = await seed(tester);
-    await tester.runAsync(() async {
-      final lock = PasswordLock.create('pw-123', 1700000001000);
-      final raw = jsonEncode({
-        'salt': lock.salt,
-        'hash': lock.hash,
-        'updateAt': lock.updateAt
-      });
-      await state.db.setSetting(AppDb.appLockKey, raw);
-      state.appLock = PasswordLock.parse(raw);
-    });
-    await pumpHome(tester, state);
-    await tester.tap(find.byIcon(Icons.tune));
-    await tester.pumpAndSettle();
-    final dialogField = find.descendant(
-        of: find.byType(AlertDialog), matching: find.byType(TextField));
-    await tester.runAsync(() async {
-      await tester.enterText(dialogField, 'pw-123');
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      await tester.pump();
-    });
-    expect(find.text('验证应用密码'), findsOneWidget);
-    expect(find.byType(SettingsPage), findsNothing);
-    await tester.tap(find.text('验证'));
-    await tester.runAsync(() async {
-      final deadline = DateTime.now().add(const Duration(seconds: 10));
-      while (find.byType(SettingsPage).evaluate().isEmpty &&
-          DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-        await tester.pump();
-      }
-    });
-    await tester.pumpAndSettle();
-    expect(find.byType(SettingsPage), findsOneWidget);
-  });
-
   testWidgets('cmd+comma 同样过密码门', (tester) async {
     final state = await seed(tester, password: 'pw-123');
     await pumpHome(tester, state);
@@ -204,6 +167,32 @@ void main() {
     });
     await tester.pumpAndSettle();
   }
+
+  testWidgets('旧锁无长度停笔兜底自动提交', (tester) async {
+    final state = await seed(tester);
+    await tester.runAsync(() async {
+      final lock = PasswordLock.create('pw-123', 1700000001000);
+      final raw = jsonEncode({
+        'salt': lock.salt,
+        'hash': lock.hash,
+        'updateAt': lock.updateAt
+      });
+      await state.db.setSetting(AppDb.appLockKey, raw);
+      state.appLock = PasswordLock.parse(raw);
+    });
+    await pumpHome(tester, state);
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    final dialogField = find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField));
+    await tester.enterText(dialogField, 'pw-123');
+    await tester.pump();
+    expect(find.byType(SettingsPage), findsNothing);
+    await tester.pump(const Duration(milliseconds: 350));
+    await waitUntil(
+        tester, () => find.byType(SettingsPage).evaluate().isNotEmpty);
+    expect(find.byType(SettingsPage), findsOneWidget);
+  });
 
   testWidgets('生物识别自动弹出通过后直接进入设置', (tester) async {
     final fake = useFakeAuth();

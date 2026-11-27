@@ -579,4 +579,120 @@ void main() {
     expect(find.text('Cut'), findsNothing);
     expect(find.text('Paste'), findsOneWidget);
   });
+
+  testWidgets('旧锁无长度停笔后兜底自动进入', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      final full = PasswordLock.create('abcd', 1000);
+      await db.setSetting(
+          AppDb.appLockKey,
+          PasswordLock(
+                  salt: full.salt, hash: full.hash, updateAt: 1000)
+              .encode());
+    });
+    AppDb? entered;
+    await pumpGate(tester, db, (d, s) => entered = d);
+    await tester.enterText(find.byType(TextField), 'abcd');
+    await tester.pump();
+    expect(entered, isNull);
+    await pumpUntil(tester, () => entered != null);
+    expect(entered, same(db));
+  });
+
+  testWidgets('兜底静默校验输错不提示不计次不清空', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      final full = PasswordLock.create('abcd', 1000);
+      await db.setSetting(
+          AppDb.appLockKey,
+          PasswordLock(
+                  salt: full.salt, hash: full.hash, updateAt: 1000)
+              .encode());
+    });
+    AppDb? entered;
+    await pumpGate(tester, db, (d, s) => entered = d);
+    await tester.enterText(find.byType(TextField), 'wxyz');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(entered, isNull);
+    expect(find.text('密码错误，请重试'), findsNothing);
+    expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'wxyz');
+    await tester.runAsync(() async {
+      expect(await db.getSetting(AppDb.lockFailCountKey), isNull);
+    });
+  });
+
+  testWidgets('回车解锁成功补记长度并更新时间戳', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      final full = PasswordLock.create('abcd', 1000);
+      await db.setSetting(
+          AppDb.appLockKey,
+          PasswordLock(
+                  salt: full.salt, hash: full.hash, updateAt: 1000)
+              .encode());
+    });
+    AppDb? entered;
+    await pumpGate(tester, db, (d, s) => entered = d);
+    await tester.enterText(find.byType(TextField), 'abcd');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    expect(entered, same(db));
+    await tester.runAsync(() async {
+      final lock =
+          PasswordLock.parse(await db.getSetting(AppDb.appLockKey));
+      expect(lock!.len, 4);
+      expect(lock.updateAt, greaterThan(1000));
+      expect(lock.verify('abcd'), isTrue);
+    });
+  });
+
+  testWidgets('隐私空间旧锁回车解锁补记父子标记', (WidgetTester tester) async {
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('daily-pass', 1000).encode());
+      final full = PasswordLock.create('secret-pass', 2000);
+      final ref = PrivacySpaceRef(
+          id: 'gate-space-old',
+          lock: PasswordLock(
+              salt: full.salt, hash: full.hash, updateAt: 2000),
+          createAt: 2000);
+      final engine = SyncEngine(db);
+      await engine.provisionPrivacySpace(ref);
+      engine.dispose();
+      await db.setSetting(AppDb.privacySpaceKey, ref.encode());
+    });
+    AppDb? entered;
+    String? enteredSpace;
+    await pumpGate(tester, db, (d, s) {
+      entered = d;
+      enteredSpace = s;
+    });
+    await tester.runAsync(() async {
+      await tester.enterText(find.byType(TextField), 'secret-pass');
+      await tester.tap(find.text('解锁'));
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (enteredSpace == null && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await tester.pump();
+      }
+    });
+    expect(enteredSpace, 'gate-space-old');
+    track(entered!);
+    await tester.runAsync(() async {
+      final childLock =
+          PasswordLock.parse(await entered!.getSetting(AppDb.appLockKey));
+      expect(childLock!.len, 11);
+      expect(childLock.updateAt, greaterThan(2000));
+      final ref = PrivacySpaceRef.parse(
+          await db.getSetting(AppDb.privacySpaceKey));
+      expect(ref!.lock.len, 11);
+      expect(ref.lock.updateAt, greaterThan(2000));
+    });
+  });
 }

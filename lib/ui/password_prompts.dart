@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../data/password_lock.dart';
 import '../lock/biometrics.dart';
+import '../lock/silent_verify.dart';
 import '../state/app_state.dart';
 import '../state/lock_attempts.dart';
 import 'dialogs.dart';
@@ -83,6 +84,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   String? _error;
   int _cooldownMs = 0;
   Timer? _cooldownTimer;
+  Timer? _autoTimer;
 
   @override
   void initState() {
@@ -94,6 +96,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   @override
   void dispose() {
     _cooldownTimer?.cancel();
+    _autoTimer?.cancel();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -177,18 +180,36 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   }
 
   void _autoSubmit(String value) {
+    _autoTimer?.cancel();
     if (_busy || _cooldownMs > 0 || value.isEmpty) {
       return;
     }
-    if (widget.lock.len != value.length) {
+    if (widget.lock.len == value.length) {
+      if (widget.lock.verify(value)) {
+        developer.log('hit, 弹窗静默校验通过自动提交, len: ${value.length}');
+        _submit();
+        return;
+      }
+      developer.log('skip, 长度达标静默校验未通过, len: ${value.length}');
       return;
     }
-    if (widget.lock.verify(value)) {
-      developer.log('hit, 弹窗静默校验通过自动提交, len: ${value.length}');
+    _autoTimer = Timer(silentVerifyDebounce, () => _autoFallback(value));
+  }
+
+  Future<void> _autoFallback(String value) async {
+    if (_busy || _cooldownMs > 0 || value != _controller.text) {
+      return;
+    }
+    final ok = await silentVerify(widget.lock, value);
+    if (!mounted || _busy || _cooldownMs > 0 || value != _controller.text) {
+      return;
+    }
+    if (ok) {
+      developer.log('hit, 弹窗停笔兜底静默校验通过自动提交, len: ${value.length}');
       _submit();
       return;
     }
-    developer.log('skip, 长度达标静默校验未通过, len: ${value.length}');
+    developer.log('skip, 弹窗停笔兜底静默校验未通过, len: ${value.length}');
   }
 
   Future<void> _submit() async {

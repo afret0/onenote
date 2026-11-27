@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../data/app_db.dart';
 import '../data/password_lock.dart';
 import '../lock/biometrics.dart';
+import '../lock/silent_verify.dart';
 import '../state/lock_attempts.dart';
 import '../sync/sync_engine.dart';
 import 'password_field.dart';
@@ -37,6 +38,7 @@ class _LockGateState extends State<LockGate> {
   int _cooldownMs = 0;
   List<PasswordLock> _autoLocks = [];
   Timer? _cooldownTimer;
+  Timer? _autoTimer;
   late final LockAttempts _rootAttempts;
 
   @override
@@ -49,6 +51,7 @@ class _LockGateState extends State<LockGate> {
   @override
   void dispose() {
     _cooldownTimer?.cancel();
+    _autoTimer?.cancel();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -108,12 +111,12 @@ class _LockGateState extends State<LockGate> {
     final locks = <PasswordLock>[];
     final root =
         PasswordLock.parse(await widget.globalDb.getSetting(AppDb.appLockKey));
-    if (root != null && root.active && root.len > 0) {
+    if (root != null && root.active) {
       locks.add(root);
     }
     final ref = PrivacySpaceRef.parse(
         await widget.globalDb.getSetting(AppDb.privacySpaceKey));
-    if (ref != null && ref.active && ref.lock.len > 0) {
+    if (ref != null && ref.active) {
       locks.add(ref.lock);
     }
     developer.log('done, 自动解锁候选锁数: ${locks.length}');
@@ -121,22 +124,72 @@ class _LockGateState extends State<LockGate> {
   }
 
   void _autoSubmit(String value) {
+    _autoTimer?.cancel();
     if (_busy || _preparing || _cooldownMs > 0 || value.isEmpty) {
       return;
     }
-    final candidates =
-        _autoLocks.where((lock) => lock.len == value.length);
-    if (candidates.isEmpty) {
-      return;
-    }
-    for (final lock in candidates) {
+    final matched =
+        _autoLocks.where((lock) => lock.len == value.length).toList();
+    for (final lock in matched) {
       if (lock.verify(value)) {
         developer.log('hit, 静默校验通过自动提交, len: ${value.length}');
         _submit();
         return;
       }
     }
-    developer.log('skip, 长度达标静默校验未通过, len: ${value.length}');
+    if (matched.isNotEmpty) {
+      developer.log('skip, 长度达标静默校验未通过, len: ${value.length}');
+    }
+    final rest =
+        _autoLocks.where((lock) => lock.len != value.length).toList();
+    if (rest.isEmpty) {
+      return;
+    }
+    _autoTimer = Timer(silentVerifyDebounce, () => _autoFallback(value, rest));
+  }
+
+  Future<void> _autoFallback(
+      String value, List<PasswordLock> locks) async {
+    if (_busy || _preparing || _cooldownMs > 0 || value != _controller.text) {
+      return;
+    }
+    for (final lock in locks) {
+      final ok = await silentVerify(lock, value);
+      if (!mounted ||
+          _busy ||
+          _cooldownMs > 0 ||
+          value != _controller.text) {
+        return;
+      }
+      if (ok) {
+        developer.log('hit, 停笔兜底静默校验通过自动提交, len: ${value.length}');
+        _submit();
+        return;
+      }
+    }
+    developer.log('skip, 停笔兜底静默校验未通过, len: ${value.length}');
+  }
+
+  Future<void> _backfillLen(
+      AppDb db, AppDb? parent, PasswordLock lock, String password) async {
+    final filled = PasswordLock(
+        salt: lock.salt,
+        hash: lock.hash,
+        updateAt: db.clock(),
+        len: password.length);
+    await db.setSetting(AppDb.appLockKey, filled.encode());
+    if (parent != null) {
+      final ref = PrivacySpaceRef.parse(
+          await parent.getSetting(AppDb.privacySpaceKey));
+      if (ref != null && ref.active) {
+        await parent.setSetting(
+            AppDb.privacySpaceKey,
+            PrivacySpaceRef(
+                    id: ref.id, lock: filled, createAt: ref.createAt)
+                .encode());
+      }
+    }
+    developer.log('done, 旧锁缺长度已补记, len: ${password.length}');
   }
 
   void _startCooldown(int ms) {
@@ -187,10 +240,20 @@ class _LockGateState extends State<LockGate> {
     try {
       var db = widget.globalDb;
       String? spaceId;
+      AppDb? parent;
       for (var depth = 0; depth < 16; depth++) {
         final lock =
             PasswordLock.parse(await db.getSetting(AppDb.appLockKey));
-        if (lock == null || !lock.active || lock.verify(password)) {
+        final matched =
+            lock != null && lock.active && lock.verify(password);
+        if (lock == null || !lock.active || matched) {
+          if (matched && lock.len == 0) {
+            try {
+              await _backfillLen(db, parent, lock, password);
+            } catch (err) {
+              developer.log('fail, 补记密码长度失败不阻塞解锁, err: $err');
+            }
+          }
           developer.log(
               'done, 密码解锁成功, spaceId: ${spaceId ?? ''}, depth: $depth');
           await _enter(db, spaceId, opened);
@@ -209,6 +272,7 @@ class _LockGateState extends State<LockGate> {
           await engine.provisionPrivacySpace(ref);
           engine.dispose();
         }
+        parent = db;
         db = child;
         spaceId = ref.id;
       }
