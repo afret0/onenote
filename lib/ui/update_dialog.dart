@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../app_version.dart';
 import '../data/app_db.dart';
 import '../update/update_checker.dart';
+import '../update/update_download.dart';
 import '../update/update_installer.dart';
 import 'theme.dart';
 
@@ -19,6 +20,8 @@ Future<void> showUpdateDialog(BuildContext context,
 class UpdateDialog extends StatefulWidget {
   const UpdateDialog({super.key, required this.db, required this.release});
 
+  static Future<String> Function(String path)? installOverride;
+
   final AppDb db;
   final UpdateRelease release;
 
@@ -30,9 +33,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
   String _current = '';
   bool _downloading = false;
   bool _cancelled = false;
+  bool _installing = false;
   int _received = 0;
   int _total = 0;
   String? _error;
+
+  SilentUpdateDownload get _silent => SilentUpdateDownload.instance;
+
+  bool get _hasSilent => _silent.matches(widget.release) && _silent.asset != null;
 
   UpdateAsset? get _asset => widget.release.assetFor(updatePlatform);
 
@@ -40,23 +48,60 @@ class _UpdateDialogState extends State<UpdateDialog> {
   void initState() {
     super.initState();
     _total = _asset?.size ?? 0;
+    _silent.addListener(_onSilent);
     loadAppVersion().then((v) {
       if (mounted) setState(() => _current = v);
     });
   }
 
+  @override
+  void dispose() {
+    _silent.removeListener(_onSilent);
+    super.dispose();
+  }
+
+  void _onSilent() {
+    if (mounted && _silent.matches(widget.release)) setState(() {});
+  }
+
   String _mb(int bytes) => (bytes / 1048576).toStringAsFixed(1);
+
+  Future<void> _install(String path) async {
+    final install = UpdateDialog.installOverride ?? installUpdate;
+    final result = await install(path);
+    if (!mounted) return;
+    if (result == 'need_permission') {
+      setState(() {
+        _downloading = false;
+        _installing = false;
+        _error = '已打开系统设置，请允许「安装未知应用」后重试';
+      });
+      return;
+    }
+    Navigator.of(context).pop();
+  }
 
   Future<void> _start() async {
     final asset = _asset;
-    if (asset == null) return;
+    if (asset == null || _installing) return;
     setState(() {
-      _downloading = true;
-      _cancelled = false;
       _error = null;
-      _received = 0;
+      _installing = true;
     });
     try {
+      if (_hasSilent) {
+        if (_silent.error != null) _silent.restart();
+        final path = await _silent.waitReady();
+        if (!mounted) return;
+        await _install(path);
+        if (mounted) setState(() => _installing = false);
+        return;
+      }
+      setState(() {
+        _downloading = true;
+        _cancelled = false;
+        _received = 0;
+      });
       final path = await downloadUpdate(asset.url, asset.name,
           onProgress: (received, total) {
         if (!mounted) return;
@@ -66,21 +111,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
         });
       }, isCancelled: () => _cancelled);
       if (!mounted) return;
-      final result = await installUpdate(path);
-      if (!mounted) return;
-      if (result == 'need_permission') {
-        setState(() {
-          _downloading = false;
-          _error = '已打开系统设置，请允许「安装未知应用」后重试';
-        });
-        return;
-      }
-      Navigator.of(context).pop();
+      await _install(path);
+      if (mounted) setState(() => _installing = false);
     } catch (err) {
       developer.log('fail, 下载或安装更新失败, err: $err');
       if (!mounted) return;
       setState(() {
         _downloading = false;
+        _installing = false;
         _error = _cancelled ? null : '更新失败，可稍后重试或打开下载页';
       });
     }
@@ -89,6 +127,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
   Future<void> _skip() async {
     await widget.db
         .setSetting(updateSkippedVersionKey, widget.release.version);
+    if (_hasSilent) _silent.cancel();
     developer.log('done, 已跳过版本, version: ${widget.release.version}');
     if (mounted) Navigator.of(context).pop();
   }
@@ -98,6 +137,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
     final t = inkOf(context);
     final release = widget.release;
     final asset = _asset;
+    final silent = _hasSilent;
+    final downloading = silent ? _silent.downloading : _downloading;
+    final received = silent ? _silent.received : _received;
+    final total = silent && _silent.total > 0 ? _silent.total : _total;
     return AlertDialog(
       title: Text('发现新版本 v${release.version}'),
       content: SizedBox(
@@ -107,13 +150,21 @@ class _UpdateDialogState extends State<UpdateDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('当前版本 $_current'),
-            if (_total > 0) Text('更新包大小 ${_mb(_total)} MB'),
-            if (_downloading) ...[
+            if (total > 0) Text('更新包大小 ${_mb(total)} MB'),
+            if (downloading) ...[
               const SizedBox(height: spaceMd),
               LinearProgressIndicator(
-                  value: _total > 0 ? _received / _total : null),
+                  value: total > 0 ? received / total : null),
               const SizedBox(height: spaceSm),
-              Text('${_mb(_received)} / ${_mb(_total)} MB',
+              Text('${_mb(received)} / ${_mb(total)} MB',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: t.inkMuted)),
+            ],
+            if (silent && _silent.ready) ...[
+              const SizedBox(height: spaceMd),
+              Text('更新包已下载完成，点击立即更新直接安装',
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
@@ -131,7 +182,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
         ),
       ),
       actions: [
-        if (_downloading)
+        if (!silent && _downloading)
           TextButton(
             onPressed: () {
               _cancelled = true;
@@ -146,7 +197,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
             child: const Text('以后再说'),
           ),
           if (asset != null)
-            FilledButton(onPressed: _start, child: const Text('立即更新'))
+            FilledButton(
+                onPressed: _installing ? null : _start,
+                child: const Text('立即更新'))
           else
             FilledButton(
               onPressed: () {

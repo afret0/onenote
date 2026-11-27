@@ -17,6 +17,14 @@ String get updatePlatform {
 bool get canInstallInApp =>
     Platform.isMacOS || Platform.isAndroid || Platform.isWindows;
 
+Future<String?> existingDownloadPath(String fileName, int expectedSize) async {
+  if (expectedSize <= 0) return null;
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/$fileName');
+  if (file.existsSync() && file.lengthSync() == expectedSize) return file.path;
+  return null;
+}
+
 Future<String> downloadUpdate(String url, String fileName,
     {required void Function(int received, int total) onProgress,
     required bool Function() isCancelled}) async {

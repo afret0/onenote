@@ -2,6 +2,9 @@ String get updatePlatform => 'unknown';
 
 bool get canInstallInApp => false;
 
+Future<String?> existingDownloadPath(String fileName, int expectedSize) async =>
+    null;
+
 Future<String> downloadUpdate(String url, String fileName,
     {required void Function(int received, int total) onProgress,
     required bool Function() isCancelled}) async {

@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../ui/theme.dart';
 import '../ui/update_dialog.dart';
 import 'update_checker.dart';
+import 'update_download.dart';
 
 Future<void> checkUpdateSilently(AppDb db, BuildContext context) async {
   if (kIsWeb) return;
@@ -23,6 +24,7 @@ Future<void> checkUpdateSilently(AppDb db, BuildContext context) async {
   }
   if (!context.mounted) return;
   developer.log('hit, 启动检查发现新版本, latest: ${release.version}');
+  SilentUpdateDownload.instance.ensureStarted(release);
   final t = inkOf(context);
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     duration: const Duration(seconds: 12),
@@ -32,6 +34,8 @@ Future<void> checkUpdateSilently(AppDb db, BuildContext context) async {
         TextButton(
           onPressed: () async {
             await db.setSetting(updateSkippedVersionKey, release.version);
+            final silent = SilentUpdateDownload.instance;
+            if (silent.matches(release)) silent.cancel();
             developer.log(
                 'done, 启动提醒里跳过版本, version: ${release.version}');
             if (context.mounted) {
@@ -69,6 +73,8 @@ Future<void> checkUpdateManually(BuildContext context, AppState state) async {
     return;
   }
   if (compareVersions(release.version, current) > 0) {
+    SilentUpdateDownload.instance.ensureStarted(release);
+    if (!context.mounted) return;
     await showUpdateDialog(context, db: state.db, release: release);
   } else {
     developer.log('done, 手动检查已是最新, current: $current');
