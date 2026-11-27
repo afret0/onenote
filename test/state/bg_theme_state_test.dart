@@ -34,10 +34,10 @@ void main() {
     supportDir.deleteSync(recursive: true);
   });
 
-  test('缺省薰衣草紫与侧栏列表范围', () async {
+  test('缺省薰衣草紫与全部区域范围', () async {
     await state.init();
     expect(state.bgTheme, shellBgLavender);
-    expect(state.bgScope, AppState.bgScopePane);
+    expect(state.bgScope, AppState.bgScopeFull);
   });
 
   test('切换主题落库且重启保留并通知', () async {
@@ -89,11 +89,11 @@ void main() {
   test('未知范围标识被拒绝且存量非法回退默认', () async {
     await state.init();
     await state.setBgScope('bogus');
-    expect(state.bgScope, AppState.bgScopePane);
+    expect(state.bgScope, AppState.bgScopeFull);
     await db.setSetting(AppDb.bgScopeKey, 'bogus');
     final fresh = AppState(db, fontStoreOverride: store);
     addTearDown(fresh.dispose);
     await fresh.init();
-    expect(fresh.bgScope, AppState.bgScopePane);
+    expect(fresh.bgScope, AppState.bgScopeFull);
   });
 }

@@ -81,15 +81,15 @@ void main() {
     final state = await seed(tester);
     await pumpHome(tester, state);
     expect(find.byType(NoteView), findsOneWidget);
+    expect(paperFill(), findsNothing);
+
+    await tester.runAsync(() => state.setBgScope(AppState.bgScopePane));
+    await tester.pumpAndSettle();
     expect(paperFill(), findsOneWidget);
 
     await tester.runAsync(() => state.setBgScope(AppState.bgScopeEmpty));
     await tester.pumpAndSettle();
     expect(paperFill(), findsNWidgets(3));
-
-    await tester.runAsync(() => state.setBgScope(AppState.bgScopeFull));
-    await tester.pumpAndSettle();
-    expect(paperFill(), findsNothing);
   });
 
   testWidgets('不使用主题时不画图案', (tester) async {

@@ -54,7 +54,7 @@ void main() {
     expect(find.text('背景主题'), findsOneWidget);
     expect(find.text('背景范围'), findsOneWidget);
     expect(find.text('薰衣草紫'), findsOneWidget);
-    expect(find.text('侧栏与列表'), findsOneWidget);
+    expect(find.text('全部区域'), findsOneWidget);
   });
 
   testWidgets('主题对话框含不使用与六套预览并可切换', (tester) async {
@@ -97,9 +97,9 @@ void main() {
     expect(dialogText('全部区域'), findsOneWidget);
     expect(dialogText('仅空态'), findsOneWidget);
 
-    await tester.tap(dialogText('全部区域'));
+    await tester.tap(dialogText('侧栏与列表'));
     await tester.pumpAndSettle();
-    expect(state.bgScope, AppState.bgScopeFull);
-    expect(find.text('全部区域'), findsOneWidget);
+    expect(state.bgScope, AppState.bgScopePane);
+    expect(find.text('侧栏与列表'), findsOneWidget);
   });
 }

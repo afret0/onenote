@@ -73,7 +73,7 @@ class AppState extends ChangeNotifier {
   static const bgScopePane = 'pane';
   static const bgScopeFull = 'full';
   static const bgScopeEmpty = 'empty';
-  static const bgScopeDefault = bgScopePane;
+  static const bgScopeDefault = bgScopeFull;
   static const clipPortDefault = 41190;
   static const clipPortMin = 1024;
   static const clipPortMax = 65535;
