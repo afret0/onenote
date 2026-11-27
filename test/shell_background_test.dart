@@ -26,6 +26,9 @@ void main() {
             b.blobs.map((e) => [e.cx, e.cy, e.r]));
         expect(a.waves.map((e) => [e.base, e.amp, e.xs, e.ups]),
             b.waves.map((e) => [e.base, e.amp, e.xs, e.ups]));
+        expect(
+            a.shapes.map((e) => [e.kind, e.cx, e.cy, e.size, e.rot, e.stroke]),
+            b.shapes.map((e) => [e.kind, e.cx, e.cy, e.size, e.rot, e.stroke]));
       }
     }
   });
@@ -39,6 +42,9 @@ void main() {
         expect(scene.rings, isNotEmpty);
         expect(scene.dots, isNotEmpty);
         expect(scene.waves, isNotEmpty);
+        expect(scene.shapes.length, greaterThanOrEqualTo(8));
+        expect(scene.shapes.map((e) => e.kind).toSet(),
+            containsAll(['tri', 'square', 'plus', 'sparkle', 'arc', 'hex', 'semi', 'squiggle']));
         for (final color in scene.colors) {
           expect(contrastRatio(t.ink, color), greaterThanOrEqualTo(4.5),
               reason: '${theme.id} dark=$dark ink vs $color');
