@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../clip/clip_server.dart';
 import '../data/app_db.dart';
 import '../data/attachment_store.dart';
+import '../data/bg_theme.dart';
 import '../data/font_catalog.dart';
 import '../data/font_store.dart';
 import '../data/password_lock.dart';
@@ -68,6 +69,11 @@ class AppState extends ChangeNotifier {
   static const noteFontSizeDefault = 18.0;
   static const narrowStartupNote = 'note';
   static const narrowStartupList = 'list';
+  static const bgThemeDefault = shellBgLavender;
+  static const bgScopePane = 'pane';
+  static const bgScopeFull = 'full';
+  static const bgScopeEmpty = 'empty';
+  static const bgScopeDefault = bgScopePane;
   static const clipPortDefault = 41190;
   static const clipPortMin = 1024;
   static const clipPortMax = 65535;
@@ -94,6 +100,8 @@ class AppState extends ChangeNotifier {
   Set<String> searchScope = {};
   Map<String, String> lastOpenNote = {};
   String narrowStartup = narrowStartupNote;
+  String bgTheme = bgThemeDefault;
+  String bgScope = bgScopeDefault;
   String defaultNoteFormat = AppDb.noteFormatMarkdown;
   bool _startupRestorePending = true;
   double sidebarWidth = sidebarDefaultWidth;
@@ -200,6 +208,22 @@ class AppState extends ChangeNotifier {
     } else if (savedStartup != null) {
       developer.log(
           'skip, 窄屏启动设置非法回退默认, raw: $savedStartup, fallback: $narrowStartup');
+    }
+    final savedBgTheme = await db.getSetting(AppDb.bgThemeKey);
+    if (savedBgTheme != null && isKnownShellBgTheme(savedBgTheme)) {
+      bgTheme = savedBgTheme;
+    } else if (savedBgTheme != null) {
+      developer.log(
+          'skip, 背景主题设置非法回退默认, raw: $savedBgTheme, fallback: $bgTheme');
+    }
+    final savedBgScope = await db.getSetting(AppDb.bgScopeKey);
+    if (savedBgScope == bgScopePane ||
+        savedBgScope == bgScopeFull ||
+        savedBgScope == bgScopeEmpty) {
+      bgScope = savedBgScope!;
+    } else if (savedBgScope != null) {
+      developer.log(
+          'skip, 背景范围设置非法回退默认, raw: $savedBgScope, fallback: $bgScope');
     }
     if (isDesktopWindow) {
       clipEnabled = await db.getSetting(AppDb.clipEnabledKey) == '1';
@@ -1039,6 +1063,36 @@ class AppState extends ChangeNotifier {
     narrowStartup = value;
     await db.setSetting(AppDb.narrowStartupKey, value);
     developer.log('done, 窄屏启动页面已切换, narrowStartup: $value');
+    notifyListeners();
+  }
+
+  Future<void> setBgTheme(String value) async {
+    if (!isKnownShellBgTheme(value)) {
+      developer.log('skip, 未知背景主题标识不写入, bgTheme: $value');
+      return;
+    }
+    if (value == bgTheme) {
+      return;
+    }
+    developer.log('done, 背景主题已切换, $bgTheme -> $value');
+    bgTheme = value;
+    await db.setSetting(AppDb.bgThemeKey, value);
+    notifyListeners();
+  }
+
+  Future<void> setBgScope(String value) async {
+    if (value != bgScopePane &&
+        value != bgScopeFull &&
+        value != bgScopeEmpty) {
+      developer.log('skip, 未知背景范围标识不写入, bgScope: $value');
+      return;
+    }
+    if (value == bgScope) {
+      return;
+    }
+    developer.log('done, 背景范围已切换, $bgScope -> $value');
+    bgScope = value;
+    await db.setSetting(AppDb.bgScopeKey, value);
     notifyListeners();
   }
 

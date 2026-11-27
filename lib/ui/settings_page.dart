@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../app_version.dart';
 import '../data/app_db.dart';
+import '../data/bg_theme.dart';
 import '../data/font_store.dart';
 import '../lock/biometrics.dart';
 import '../state/app_state.dart';
@@ -15,6 +16,7 @@ import '../window_setup.dart' show isDesktopWindow;
 import 'dialogs.dart';
 import 'font_catalog_dialog.dart';
 import 'password_prompts.dart';
+import 'shell_background.dart';
 import 'sync_settings_page.dart';
 import 'theme.dart';
 
@@ -498,6 +500,107 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  String _bgScopeLabel() {
+    switch (state.bgScope) {
+      case AppState.bgScopeFull:
+        return '全部区域';
+      case AppState.bgScopeEmpty:
+        return '仅空态';
+      default:
+        return '侧栏与列表';
+    }
+  }
+
+  Future<void> _pickBgTheme() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('背景主题'),
+        children: [
+          _bgThemeOption(shellBgNone, '不使用', null),
+          for (final theme in shellBgThemes)
+            _bgThemeOption(theme.id, theme.name, theme),
+        ],
+      ),
+    );
+    if (picked != null) {
+      await state.setBgTheme(picked);
+    }
+  }
+
+  Widget _bgThemeOption(String id, String name, ShellBgTheme? theme) {
+    final t = inkOf(context);
+    return SimpleDialogOption(
+      onPressed: () => Navigator.pop(context, id),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 40,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: t.paper,
+              borderRadius: BorderRadius.circular(radiusSm),
+            ),
+            foregroundDecoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radiusSm),
+              border: Border.all(color: t.hairline),
+            ),
+            child: theme == null ? null : ShellBackground(themeId: theme.id),
+          ),
+          const SizedBox(width: spaceMd),
+          Expanded(
+            child: Text(name, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          if (state.bgTheme == id)
+            Icon(Icons.check, size: 18, color: t.accentText),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickBgScope() async {
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('背景范围'),
+        children: [
+          for (final option in const [
+            (AppState.bgScopePane, '侧栏与列表', '侧栏与列表间隙透出，正文与卡片保持实色'),
+            (AppState.bgScopeFull, '全部区域', '含正文在内全部透出，图案极淡不影响阅读'),
+            (AppState.bgScopeEmpty, '仅空态', '仅空态占位区透出，其余全部实色'),
+          ])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, option.$1),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(option.$2,
+                            style: Theme.of(context).textTheme.bodyMedium),
+                        Text(option.$3,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: inkOf(context).inkMuted)),
+                      ],
+                    ),
+                  ),
+                  if (state.bgScope == option.$1)
+                    Icon(Icons.check, size: 18, color: inkOf(context).accentText),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked != null) {
+      await state.setBgScope(picked);
+    }
+  }
+
   Future<void> _pickDefaultNoteFormat() async {
     final picked = await showDialog<String>(
       context: context,
@@ -706,7 +809,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   List<Widget> _sections(BuildContext context, InkTokens t) => [
         _group([
-          _SectionTitle('字体'),
+          _SectionTitle('外观'),
           _SettingCard(children: [
             _SettingRow(
               icon: Icons.font_download_outlined,
@@ -740,6 +843,22 @@ class _SettingsPageState extends State<SettingsPage> {
               valueLabel: '${state.noteFontSize.round()}px',
               onChanged: state.updateNoteFontSize,
               onChangeEnd: (_) => state.persistFontSizes(),
+            ),
+            Divider(height: 1, color: t.hairline),
+            _SettingRow(
+              icon: Icons.wallpaper_outlined,
+              title: '背景主题',
+              subtitle: '柔光几何填充图案，明暗主题自动适配',
+              action: shellBgThemeOf(state.bgTheme)?.name ?? '不使用',
+              onTap: _pickBgTheme,
+            ),
+            Divider(height: 1, color: t.hairline),
+            _SettingRow(
+              icon: Icons.layers_outlined,
+              title: '背景范围',
+              subtitle: '图案在哪些区域透出，正文实色最护眼',
+              action: _bgScopeLabel(),
+              onTap: _pickBgScope,
             ),
           ]),
         ]),

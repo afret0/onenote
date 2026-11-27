@@ -53,9 +53,9 @@ void main() {
     final state = await seed(tester);
     await pumpSettings(tester, state);
 
-    const titles = ['字体', '启动', '笔记', '数据保留', '同步', '密码与隐私', '剪藏', '即将上线', '搜索范围', '关于'];
+    const titles = ['外观', '启动', '笔记', '数据保留', '同步', '密码与隐私', '剪藏', '即将上线', '搜索范围', '关于'];
     for (final title in titles) {
-      expect(dx(tester, title), dx(tester, '字体'));
+      expect(dx(tester, title), dx(tester, '外观'));
     }
     for (var i = 1; i < titles.length; i++) {
       expect(dy(tester, titles[i]), greaterThan(dy(tester, titles[i - 1])));
@@ -70,11 +70,11 @@ void main() {
     final state = await seed(tester);
     await pumpSettings(tester, state);
 
-    expect(dx(tester, '启动'), dx(tester, '字体'));
-    expect(dx(tester, '笔记'), dx(tester, '字体'));
-    expect(dx(tester, '数据保留'), dx(tester, '字体'));
-    expect(dx(tester, '同步'), dx(tester, '字体'));
-    expect(dx(tester, '密码与隐私'), greaterThan(dx(tester, '字体')));
+    expect(dx(tester, '启动'), dx(tester, '外观'));
+    expect(dx(tester, '笔记'), dx(tester, '外观'));
+    expect(dx(tester, '数据保留'), dx(tester, '外观'));
+    expect(dx(tester, '同步'), dx(tester, '外观'));
+    expect(dx(tester, '密码与隐私'), greaterThan(dx(tester, '外观')));
     expect(dx(tester, '剪藏'), dx(tester, '密码与隐私'));
     expect(dx(tester, '即将上线'), dx(tester, '剪藏'));
     expect(dx(tester, '搜索范围'), dx(tester, '剪藏'));
@@ -109,10 +109,10 @@ void main() {
     final state = await seed(tester);
     await pumpSettings(tester, state);
 
-    expect(dx(tester, '启动'), dx(tester, '字体'));
-    expect(dx(tester, '笔记'), dx(tester, '字体'));
-    expect(dx(tester, '数据保留'), dx(tester, '字体'));
-    expect(dx(tester, '同步'), greaterThan(dx(tester, '字体')));
+    expect(dx(tester, '启动'), dx(tester, '外观'));
+    expect(dx(tester, '笔记'), dx(tester, '外观'));
+    expect(dx(tester, '数据保留'), dx(tester, '外观'));
+    expect(dx(tester, '同步'), greaterThan(dx(tester, '外观')));
     expect(dx(tester, '密码与隐私'), dx(tester, '同步'));
     expect(dx(tester, '剪藏'), dx(tester, '同步'));
     expect(dx(tester, '即将上线'), greaterThan(dx(tester, '剪藏')));

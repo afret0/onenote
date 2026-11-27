@@ -15,6 +15,7 @@ import 'note_view.dart';
 import 'notebook_color_picker.dart';
 import 'password_prompts.dart';
 import 'settings_page.dart';
+import 'shell_background.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -524,11 +525,15 @@ class _HomePageState extends State<HomePage> {
                   child: const Icon(Icons.edit_note),
                 )
               : null,
-          body: SafeArea(
+          body: _withBackground(SafeArea(
             child: Row(
               children: [
                 if (isWide)
-                  SizedBox(width: panes.$1, child: _sidebar(compact: false)),
+                  SizedBox(
+                      width: panes.$1,
+                      child: _paneFill(
+                          _sidebar(compact: false),
+                          state.bgScope == AppState.bgScopeEmpty)),
                 if (isWide)
                   _PaneDivider(
                     key: const Key('paneDivider:sidebar'),
@@ -547,9 +552,14 @@ class _HomePageState extends State<HomePage> {
                     onDragEnd: state.persistPaneWidths,
                   ),
                 if (isWide)
-                  SizedBox(width: panes.$2, child: _listPane(dense: true))
+                  SizedBox(
+                      width: panes.$2,
+                      child: _paneFill(_listPane(dense: true),
+                          state.bgScope == AppState.bgScopeEmpty))
                 else if (openId == null)
-                  Expanded(child: _listPane()),
+                  Expanded(
+                      child: _paneFill(_listPane(),
+                          state.bgScope == AppState.bgScopeEmpty)),
                 if (isWide)
                   _PaneDivider(
                     key: const Key('paneDivider:list'),
@@ -570,20 +580,23 @@ class _HomePageState extends State<HomePage> {
                 if (isWide || openId != null)
                   Expanded(
                     child: openId != null
-                        ? NoteView(
-                            key: _noteViewKey,
-                            state: state,
-                            noteId: openId,
-                            showBack: drawerNeeded,
-                            onBack: state.closeNote,
-                            highlightQuery:
-                                searching ? _searchController.text.trim() : null,
-                          )
+                        ? _paneFill(
+                            NoteView(
+                              key: _noteViewKey,
+                              state: state,
+                              noteId: openId,
+                              showBack: drawerNeeded,
+                              onBack: state.closeNote,
+                              highlightQuery: searching
+                                  ? _searchController.text.trim()
+                                  : null,
+                            ),
+                            state.bgScope != AppState.bgScopeFull)
                         : _contentPlaceholder(),
                   ),
               ],
             ),
-          ),
+          )),
         );
         final guarded = PopScope(
           canPop: isWide || openId == null,
@@ -617,6 +630,23 @@ class _HomePageState extends State<HomePage> {
         );
       },
     );
+  }
+
+  Widget _withBackground(Widget child) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(child: ShellBackground(themeId: state.bgTheme)),
+        child,
+      ],
+    );
+  }
+
+  Widget _paneFill(Widget child, bool opaque) {
+    if (!opaque) {
+      return child;
+    }
+    return ColoredBox(color: inkOf(context).paper, child: child);
   }
 
   (double, double) _paneWidths(double windowWidth) {

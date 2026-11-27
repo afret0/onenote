@@ -47,7 +47,7 @@ void main() {
   }
 
   testWidgets('隐私空间入口默认隐藏, 连点版本 10 次才显示并提示进度', (tester) async {
-    tester.view.physicalSize = const Size(800, 2800);
+    tester.view.physicalSize = const Size(800, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final state = await seed(tester);
@@ -79,7 +79,7 @@ void main() {
   });
 
   testWidgets('解锁仅本次设置页内有效, 重新进入恢复隐藏', (tester) async {
-    tester.view.physicalSize = const Size(800, 2800);
+    tester.view.physicalSize = const Size(800, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final state = await seed(tester);
@@ -97,7 +97,7 @@ void main() {
   });
 
   testWidgets('已有隐私空间时销毁入口同样隐藏, 解锁后可见', (tester) async {
-    tester.view.physicalSize = const Size(800, 2800);
+    tester.view.physicalSize = const Size(800, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final state = await seed(tester);
@@ -117,7 +117,7 @@ void main() {
   });
 
   testWidgets('已有隐私空间解锁后显示进入入口, 点击触发切空间', (tester) async {
-    tester.view.physicalSize = const Size(800, 2800);
+    tester.view.physicalSize = const Size(800, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final state = await seed(tester);
