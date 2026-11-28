@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_auth_platform_interface/local_auth_platform_interface.dart';
 import 'package:onenote/data/app_db.dart';
 import 'package:onenote/data/password_lock.dart';
+import 'package:onenote/lock/app_focus.dart';
 import 'package:onenote/sync/sync_engine.dart';
 import 'package:onenote/ui/lock_screen.dart';
 import 'package:onenote/ui/theme.dart';
@@ -229,6 +230,55 @@ void main() {
     await pumpUntil(tester, () => entered != null);
     expect(entered, same(db));
     expect(fake.authCalls, 1);
+  });
+
+  testWidgets('后台锁屏不自动弹指纹, 回到前台才弹', (WidgetTester tester) async {
+    final fake = FakeLocalAuth(enrolled: const [BiometricType.fingerprint]);
+    LocalAuthPlatform.instance = fake;
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('pass', 1000).encode());
+    });
+    AppDb? entered;
+    AppFocus.debugForeground = false;
+    addTearDown(() => AppFocus.debugForeground = null);
+    await pumpGateRaw(tester, db, (d, s) => entered = d);
+    await pumpUntil(
+        tester, () => find.byIcon(Icons.fingerprint).evaluate().isNotEmpty);
+    expect(fake.authCalls, 0);
+    expect(entered, isNull);
+
+    AppFocus.debugReturnToForeground();
+    await pumpUntil(tester, () => entered != null);
+    expect(entered, same(db));
+    expect(fake.authCalls, 1);
+  });
+
+  testWidgets('后台锁屏期间用户已输入密码, 回前台不再自动弹',
+      (WidgetTester tester) async {
+    final fake = FakeLocalAuth(enrolled: const [BiometricType.fingerprint]);
+    LocalAuthPlatform.instance = fake;
+    final db = track(AppDb(NativeDatabase.memory()));
+    await tester.runAsync(() async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('pass', 1000).encode());
+    });
+    AppDb? entered;
+    AppFocus.debugForeground = false;
+    addTearDown(() => AppFocus.debugForeground = null);
+    await pumpGateRaw(tester, db, (d, s) => entered = d);
+    await pumpUntil(
+        tester, () => find.byIcon(Icons.fingerprint).evaluate().isNotEmpty);
+    await tester.enterText(find.byType(TextField), 'wrong');
+    await tester.pump();
+
+    AppFocus.debugReturnToForeground();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(fake.authCalls, 0);
+    expect(entered, isNull);
   });
 
   Future<void> waitUntil(WidgetTester tester, bool Function() done) async {

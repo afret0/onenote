@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../data/app_db.dart';
 import '../data/password_lock.dart';
+import '../lock/app_focus.dart';
 import '../lock/biometrics.dart';
 import '../lock/silent_verify.dart';
 import '../state/lock_attempts.dart';
@@ -39,6 +40,7 @@ class _LockGateState extends State<LockGate> {
   List<PasswordLock> _autoLocks = [];
   Timer? _cooldownTimer;
   Timer? _autoTimer;
+  ForegroundWait? _bioWait;
   late final LockAttempts _rootAttempts;
 
   @override
@@ -52,6 +54,7 @@ class _LockGateState extends State<LockGate> {
   void dispose() {
     _cooldownTimer?.cancel();
     _autoTimer?.cancel();
+    _bioWait?.cancel();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -100,11 +103,32 @@ class _LockGateState extends State<LockGate> {
     if (autoBio) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          developer.log('hit, 已录入生物识别自动弹出认证');
-          _bioUnlock();
+          _autoBioPrompt();
         }
       });
     }
+  }
+
+  Future<void> _autoBioPrompt() async {
+    if (_busy || _preparing || _cooldownMs > 0) {
+      return;
+    }
+    if (!AppFocus.inForeground) {
+      developer.log('skip, 应用不在前台暂不自动弹生物识别, 等回到前台再弹');
+      final wait = AppFocus.waitUntilForeground();
+      _bioWait = wait;
+      await wait.done;
+      if (!mounted || _bioWait != wait) {
+        return;
+      }
+      _bioWait = null;
+      if (_busy || _cooldownMs > 0 || _controller.text.isNotEmpty) {
+        developer.log('skip, 回到前台时已忙/冷却/用户已输入, 不再自动弹');
+        return;
+      }
+    }
+    developer.log('hit, 已录入生物识别自动弹出认证');
+    await _bioUnlock();
   }
 
   Future<List<PasswordLock>> _collectAutoLocks() async {
