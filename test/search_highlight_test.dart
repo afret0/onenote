@@ -70,6 +70,38 @@ void main() {
     expect(offsets, orderedEquals(offsets.toList()..sort()));
   });
 
+  testWidgets('highlight splits do not duplicate matched text',
+      (WidgetTester tester) async {
+    final controller = MarkdownHighlightController();
+    await tester.pumpWidget(MaterialApp(
+      theme: buildInkTheme(Brightness.dark),
+      home: Scaffold(
+        body: MarkdownView(
+          content:
+              '# postman\n\npostman cli api key\n\n[postman](https://e.com)',
+          highlightQuery: 'postman',
+          highlightActiveIndex: 0,
+          highlightController: controller,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final spans = tester
+        .widgetList<SelectableText>(find.byType(SelectableText))
+        .map((w) => w.textSpan!)
+        .toList();
+    final texts = spans.map((s) => s.toPlainText()).toList();
+    expect(
+        texts, containsAll(<String>['postman', 'postman cli api key']));
+    expect(texts.any((s) => s.contains('postmanpostman')), isFalse);
+    expect(controller.matches.length, 3);
+    final link = spans
+        .map(_findLinkSpan)
+        .firstWhere((s) => s != null, orElse: () => null);
+    expect(link?.href, 'https://e.com');
+    expect(link?.toPlainText(), 'postman');
+  });
+
   testWidgets('markdown link span is plain selectable text',
       (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(

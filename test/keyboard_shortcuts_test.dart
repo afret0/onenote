@@ -128,6 +128,30 @@ void main() {
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
   });
 
+  testWidgets('esc exits search mode and clears the query', (tester) async {
+    wide(tester);
+    final (state, _, _) = await seed(tester, content: 'alpha beta');
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    await press(tester, LogicalKeyboardKey.keyF, meta: true);
+    await tester.enterText(find.byType(TextField).first, 'alpha');
+    for (var i = 0; i < 3; i++) {
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+    expect(find.text('搜索结果'), findsOneWidget);
+
+    await press(tester, LogicalKeyboardKey.escape);
+    expect(find.text('搜索结果'), findsNothing);
+    expect(searchField(tester).controller!.text, isEmpty);
+    expect(searchField(tester).focusNode!.hasFocus, isFalse);
+
+    await press(tester, LogicalKeyboardKey.keyF, meta: true);
+    expect(searchField(tester).focusNode!.hasFocus, isTrue);
+  });
+
   testWidgets('ctrl+f focuses global search on wide layout', (tester) async {
     wide(tester);
     final (state, _, _) = await seed(tester);

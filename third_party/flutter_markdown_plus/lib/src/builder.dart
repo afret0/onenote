@@ -143,7 +143,7 @@ class MarkdownLinkSpan extends TextSpan {
       MarkdownLinkSpan(
         href: href,
         refOrdinal: refOrdinal,
-        text: text ?? this.text,
+        text: children != null ? null : (text ?? this.text),
         children: children ?? this.children,
         style: style ?? this.style,
         recognizer: recognizer ?? this.recognizer,
@@ -172,8 +172,10 @@ TextSpan preserveLinkSpan(
       semanticsLabel: semanticsLabel,
     );
   }
+  // TextSpan renders text before children; keeping both would duplicate the
+  // content, so explicit children always replace the original text.
   return TextSpan(
-    text: text ?? src.text,
+    text: children != null ? null : (text ?? src.text),
     children: children ?? src.children,
     style: style ?? src.style,
     recognizer: recognizer ?? src.recognizer,

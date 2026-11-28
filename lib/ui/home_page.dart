@@ -62,6 +62,7 @@ class _HomePageState extends State<HomePage> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+  final _homeFocus = FocusNode();
   GlobalKey<NoteViewState> _noteViewKey = GlobalKey<NoteViewState>();
   String? _noteViewKeyId;
   List<Note>? _searchHits;
@@ -89,6 +90,7 @@ class _HomePageState extends State<HomePage> {
     state.removeListener(_refreshSearchHits);
     _searchController.dispose();
     _searchFocus.dispose();
+    _homeFocus.dispose();
     super.dispose();
   }
 
@@ -408,6 +410,22 @@ class _HomePageState extends State<HomePage> {
     await state.closeNote();
   }
 
+  void _exitSearch() {
+    if (_searchHits == null &&
+        _searchController.text.isEmpty &&
+        !_searchFocus.hasFocus) {
+      return;
+    }
+    developer.log('hit, Esc 退出搜索模式');
+    _searchSeq++;
+    _searchController.clear();
+    _searchFocus.unfocus();
+    if (_homeFocus.context != null) {
+      _homeFocus.requestFocus();
+    }
+    setState(() => _searchHits = null);
+  }
+
   Future<void> _searchChanged(String value) async {
     final query = value.trim();
     final seq = ++_searchSeq;
@@ -598,19 +616,24 @@ class _HomePageState extends State<HomePage> {
             ),
           )),
         );
-        final guarded = PopScope(
-          canPop: isWide || openId == null,
-          onPopInvokedWithResult: (didPop, _) {
-            if (didPop) {
-              return;
-            }
-            if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-              Navigator.of(context).pop();
-              return;
-            }
-            _backToList();
+        final guarded = CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): _exitSearch,
           },
-          child: scaffold,
+          child: PopScope(
+            canPop: isWide || openId == null,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop) {
+                return;
+              }
+              if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+                Navigator.of(context).pop();
+                return;
+              }
+              _backToList();
+            },
+            child: scaffold,
+          ),
         );
         if (!isDesktopWindow) {
           return guarded;
@@ -626,7 +649,7 @@ class _HomePageState extends State<HomePage> {
             const SingleActivator(LogicalKeyboardKey.comma, control: true):
                 _openSettings,
           },
-          child: Focus(autofocus: true, child: guarded),
+          child: Focus(autofocus: true, focusNode: _homeFocus, child: guarded),
         );
       },
     );
