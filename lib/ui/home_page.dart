@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -76,6 +77,22 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     state.onAppLocking = _flushOpenEdits;
     state.addListener(_refreshSearchHits);
+    HardwareKeyboard.instance.addHandler(_renewAppLeaseOnKey);
+    GestureBinding.instance.pointerRouter
+        .addGlobalRoute(_renewAppLeaseOnPointer);
+  }
+
+  bool _renewAppLeaseOnKey(KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      state.touchAppActivity();
+    }
+    return false;
+  }
+
+  void _renewAppLeaseOnPointer(PointerEvent event) {
+    if (event is PointerSignalEvent) {
+      state.touchAppActivity();
+    }
   }
 
   Future<void> _flushOpenEdits() async {
@@ -84,6 +101,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    GestureBinding.instance.pointerRouter
+        .removeGlobalRoute(_renewAppLeaseOnPointer);
+    HardwareKeyboard.instance.removeHandler(_renewAppLeaseOnKey);
     if (state.onAppLocking == _flushOpenEdits) {
       state.onAppLocking = null;
     }
@@ -635,21 +655,28 @@ class _HomePageState extends State<HomePage> {
             child: scaffold,
           ),
         );
-        if (!isDesktopWindow) {
-          return guarded;
+        Widget wrapped = guarded;
+        if (isDesktopWindow) {
+          wrapped = CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+                  _activateSearch,
+              const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+                  _activateSearch,
+              const SingleActivator(LogicalKeyboardKey.comma, meta: true):
+                  _openSettings,
+              const SingleActivator(LogicalKeyboardKey.comma, control: true):
+                  _openSettings,
+            },
+            child: Focus(autofocus: true, focusNode: _homeFocus, child: wrapped),
+          );
         }
-        return CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
-                _activateSearch,
-            const SingleActivator(LogicalKeyboardKey.keyF, control: true):
-                _activateSearch,
-            const SingleActivator(LogicalKeyboardKey.comma, meta: true):
-                _openSettings,
-            const SingleActivator(LogicalKeyboardKey.comma, control: true):
-                _openSettings,
-          },
-          child: Focus(autofocus: true, focusNode: _homeFocus, child: guarded),
+        // 滚轮 PointerSignal 派发到最深的 Scrollable 即被 resolve，外层 Listener
+        // 永远收不到；续租必须挂在 GestureBinding 的派发源头观测（不消费事件）
+        return Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) => state.touchAppActivity(),
+          child: wrapped,
         );
       },
     );

@@ -285,6 +285,86 @@ void main() {
           '/notes/spaces/${ref.id}');
     });
 
+    test('App 空闲租期到期回锁屏, 操作续期不锁', () async {
+      await state.init();
+      await state.setAppPassword('app-pass');
+      var locked = 0;
+      state.lockHandler = () => locked++;
+
+      now += 9 * 60000;
+      state.touchAppActivity();
+      now += 9 * 60000;
+      state.sweepLeases();
+      expect(locked, 0);
+
+      now += 2 * 60000;
+      state.sweepLeases();
+      await Future<void>.delayed(Duration.zero);
+      expect(locked, 1);
+    });
+
+    test('未设 App 密码不授 App 租期, 移除密码后清租期', () async {
+      await state.init();
+      now += 60 * 60000;
+      state.sweepLeases();
+      var locked = 0;
+      state.lockHandler = () => locked++;
+      expect(locked, 0);
+
+      await state.setAppPassword('app-pass');
+      await state.removeAppPassword();
+      now += 60 * 60000;
+      state.sweepLeases();
+      await Future<void>.delayed(Duration.zero);
+      expect(locked, 0);
+    });
+
+    test('进入已设密码的空间即授 App 租期, 到期回锁屏', () async {
+      await db.setSetting(
+          AppDb.appLockKey, PasswordLock.create('app-pass', now).encode());
+      await state.init();
+      var locked = 0;
+      state.lockHandler = () => locked++;
+      now += 11 * 60000;
+      state.sweepLeases();
+      await Future<void>.delayed(Duration.zero);
+      expect(locked, 1);
+    });
+
+    test('自动上锁改为不定时后 App 租期永不到期, 改回分钟重新计时', () async {
+      await state.init();
+      await state.setAppPassword('app-pass');
+      var locked = 0;
+      state.lockHandler = () => locked++;
+
+      await state.setLockLeaseMinutes(0);
+      now += 365 * 24 * 3600000;
+      state.sweepLeases();
+      await Future<void>.delayed(Duration.zero);
+      expect(locked, 0);
+
+      await state.setLockLeaseMinutes(5);
+      now += 4 * 60000;
+      state.sweepLeases();
+      expect(locked, 0);
+      now += 2 * 60000;
+      state.sweepLeases();
+      await Future<void>.delayed(Duration.zero);
+      expect(locked, 1);
+    });
+
+    test('缩短时长对已授租期立即生效', () async {
+      await state.init();
+      await state.setAppPassword('app-pass');
+      var locked = 0;
+      state.lockHandler = () => locked++;
+      await state.setLockLeaseMinutes(5);
+      now += 6 * 60000;
+      state.sweepLeases();
+      await Future<void>.delayed(Duration.zero);
+      expect(locked, 1);
+    });
+
     test('lockApp 清空全部租期并触发 lockHandler', () async {
       final work = await db.createNotebook('work');
       now += 1000;

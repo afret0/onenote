@@ -82,6 +82,8 @@ class AppState extends ChangeNotifier {
   static const lockLeaseDefaultMinutes = 10;
   static const _leaseSweepInterval = Duration(seconds: 5);
   static const _notebookScopePrefix = 'notebook:';
+  static const _appLeaseKey = 'app';
+  static const _appActivityThrottleMs = 15000;
 
   final AppDb db;
   final AppDb globalDb;
@@ -124,6 +126,8 @@ class AppState extends ChangeNotifier {
   PasswordLock? appLock;
   PrivacySpaceRef? privacyRef;
   final Map<String, int> _unlockUntil = {};
+  int _lastAppActivityTouch = 0;
+  bool _sweepingLeases = false;
   Map<String, Note> _noteIndex = {};
   Timer? _leaseSweep;
   static const _leaseForever = 9007199254740991;
@@ -262,6 +266,9 @@ class AppState extends ChangeNotifier {
       }
     }
     await refresh();
+    if (appLock?.active == true && !systemLockTrusted) {
+      grantAppUnlock();
+    }
     if (clipEnabled) {
       await _startClipServer();
     }
@@ -416,7 +423,7 @@ class AppState extends ChangeNotifier {
     } else {
       _unlockUntil[key] = db.clock() + lockLeaseMinutes * 60000;
       _leaseSweep ??=
-          Timer.periodic(_leaseSweepInterval, (_) => _sweepLeases());
+          Timer.periodic(_leaseSweepInterval, (_) => sweepLeases());
     }
     developer.log(
         'done, 解锁租期已授予, key: $key, leaseMinutes: $lockLeaseMinutes');
@@ -429,6 +436,8 @@ class AppState extends ChangeNotifier {
       grantUnlock('$_notebookScopePrefix$notebookId');
 
   void grantNoteUnlock(String noteId) => grantUnlock('note:$noteId');
+
+  void grantAppUnlock() => grantUnlock(_appLeaseKey);
 
   Note? noteById(String noteId) => _noteIndex[noteId];
 
@@ -449,7 +458,24 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void _sweepLeases() {
+  void touchAppActivity() {
+    if (!_unlockUntil.containsKey(_appLeaseKey)) {
+      return;
+    }
+    final now = db.clock();
+    if (now - _lastAppActivityTouch < _appActivityThrottleMs) {
+      return;
+    }
+    _lastAppActivityTouch = now;
+    _unlockUntil[_appLeaseKey] = lockLeaseMinutes <= 0
+        ? _leaseForever
+        : now + lockLeaseMinutes * 60000;
+  }
+
+  void sweepLeases() {
+    if (_sweepingLeases) {
+      return;
+    }
     final now = db.clock();
     final expired = [
       for (final entry in _unlockUntil.entries)
@@ -458,21 +484,28 @@ class AppState extends ChangeNotifier {
     if (expired.isEmpty) {
       return;
     }
+    _sweepingLeases = true;
     for (final key in expired) {
       _unlockUntil.remove(key);
     }
     developer.log(
         'hit, 解锁租期到期自动上锁, expired: ${expired.join(",")}');
+    if (expired.contains(_appLeaseKey) && appLock?.active == true) {
+      developer.log('hit, App 空闲租期到期回到锁屏');
+      unawaited(lockApp().whenComplete(() => _sweepingLeases = false));
+      return;
+    }
     if (expired.every((k) => k.startsWith(_notebookScopePrefix))) {
       final openId = openNoteId;
       final openNote = openId == null ? null : _noteIndex[openId];
       if (openNote == null ||
           !expired.contains('$_notebookScopePrefix${openNote.notebookId}')) {
+        _sweepingLeases = false;
         notifyListeners();
         return;
       }
     }
-    unawaited(_closeForRelock());
+    unawaited(_closeForRelock().whenComplete(() => _sweepingLeases = false));
   }
 
   Future<void> _closeForRelock() async {
@@ -518,6 +551,13 @@ class AppState extends ChangeNotifier {
       for (final key in _unlockUntil.keys.toList()) {
         _unlockUntil[key] = _leaseForever;
       }
+    } else {
+      final until = db.clock() + minutes * 60000;
+      for (final key in _unlockUntil.keys.toList()) {
+        _unlockUntil[key] = until;
+      }
+      _leaseSweep ??=
+          Timer.periodic(_leaseSweepInterval, (_) => sweepLeases());
     }
     developer.log('done, 自动上锁时长已更新, minutes: $minutes');
     notifyListeners();
@@ -559,6 +599,11 @@ class AppState extends ChangeNotifier {
     }
     trustSystemLock = enabled;
     await globalDb.setSetting(AppDb.trustSystemLockKey, enabled ? '1' : '0');
+    if (systemLockTrusted) {
+      _unlockUntil.remove(_appLeaseKey);
+    } else if (appLock?.active == true) {
+      grantAppUnlock();
+    }
     developer.log('done, 信任系统应用锁已更新, enabled: $enabled');
     notifyListeners();
   }
@@ -606,6 +651,9 @@ class AppState extends ChangeNotifier {
     final lock = PasswordLock.create(password, db.clock());
     await db.setSetting(AppDb.appLockKey, lock.encode());
     appLock = lock;
+    if (!systemLockTrusted) {
+      grantAppUnlock();
+    }
     if (isChildSpace) {
       await _writeBackSpaceLock(lock);
     }
@@ -657,6 +705,7 @@ class AppState extends ChangeNotifier {
     final cleared = PasswordLock.clearedAt(db.clock());
     await db.setSetting(AppDb.appLockKey, cleared.encode());
     appLock = cleared;
+    _unlockUntil.remove(_appLeaseKey);
     _pushAfterWrite('removeAppPassword');
     developer.log('done, App 密码已移除');
     notifyListeners();

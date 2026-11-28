@@ -3,6 +3,7 @@ import 'dart:io';
 // ignore: implementation_imports
 import 'package:desktop_drop/src/native_transport.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +19,7 @@ void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
 
   Future<(AppState, AppDb, Note)> seed(WidgetTester tester,
-      {String content = 'alpha'}) async {
+      {String content = 'alpha', int Function()? clock}) async {
     NativeTransport.debugOverride = NativeTransport.testing()
       ..invokeHandler = (call) async {
         if (call.method == 'initialize') {
@@ -35,7 +36,7 @@ void main() {
       (call) async => supportDir.path,
     );
     var now = 1700000000000;
-    final db = AppDb(NativeDatabase.memory(), clock: () => now);
+    final db = AppDb(NativeDatabase.memory(), clock: clock ?? () => now);
     final state = AppState(db);
     addTearDown(() async {
       state.dispose();
@@ -126,6 +127,50 @@ void main() {
 
     await press(tester, LogicalKeyboardKey.keyF, meta: true);
     expect(searchField(tester).focusNode!.hasFocus, isTrue);
+  });
+
+  testWidgets('点击/键盘/滚轮都续 App 空闲租期, 空闲到期回锁屏', (tester) async {
+    wide(tester);
+    var now = 1700000000000;
+    final (state, _, note) = await seed(tester,
+        content: List.generate(80, (i) => 'line $i alpha').join('\n'),
+        clock: () => now);
+    await tester.runAsync(() async {
+      await state.setAppPassword('pw-app');
+      await state.setLockLeaseMinutes(5);
+      await state.openNote(note.id);
+    });
+    await tester.pumpWidget(app(state));
+    await tester.pumpAndSettle();
+
+    Future<void> advance(int ms) async {
+      now += ms;
+      state.sweepLeases();
+      await tester.pump();
+    }
+
+    await advance(4 * 60000);
+    await tester.tap(find.byType(NoteView), warnIfMissed: false);
+    await tester.pump();
+    await advance(4 * 60000);
+    expect(state.openNoteId, note.id);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await advance(4 * 60000);
+    expect(state.openNoteId, note.id);
+
+    final scrollTarget = tester.getCenter(find.byType(NoteView));
+    await tester.sendEventToBinding(PointerScrollEvent(
+        position: scrollTarget, scrollDelta: const Offset(0, 120)));
+    await tester.pumpAndSettle();
+    await advance(4 * 60000);
+    expect(state.openNoteId, note.id);
+
+    var locked = 0;
+    state.lockHandler = () => locked++;
+    await advance(2 * 60000);
+    expect(locked, 1);
+    expect(state.openNoteId, isNull);
   });
 
   testWidgets('esc exits search mode and clears the query', (tester) async {

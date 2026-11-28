@@ -1026,7 +1026,7 @@ class _SettingsPageState extends State<SettingsPage> {
               _SettingRow(
                 icon: Icons.timer_outlined,
                 title: '自动上锁',
-                subtitle: '解锁后无操作超过该时长自动重新上锁，任何操作都会续期',
+                subtitle: '解锁后无点击、键盘或滚动超过该时长回到锁屏，任一操作都会续期',
                 action: state.lockLeaseMinutes <= 0
                     ? '不定时'
                     : '${state.lockLeaseMinutes} 分钟',
