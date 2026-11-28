@@ -143,7 +143,8 @@ class _ClipPageEmbedState extends State<ClipPageEmbed> {
   @override
   Widget build(BuildContext context) {
     final t = inkOf(context);
-    final height = MediaQuery.sizeOf(context).height * 0.6;
+    final height = clampDouble(
+        MediaQuery.sizeOf(context).height - 220, 320, double.infinity);
     Widget child;
     if (_error != null) {
       child = Center(
