@@ -1,3 +1,5 @@
+import 'dart:math';
+
 class ShellBgTheme {
   const ShellBgTheme({
     required this.id,
@@ -17,6 +19,7 @@ class ShellBgTheme {
 }
 
 const shellBgNone = 'none';
+const shellBgRandom = 'random';
 const shellBgLavender = 'lavender';
 const shellBgIndigo = 'indigo';
 const shellBgCeladon = 'celadon';
@@ -80,3 +83,69 @@ ShellBgTheme? shellBgThemeOf(String id) {
 
 bool isKnownShellBgTheme(String id) =>
     id == shellBgNone || shellBgThemeOf(id) != null;
+
+const bgRandomSatMin = 0.40;
+const bgRandomSatMax = 0.52;
+const bgRandomLightMin = 0.60;
+const bgRandomLightMax = 0.68;
+const bgRandomSeedMax = 0x7FFFFFFF;
+
+double _roundTo(double value, int places) {
+  final factor = pow(10, places).toDouble();
+  return (value * factor).roundToDouble() / factor;
+}
+
+ShellBgTheme randomShellBgTheme(Random rng) {
+  final hue = _roundTo(rng.nextDouble() * 360, 2) % 360;
+  final sat = _roundTo(
+      bgRandomSatMin + rng.nextDouble() * (bgRandomSatMax - bgRandomSatMin), 4);
+  final light = _roundTo(
+      bgRandomLightMin + rng.nextDouble() * (bgRandomLightMax - bgRandomLightMin),
+      4);
+  return ShellBgTheme(
+      id: shellBgRandom,
+      name: '随机图案',
+      hue: hue,
+      sat: sat,
+      light: light,
+      seed: rng.nextInt(bgRandomSeedMax + 1));
+}
+
+String encodeShellBgTheme(ShellBgTheme theme) =>
+    '${theme.hue.toStringAsFixed(2)},${theme.sat.toStringAsFixed(4)},'
+    '${theme.light.toStringAsFixed(4)},${theme.seed}';
+
+ShellBgTheme? decodeShellBgTheme(String raw) {
+  final parts = raw.split(',');
+  if (parts.length != 4) {
+    return null;
+  }
+  final hue = double.tryParse(parts[0]);
+  final sat = double.tryParse(parts[1]);
+  final light = double.tryParse(parts[2]);
+  final seed = int.tryParse(parts[3]);
+  if (hue == null ||
+      sat == null ||
+      light == null ||
+      seed == null ||
+      !hue.isFinite ||
+      !sat.isFinite ||
+      !light.isFinite ||
+      hue < 0 ||
+      hue >= 360 ||
+      sat < bgRandomSatMin ||
+      sat > bgRandomSatMax ||
+      light < bgRandomLightMin ||
+      light > bgRandomLightMax ||
+      seed < 0 ||
+      seed > bgRandomSeedMax) {
+    return null;
+  }
+  return ShellBgTheme(
+      id: shellBgRandom,
+      name: '随机图案',
+      hue: hue,
+      sat: sat,
+      light: light,
+      seed: seed);
+}

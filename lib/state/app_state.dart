@@ -70,7 +70,7 @@ class AppState extends ChangeNotifier {
   static const noteFontSizeDefault = 18.0;
   static const narrowStartupNote = 'note';
   static const narrowStartupList = 'list';
-  static const bgThemeDefault = shellBgLavender;
+  static const bgThemeDefault = shellBgRandom;
   static const bgScopePane = 'pane';
   static const bgScopeFull = 'full';
   static const bgScopeEmpty = 'empty';
@@ -106,6 +106,10 @@ class AppState extends ChangeNotifier {
   String bgTheme = bgThemeDefault;
   String bgScope = bgScopeDefault;
   Set<String> bgShapes = shellBgAllShapeIds.toSet();
+  ShellBgTheme? bgRandomTheme;
+
+  ShellBgTheme? get bgThemeData =>
+      bgTheme == shellBgRandom ? bgRandomTheme : shellBgThemeOf(bgTheme);
   String defaultNoteFormat = AppDb.noteFormatMarkdown;
   bool _startupRestorePending = true;
   double sidebarWidth = sidebarDefaultWidth;
@@ -216,7 +220,9 @@ class AppState extends ChangeNotifier {
           'skip, 窄屏启动设置非法回退默认, raw: $savedStartup, fallback: $narrowStartup');
     }
     final savedBgTheme = await db.getSetting(AppDb.bgThemeKey);
-    if (savedBgTheme != null && isKnownShellBgTheme(savedBgTheme)) {
+    if (savedBgTheme != null &&
+        (isKnownShellBgTheme(savedBgTheme) ||
+            savedBgTheme == shellBgRandom)) {
       bgTheme = savedBgTheme;
     } else if (savedBgTheme != null) {
       developer.log(
@@ -240,6 +246,11 @@ class AppState extends ChangeNotifier {
     } else if (savedBgShapes != null) {
       developer.log(
           'skip, 背景形状设置非法回退全选, raw: $savedBgShapes');
+    }
+    if (bgTheme == shellBgRandom) {
+      developer.log(
+          'hit, 启动重随随机背景, savedTheme: ${savedBgTheme ?? '(未设置)'}');
+      await randomizeBg();
     }
     if (isDesktopWindow) {
       clipEnabled = await db.getSetting(AppDb.clipEnabledKey) == '1';
@@ -1127,8 +1138,20 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> randomizeBg({Random? rng}) async {
+    final next = randomShellBgTheme(rng ?? Random());
+    developer.log(
+        'done, 随机背景已生成, hue: ${next.hue}, sat: ${next.sat}, light: ${next.light}, seed: ${next.seed}');
+    bgRandomTheme = next;
+    bgTheme = shellBgRandom;
+    await db.setSetting(AppDb.bgRandomThemeKey, encodeShellBgTheme(next));
+    await db.setSetting(AppDb.bgThemeKey, shellBgRandom);
+    notifyListeners();
+  }
+
   Future<void> setBgTheme(String value) async {
-    if (!isKnownShellBgTheme(value)) {
+    if (!isKnownShellBgTheme(value) &&
+        !(value == shellBgRandom && bgRandomTheme != null)) {
       developer.log('skip, 未知背景主题标识不写入, bgTheme: $value');
       return;
     }

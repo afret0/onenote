@@ -181,6 +181,7 @@ class AppDb extends _$AppDb {
   static const bgThemeKey = 'bgTheme';
   static const bgScopeKey = 'bgScope';
   static const bgShapesKey = 'bgShapes';
+  static const bgRandomThemeKey = 'bgRandomTheme';
   static const defaultNoteFormatKey = 'defaultNoteFormat';
   static const noteFormatMarkdown = 'markdown';
   static const noteFormatRichtext = 'richtext';

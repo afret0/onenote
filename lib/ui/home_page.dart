@@ -688,7 +688,7 @@ class _HomePageState extends State<HomePage> {
       children: [
         Positioned.fill(
             child: ShellBackground(
-                themeId: state.bgTheme, enabled: state.bgShapes)),
+                theme: state.bgThemeData, enabled: state.bgShapes)),
         child,
       ],
     );

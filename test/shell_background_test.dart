@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -89,6 +90,74 @@ void main() {
             reason: '${theme.id} dark=$dark 与纸色几乎无差异');
       }
     }
+  });
+
+  test('随机主题编解码可逆且非法串拒收', () {
+    for (final seed in [1, 7, 99]) {
+      final theme = randomShellBgTheme(Random(seed));
+      final decoded = decodeShellBgTheme(encodeShellBgTheme(theme))!;
+      expect(decoded.hue, theme.hue);
+      expect(decoded.sat, theme.sat);
+      expect(decoded.light, theme.light);
+      expect(decoded.seed, theme.seed);
+      expect(decoded.id, shellBgRandom);
+    }
+    expect(decodeShellBgTheme('bogus'), isNull);
+    expect(decodeShellBgTheme('1,2,3'), isNull);
+    expect(decodeShellBgTheme('1,2,3,4,5'), isNull);
+    expect(decodeShellBgTheme('360,0.45,0.64,11'), isNull);
+    expect(decodeShellBgTheme('-1,0.45,0.64,11'), isNull);
+    expect(decodeShellBgTheme('200,0.9,0.64,11'), isNull);
+    expect(decodeShellBgTheme('200,0.45,0.9,11'), isNull);
+    expect(decodeShellBgTheme('200,0.45,0.64,-1'), isNull);
+    expect(decodeShellBgTheme('200,0.45,0.64,2147483648'), isNull);
+  });
+
+  test('随机窄带任意色相明暗两版对比度均不低于 4.5', () {
+    for (var hue = 0.0; hue < 360; hue += 5) {
+      for (final sat in [bgRandomSatMin, bgRandomSatMax]) {
+        for (final light in [bgRandomLightMin, bgRandomLightMax]) {
+          final theme = ShellBgTheme(
+              id: shellBgRandom,
+              name: '随机图案',
+              hue: hue,
+              sat: sat,
+              light: light,
+              seed: 42);
+          for (final dark in [true, false]) {
+            final t = dark ? InkTokens.dark : InkTokens.light;
+            for (final color in shellBgScene(theme, dark: dark).colors) {
+              expect(contrastRatio(t.ink, color), greaterThanOrEqualTo(4.5),
+                  reason: 'hue=$hue sat=$sat light=$light dark=$dark');
+              expect(contrastRatio(t.inkMuted, color),
+                  greaterThanOrEqualTo(4.5),
+                  reason: 'hue=$hue sat=$sat light=$light dark=$dark');
+            }
+          }
+        }
+      }
+    }
+  });
+
+  test('随机换种子或色相触发重绘而同参数不重绘', () {
+    final a = randomShellBgTheme(Random(7));
+    final same = decodeShellBgTheme(encodeShellBgTheme(a))!;
+    final base = ShellBgPainter(theme: a, dark: true);
+    expect(base.shouldRepaint(ShellBgPainter(theme: same, dark: true)),
+        isFalse);
+    expect(
+        base.shouldRepaint(
+            ShellBgPainter(theme: randomShellBgTheme(Random(8)), dark: true)),
+        isTrue);
+    final shifted = ShellBgTheme(
+        id: a.id,
+        name: a.name,
+        hue: (a.hue + 30) % 360,
+        sat: a.sat,
+        light: a.light,
+        seed: a.seed);
+    expect(base.shouldRepaint(ShellBgPainter(theme: shifted, dark: true)),
+        isTrue);
   });
 
   test('形状目录十二种 id 唯一且清洗保持目录序', () {

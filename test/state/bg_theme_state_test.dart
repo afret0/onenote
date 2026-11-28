@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
@@ -35,10 +36,26 @@ void main() {
     supportDir.deleteSync(recursive: true);
   });
 
-  test('缺省薰衣草紫与全部区域范围', () async {
+  test('缺省随机且落库与全部区域范围', () async {
     await state.init();
-    expect(state.bgTheme, shellBgLavender);
+    expect(state.bgTheme, shellBgRandom);
+    expect(state.bgThemeData, isNotNull);
     expect(state.bgScope, AppState.bgScopeFull);
+    expect(await db.getSetting(AppDb.bgThemeKey), shellBgRandom);
+    expect(await db.getSetting(AppDb.bgRandomThemeKey),
+        encodeShellBgTheme(state.bgThemeData!));
+  });
+
+  test('缺省随机每次启动重随', () async {
+    await state.init();
+    final first = encodeShellBgTheme(state.bgThemeData!);
+    final fresh = AppState(db, fontStoreOverride: store);
+    addTearDown(fresh.dispose);
+    await fresh.init();
+    expect(fresh.bgTheme, shellBgRandom);
+    expect(encodeShellBgTheme(fresh.bgThemeData!), isNot(first));
+    expect(await db.getSetting(AppDb.bgRandomThemeKey),
+        encodeShellBgTheme(fresh.bgThemeData!));
   });
 
   test('切换主题落库且重启保留并通知', () async {
@@ -63,17 +80,75 @@ void main() {
     expect(fresh.bgTheme, shellBgNone);
   });
 
+  test('固定主题与不使用重启不重随', () async {
+    await state.init();
+    await state.setBgTheme(shellBgIndigo);
+    final fresh = AppState(db, fontStoreOverride: store);
+    addTearDown(fresh.dispose);
+    await fresh.init();
+    expect(fresh.bgTheme, shellBgIndigo);
+    expect(fresh.bgRandomTheme, isNull);
+    await fresh.setBgTheme(shellBgNone);
+    final none = AppState(db, fontStoreOverride: store);
+    addTearDown(none.dispose);
+    await none.init();
+    expect(none.bgTheme, shellBgNone);
+    expect(none.bgRandomTheme, isNull);
+  });
+
+  test('随机生成落库且重启重随并通知', () async {
+    await state.init();
+    var notified = 0;
+    state.addListener(() => notified++);
+    await state.randomizeBg(rng: Random(7));
+    expect(state.bgTheme, shellBgRandom);
+    expect(notified, 1);
+    expect(await db.getSetting(AppDb.bgRandomThemeKey),
+        encodeShellBgTheme(state.bgThemeData!));
+    expect(await db.getSetting(AppDb.bgThemeKey), shellBgRandom);
+    final fresh = AppState(db, fontStoreOverride: store);
+    addTearDown(fresh.dispose);
+    await fresh.init();
+    expect(encodeShellBgTheme(fresh.bgThemeData!),
+        isNot(encodeShellBgTheme(state.bgThemeData!)));
+    expect(await db.getSetting(AppDb.bgRandomThemeKey),
+        encodeShellBgTheme(fresh.bgThemeData!));
+  });
+
+  test('随机连刷替换旧结果且切走固定主题后可切回', () async {
+    await state.init();
+    await state.randomizeBg(rng: Random(7));
+    await state.randomizeBg(rng: Random(8));
+    final second = encodeShellBgTheme(state.bgThemeData!);
+    expect(await db.getSetting(AppDb.bgRandomThemeKey), second);
+    await state.setBgTheme(shellBgIndigo);
+    expect(state.bgThemeData!.id, shellBgIndigo);
+    await state.setBgTheme(shellBgRandom);
+    expect(encodeShellBgTheme(state.bgThemeData!), second);
+  });
+
+  test('随机存量非法被忽略且启动重随覆写', () async {
+    await db.setSetting(AppDb.bgThemeKey, shellBgRandom);
+    await db.setSetting(AppDb.bgRandomThemeKey, 'bogus');
+    await state.init();
+    expect(state.bgTheme, shellBgRandom);
+    expect(state.bgRandomTheme, isNotNull);
+    expect(await db.getSetting(AppDb.bgRandomThemeKey),
+        encodeShellBgTheme(state.bgThemeData!));
+  });
+
   test('未知主题标识被拒绝', () async {
     await state.init();
     await state.setBgTheme('bogus');
-    expect(state.bgTheme, shellBgLavender);
-    expect(await db.getSetting(AppDb.bgThemeKey), isNull);
+    expect(state.bgTheme, shellBgRandom);
+    expect(await db.getSetting(AppDb.bgThemeKey), shellBgRandom);
   });
 
   test('存量非法主题回退默认', () async {
     await db.setSetting(AppDb.bgThemeKey, 'bogus');
     await state.init();
-    expect(state.bgTheme, shellBgLavender);
+    expect(state.bgTheme, shellBgRandom);
+    expect(state.bgThemeData, isNotNull);
   });
 
   test('范围三档可切换且重启保留', () async {

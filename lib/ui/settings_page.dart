@@ -575,13 +575,20 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _pickBgTheme() async {
     final picked = await showDialog<String>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('背景主题'),
-        children: [
-          _bgThemeOption(shellBgNone, '不使用', null),
-          for (final theme in shellBgThemes)
-            _bgThemeOption(theme.id, theme.name, theme),
-        ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => SimpleDialog(
+          title: const Text('背景主题'),
+          children: [
+            _bgThemeOption(shellBgNone, '不使用', null),
+            for (final theme in shellBgThemes)
+              _bgThemeOption(theme.id, theme.name, theme),
+            _bgThemeOption(shellBgRandom, '随机生成', state.bgRandomTheme,
+                hint: '点击换新，每次启动自动重随', onTap: () async {
+              await state.randomizeBg();
+              setDialogState(() {});
+            }),
+          ],
+        ),
       ),
     );
     if (picked != null) {
@@ -589,10 +596,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Widget _bgThemeOption(String id, String name, ShellBgTheme? theme) {
+  Widget _bgThemeOption(String id, String name, ShellBgTheme? theme,
+      {String? hint, VoidCallback? onTap}) {
     final t = inkOf(context);
     return SimpleDialogOption(
-      onPressed: () => Navigator.pop(context, id),
+      onPressed: onTap ?? () => Navigator.pop(context, id),
       child: Row(
         children: [
           Container(
@@ -607,11 +615,28 @@ class _SettingsPageState extends State<SettingsPage> {
               borderRadius: BorderRadius.circular(radiusSm),
               border: Border.all(color: t.hairline),
             ),
-            child: theme == null ? null : ShellBackground(themeId: theme.id),
+            child: theme == null
+                ? (id == shellBgRandom
+                    ? Icon(Icons.casino_outlined,
+                        size: 18, color: t.inkMuted)
+                    : null)
+                : ShellBackground(theme: theme),
           ),
           const SizedBox(width: spaceMd),
           Expanded(
-            child: Text(name, style: Theme.of(context).textTheme.bodyMedium),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(name, style: Theme.of(context).textTheme.bodyMedium),
+                if (hint != null)
+                  Text(hint,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: t.inkMuted)),
+              ],
+            ),
           ),
           if (state.bgTheme == id)
             Icon(Icons.check, size: 18, color: t.accentText),
@@ -910,7 +935,7 @@ class _SettingsPageState extends State<SettingsPage> {
               icon: Icons.wallpaper_outlined,
               title: '背景主题',
               subtitle: '柔光几何填充图案，明暗主题自动适配',
-              action: shellBgThemeOf(state.bgTheme)?.name ?? '不使用',
+              action: state.bgThemeData?.name ?? '不使用',
               onTap: _pickBgTheme,
             ),
             Divider(height: 1, color: t.hairline),

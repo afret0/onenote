@@ -54,7 +54,7 @@ void main() {
     expect(find.text('字体'), findsNothing);
     expect(find.text('背景主题'), findsOneWidget);
     expect(find.text('背景范围'), findsOneWidget);
-    expect(find.text('薰衣草紫'), findsOneWidget);
+    expect(find.text('随机图案'), findsOneWidget);
     expect(find.text('全部区域'), findsOneWidget);
   });
 
@@ -68,12 +68,13 @@ void main() {
     for (final theme in shellBgThemes) {
       expect(dialogText(theme.name), findsOneWidget);
     }
+    expect(dialogText('随机生成'), findsOneWidget);
     expect(
         find.descendant(
             of: find.byType(SimpleDialog),
             matching: find.byWidgetPredicate(
                 (w) => w is CustomPaint && w.painter is ShellBgPainter)),
-        findsNWidgets(6));
+        findsNWidgets(7));
 
     await tester.tap(dialogText('黛蓝'));
     await tester.pumpAndSettle();
@@ -86,6 +87,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.bgTheme, shellBgNone);
     expect(find.text('不使用'), findsOneWidget);
+  });
+
+  testWidgets('随机生成可连刷预览且落库更新行值', (tester) async {
+    final state = await seed(tester);
+    await pumpSettings(tester, state);
+
+    await tester.tap(find.text('背景主题'));
+    await tester.pumpAndSettle();
+    final firstSeed = state.bgRandomTheme!.seed;
+
+    await tester.tap(dialogText('随机生成'));
+    await tester.pumpAndSettle();
+    expect(state.bgTheme, shellBgRandom);
+    expect(state.bgRandomTheme!.seed, isNot(firstSeed));
+    expect(dialogText('随机生成'), findsOneWidget);
+    expect(await state.db.getSetting(AppDb.bgThemeKey), shellBgRandom);
+    expect(await state.db.getSetting(AppDb.bgRandomThemeKey),
+        encodeShellBgTheme(state.bgThemeData!));
+
+    await tester.tap(dialogText('随机生成'));
+    await tester.pumpAndSettle();
+    final painter = tester
+        .widget<CustomPaint>(find
+            .descendant(
+                of: find.byType(SimpleDialog),
+                matching: find.byWidgetPredicate(
+                    (w) => w is CustomPaint && w.painter is ShellBgPainter))
+            .last)
+        .painter as ShellBgPainter;
+    expect(painter.theme.seed, state.bgRandomTheme!.seed);
+
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(find.text('随机图案'), findsOneWidget);
   });
 
   testWidgets('范围对话框三档可切换', (tester) async {

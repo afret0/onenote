@@ -414,6 +414,10 @@ class ShellBgPainter extends CustomPainter {
   bool shouldRepaint(covariant ShellBgPainter oldDelegate) =>
       oldDelegate.dark != dark ||
       oldDelegate.theme.id != theme.id ||
+      oldDelegate.theme.hue != theme.hue ||
+      oldDelegate.theme.sat != theme.sat ||
+      oldDelegate.theme.light != theme.light ||
+      oldDelegate.theme.seed != theme.seed ||
       !_sameEnabled(oldDelegate.enabled);
 
   bool _sameEnabled(Set<String>? other) {
@@ -425,14 +429,14 @@ class ShellBgPainter extends CustomPainter {
 }
 
 class ShellBackground extends StatelessWidget {
-  const ShellBackground({super.key, required this.themeId, this.enabled});
+  const ShellBackground({super.key, required this.theme, this.enabled});
 
-  final String themeId;
+  final ShellBgTheme? theme;
   final Set<String>? enabled;
 
   @override
   Widget build(BuildContext context) {
-    final theme = shellBgThemeOf(themeId);
+    final theme = this.theme;
     if (theme == null) {
       return const SizedBox.shrink();
     }
